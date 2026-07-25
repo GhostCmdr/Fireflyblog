@@ -92,6 +92,7 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
       }
       var img = new Image();
       img.onload = function() {
+        URL.revokeObjectURL(img.src);
         var w = img.width, h = img.height;
         // 按最大边长等比缩放
         if (w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION) {
@@ -156,13 +157,15 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
     }
   }
 
+  var _scrollbarWidth = null;
   function measureScrollbarWidth() {
+    if (_scrollbarWidth !== null) return _scrollbarWidth;
     var scrollDiv = document.createElement('div');
     scrollDiv.style.cssText = 'overflow:scroll;visibility:hidden;position:absolute;width:100px;height:100px;';
     document.body.appendChild(scrollDiv);
-    var w = scrollDiv.offsetWidth - scrollDiv.clientWidth;
+    _scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth;
     document.body.removeChild(scrollDiv);
-    return w;
+    return _scrollbarWidth;
   }
 
   function applyEditorMode() {
@@ -208,25 +211,30 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
       navbarCss
     ].join('\n');
     document.head.appendChild(editorStyleEl);
+    var _resizeDebounce = null;
     editorResizeHandler = function() {
-      var newSW = measureScrollbarWidth();
-      // 重新读取缓存宽度（主页 resize 后会更新）
-      var newCached = sessionStorage.getItem('navbar-width');
-      if (editorStyleEl) {
-        var rules = editorStyleEl.textContent;
-        rules = rules.replace(/calc\(100% - \d+px\)/g, 'calc(100% - ' + newSW + 'px)');
-        rules = rules.replace(/body\.editor-page::after \{ content: ""; position: fixed; right: 0; top: 0; width: \d+px;/, 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + newSW + 'px;');
-        if (newCached) {
-          // 更新固定宽度和 translateX
-          rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
-        } else {
-          var newOffset = Math.round(newSW * 0.92);
-          rules = rules.replace(/translateX\(-\d+px\)/, 'translateX(-' + newOffset + 'px)');
+      if (_resizeDebounce) clearTimeout(_resizeDebounce);
+      _resizeDebounce = setTimeout(function() {
+        _resizeDebounce = null;
+        var newSW = measureScrollbarWidth();
+        // 重新读取缓存宽度（主页 resize 后会更新）
+        var newCached = sessionStorage.getItem('navbar-width');
+        if (editorStyleEl) {
+          var rules = editorStyleEl.textContent;
+          rules = rules.replace(/calc\(100% - \d+px\)/g, 'calc(100% - ' + newSW + 'px)');
+          rules = rules.replace(/body\.editor-page::after \{ content: ""; position: fixed; right: 0; top: 0; width: \d+px;/, 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + newSW + 'px;');
+          if (newCached) {
+            // 更新固定宽度和 translateX
+            rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
+          } else {
+            var newOffset = Math.round(newSW * 0.92);
+            rules = rules.replace(/translateX\(-\d+px\)/, 'translateX(-' + newOffset + 'px)');
+          }
+          editorStyleEl.textContent = rules;
         }
-        editorStyleEl.textContent = rules;
-      }
-      // 同步更新 inline style
-      applyNavbarOffset();
+        // 同步更新 inline style
+        applyNavbarOffset();
+      }, 100);
     };
     window.addEventListener('resize', editorResizeHandler);
   }
@@ -237,39 +245,19 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
     if (editorStyleEl) { editorStyleEl.remove(); editorStyleEl = null; }
     if (editorResizeHandler) { window.removeEventListener('resize', editorResizeHandler); editorResizeHandler = null; }
     clearNavbarOffset();
+    // 清理资源：停止自动保存定时器、释放图片缓存、重置全局状态、移除快捷键监听
+    if (window.__editorAutosaveTimer) { clearInterval(window.__editorAutosaveTimer); window.__editorAutosaveTimer = null; }
+    if (window.__editorKeydownEsc) { document.removeEventListener('keydown', window.__editorKeydownEsc); window.__editorKeydownEsc = null; }
+    window.__editorImageMap = {};
+    window.__editorCoverValue = '';
+    window.__editorCoverDataUrl = '';
+    window.__editorCoverFilename = '';
+    _scrollbarWidth = null;
+    _invalidateDraftsCache();
   }
 
-  // [Editor] Swup hooks：进入编辑器时应用样式，离开时清理
-  function registerSwupHooks() {
-    // 离开编辑器时清理所有样式和 class
-    window.swup.hooks.on('visit:start', function(visit) {
-      var targetPath = '';
-      try { targetPath = new URL(visit.to.url, window.location.origin).pathname; } catch(e) { targetPath = visit.to.url; }
-      if (targetPath !== '/editor/' && targetPath !== '/editor') {
-        removeEditorMode();
-      }
-    });
-    // 进入编辑器时：先清理旧状态 → 立即补偿导航栏偏移 → 下一帧注入完整 CSS
-    window.swup.hooks.on('page:view', function() {
-      if (isEditorPage()) {
-        removeEditorMode();
-        applyNavbarOffset();
-        requestAnimationFrame(applyEditorMode);
-      }
-    });
-  }
-
-  if (window.swup && window.swup.hooks) {
-    registerSwupHooks();
-  } else {
-    document.addEventListener('swup:enable', registerSwupHooks);
-  }
-
-  // 首次加载：立即应用 offset 避免弹动，再注入 CSS
-  if (isEditorPage()) {
-    applyNavbarOffset();
-    applyEditorMode();
-  }
+  // [Editor] Swup hooks 已移至 Layout.astro（因为 <script is:inline> 在 swup 容器内不会被 SPA 导航重新执行）
+  // Layout.astro 的 swup:contentReplaced 事件监听器负责检测 /editor/ 页面并应用/移除编辑器模式 CSS
 })();
 </script>
 
@@ -298,7 +286,6 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
 .custom-scrollbar { position: absolute; right: 2px; top: 0; bottom: 0; width: 6px; z-index: 10; opacity: 1; pointer-events: auto; }
 .custom-scrollbar-thumb { width: 100%; border-radius: 3px; background: rgba(128, 128, 128, 0.35); cursor: pointer; position: absolute; top: 0; min-height: 20px; transition: background 0.15s; }
 .custom-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.55); }
-#draft-list::-webkit-scrollbar { display: none; }
 
 /* slide-panel 滚动条：默认隐藏，hover 时显示 */
 #panel-content::-webkit-scrollbar { width: 4px; }
@@ -444,7 +431,7 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
         <span id="line-count">0 行</span>
       </div>
       <div class="flex items-center gap-2">
-        <button id="btn-quick-save" title="Ctrl+Shift+S" class="px-3 py-1.5 rounded-lg bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20 transition cursor-pointer text-xs font-medium">保存草稿</button>
+        <button id="btn-quick-save" title="保存草稿" class="px-3 py-1.5 rounded-lg bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20 transition cursor-pointer text-xs font-medium">保存草稿</button>
         <button data-panel="drafts" title="草稿箱" class="px-3 py-1.5 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer text-xs">草稿箱</button>
         <button data-panel="publish" title="发布" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 hover:opacity-90 transition cursor-pointer text-xs font-medium">发布文章</button>
       </div>
@@ -475,7 +462,7 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <div id="panel-content" class="flex-1 overflow-hidden p-4"></div>
+        <div id="panel-content" class="flex-1 overflow-hidden"></div>
       </div>
     </div>
 
@@ -595,24 +582,6 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
   </div>
 </div>
 
-<!-- 草稿管理弹窗 -->
-<div id="draft-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-bold text-black/90 dark:text-white/90">📋 草稿管理</h3>
-      <button id="draft-close" class="text-black/50 dark:text-white/50 hover:text-black/90 dark:hover:text-white/90 cursor-pointer text-xl">✕</button>
-    </div>
-    <div class="flex gap-2 mb-4">
-      <input id="draft-name-input" type="text" placeholder="草稿名称"
-        class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-      <button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap">保存</button>
-    </div>
-    <div id="draft-list" class="space-y-1 max-h-80 overflow-y-auto">
-      <div class="text-sm text-black/40 dark:text-white/40 text-center py-8">暂无保存的草稿</div>
-    </div>
-  </div>
-</div>
-
 <!-- 链接弹窗 -->
 <div id="link-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
   <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
@@ -711,57 +680,96 @@ function initEditor() {
     marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
   }
 
-  // 实时预览
+  // 实时预览（100ms 防抖 + RAF 保证每帧最多渲染一次）
   let previewRaf = null;
-  function updatePreview() {
-    if (previewRaf) return;
-    previewRaf = requestAnimationFrame(function() {
-      previewRaf = null;
-      var md = textarea.value;
-      // [Editor] 替换 ./images/ 路径为 Base64 Data URL 用于预览
-      var imageMap = window.__editorImageMap || {};
-      md = md.replace(/!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g, function(match, alt, filename) {
-        return imageMap[filename] ? '![' + alt + '](' + imageMap[filename] + ')' : match;
-      });
-      // [Editor] 将 [grid]...[/grid] 转换为 HTML grid 布局（包含 img 标签）
-      md = md.replace(/\[grid\]\n([\s\S]*?)\n\[\/grid\]/g, function(match, content) {
-        var images = [];
-        var imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        var imgMatch;
-        while ((imgMatch = imgRegex.exec(content)) !== null) {
-          images.push({ alt: imgMatch[1], src: imgMatch[2] });
-        }
-        var count = images.length;
-        var cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
-        var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;margin:16px 0;">';
-        images.forEach(function(img) {
-          html += '<div style="text-align:center;">';
-          html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;" />';
-          if (img.alt) {
-            html += '<p style="font-size:12px;color:#999;margin:4px 0 0;">' + img.alt + '</p>';
+  let _previewTimer = null;
+  // Web Worker：在后台线程执行 marked.parse()，不阻塞主线程
+  var _mdWorker = null;
+  var _workerReady = false;
+  try {
+    _mdWorker = new Worker('/marked-worker.js');
+    _mdWorker.onmessage = function(e) {
+      var html = e.data;
+      // 主线程补处理：Worker 只做基础 markdown→HTML，代码高亮和列表样式在主线程完成
+      if (html && typeof hljs !== 'undefined') {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('pre code').forEach(function(block) {
+          if (!block.classList.contains('hljs')) {
+            try { hljs.highlightElement(block); } catch(ex) {}
           }
-          html += '</div>';
         });
+        html = tmp.innerHTML;
+      }
+      preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
+      if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
+    };
+    _mdWorker.onerror = function() { _workerReady = false; };
+    _workerReady = true;
+  } catch(e) { _workerReady = false; }
+
+  // 渲染预览内容（从 _doPreview 和 _forcePreview 共用）
+  function _renderPreview() {
+    var md = textarea.value;
+    var imageMap = window.__editorImageMap || {};
+    md = md.replace(/!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g, function(match, alt, filename) {
+      return imageMap[filename] ? '![' + alt + '](' + imageMap[filename] + ')' : match;
+    });
+    md = md.replace(/\[grid\]\n([\s\S]*?)\n\[\/grid\]/g, function(match, content) {
+      var images = [];
+      var imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+      var imgMatch;
+      while ((imgMatch = imgRegex.exec(content)) !== null) {
+        images.push({ alt: imgMatch[1], src: imgMatch[2] });
+      }
+      var count = images.length;
+      var cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
+      var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;margin:16px 0;">';
+      images.forEach(function(img) {
+        html += '<div style="text-align:center;">';
+        html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;" />';
+        if (img.alt) html += '<p style="font-size:12px;color:#999;margin:4px 0 0;">' + img.alt + '</p>';
         html += '</div>';
-        return html;
       });
-      // 单张图片转为 HTML img 标签（grid 内的图片已在上方处理，不会匹配此正则）
-      // 不依赖 marked 渲染，避免 data URL 过长导致渲染失败
-      md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(match, alt, src) {
-        var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;border-radius:8px;" />';
-        if (alt) {
-          imgHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
-        }
-        return imgHtml;
-      });
+      html += '</div>';
+      return html;
+    });
+    md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(match, alt, src) {
+      var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;border-radius:8px;" />';
+      if (alt) imgHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
+      return imgHtml;
+    });
+    // 用 Web Worker 解析 markdown（后台线程，不阻塞主线程）
+    if (_workerReady && _mdWorker) {
+      _mdWorker.postMessage(md);
+    } else {
+      // 降级：worker 不可用时用主线程解析
       var html = '';
       try { html = (typeof marked !== 'undefined') ? marked.parse(md) : md.replace(/\n/g, '<br>'); }
       catch(e) { html = '<p style="color:red">渲染错误: ' + e.message + '</p>'; }
       preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
       if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
-      updateCounts(md);
+    }
+    updateCounts(md);
+  }
+  function _doPreview() {
+    if (previewRaf) return;
+    previewRaf = requestAnimationFrame(function() {
+      previewRaf = null;
+      _renderPreview();
     });
   }
+  function updatePreview() { _doPreview(); }
+  // 强制预览：绕过防抖和 RAF 守卫，用于草稿加载等需要立即渲染的场景
+  // 挂到 window 上供外层 IIFE（草稿加载）调用
+  window.__editorForcePreview = function() {
+    cancelAnimationFrame(previewRaf);
+    previewRaf = null;
+    requestAnimationFrame(function() {
+      previewRaf = null;
+      _renderPreview();
+    });
+  };
 
   function updateCounts(text) {
     const lines = text.split('\n').length;
@@ -773,7 +781,10 @@ function initEditor() {
     document.getElementById('line-count').textContent = lines + ' 行';
   }
 
-  textarea.addEventListener('input', updatePreview);
+  textarea.addEventListener('input', function() {
+    updatePreview();
+    if (typewriterEnabled) scrollCursorToCenter();
+  });
 
   // 自动保存
   const AUTOSAVE_KEY = 'editor-autosave-draft';
@@ -795,7 +806,7 @@ function initEditor() {
     };
     try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch(e) {}
   }
-  setInterval(saveDraft, 30000);
+  window.__editorAutosaveTimer = setInterval(saveDraft, 30000);
 
   // 工具栏按钮
   const toolbarConfig = {
@@ -1002,21 +1013,21 @@ function initEditor() {
     if (!typewriterEnabled) return;
     var pos = textarea.selectionStart;
     var text = textarea.value;
-    // 全选时跳过（selectionStart=0 会滚到顶部）
     if (pos === 0 && textarea.selectionEnd === text.length) return;
     var lines = text.substring(0, pos).split('\n');
     var lineNum = lines.length - 1;
-    var style = getComputedStyle(textarea);
-    var lineHeight = parseFloat(style.lineHeight) || 28;
-    var paddingTop = parseFloat(style.paddingTop) || 0;
+    // 用 scrollHeight/clientHeight 直接计算，避免行高测量误差
+    var totalLines = text.split('\n').length || 1;
+    var lineHeight = textarea.scrollHeight / totalLines;
+    var paddingTop = parseFloat(getComputedStyle(textarea).paddingTop) || 0;
     var cursorY = paddingTop + lineNum * lineHeight;
-    var textareaHeight = textarea.clientHeight;
-    var target = cursorY - textareaHeight / 2 + lineHeight / 2;
-    textarea.scrollTop = target;
+    var halfView = textarea.clientHeight / 2;
+    textarea.scrollTop = cursorY - halfView;
   }
 
-  textarea.addEventListener('input', function() { scrollCursorToCenter(); });
-  textarea.addEventListener('keyup', function() { scrollCursorToCenter(); });
+  textarea.addEventListener('keyup', function(e) {
+    if (typewriterEnabled && /^(Arrow|Home|End|Page)/.test(e.key)) scrollCursorToCenter();
+  });
 
   // 初始加载时如果打字机模式开启，自动居中光标
   if (typewriterEnabled) {
@@ -1037,21 +1048,22 @@ function initEditor() {
     if (imageFiles.length === 0) return;
     e.preventDefault();
 
-    var imageLines = [];
+    var imageLines = new Array(imageFiles.length);
     var loaded = 0;
-    imageFiles.forEach(function(file) {
+    imageFiles.forEach(function(file, idx) {
       compressImage(file).then(function(dataUrl) {
         var ext = file.type.split('/')[1] || 'png';
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorImageMap[filename] = dataUrl;
-        imageLines.push('![图片](./images/' + filename + ')');
+        imageLines[idx] = '![图片](./images/' + filename + ')';
         loaded++;
         if (loaded === imageFiles.length) {
+          var validLines = imageLines.filter(Boolean);
           var insertText;
-          if (imageLines.length > 1) {
-            insertText = '[grid]\n' + imageLines.join('\n') + '\n[/grid]\n';
+          if (validLines.length > 1) {
+            insertText = '[grid]\n' + validLines.join('\n') + '\n[/grid]\n';
           } else {
-            insertText = imageLines[0] + '\n';
+            insertText = validLines[0] + '\n';
           }
           textarea.focus();
           document.execCommand('insertText', false, insertText);
@@ -1081,21 +1093,22 @@ function initEditor() {
     }
     if (imageFiles.length === 0) return;
 
-    var imageLines = [];
+    var imageLines = new Array(imageFiles.length);
     var loaded = 0;
-    imageFiles.forEach(function(file) {
+    imageFiles.forEach(function(file, idx) {
       compressImage(file).then(function(dataUrl) {
         var ext = file.type.split('/')[1] || 'png';
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorImageMap[filename] = dataUrl;
-        imageLines.push('![图片](./images/' + filename + ')');
+        imageLines[idx] = '![图片](./images/' + filename + ')';
         loaded++;
         if (loaded === imageFiles.length) {
+          var validLines = imageLines.filter(Boolean);
           var insertText;
-          if (imageLines.length > 1) {
-            insertText = '[grid]\n' + imageLines.join('\n') + '\n[/grid]\n';
+          if (validLines.length > 1) {
+            insertText = '[grid]\n' + validLines.join('\n') + '\n[/grid]\n';
           } else {
-            insertText = imageLines[0] + '\n';
+            insertText = validLines[0] + '\n';
           }
           textarea.focus();
           document.execCommand('insertText', false, insertText);
@@ -1129,7 +1142,15 @@ function initEditor() {
         thumb.style.top = (scrollRatio * maxTop) + 'px';
       }
 
-      target.addEventListener('scroll', updateThumb);
+      // [Editor] 自定义滚动条：用 RAF 节流，避免高频 scroll 事件重复计算布局属性
+      var _thumbRaf = null;
+      target.addEventListener('scroll', function() {
+        if (_thumbRaf) return;
+        _thumbRaf = requestAnimationFrame(function() {
+          _thumbRaf = null;
+          updateThumb();
+        });
+      });
       updateThumb();
 
       // 点击轨道跳转
@@ -1193,9 +1214,7 @@ function initEditor() {
   // 图片/链接/草稿弹窗由 IIFE 处理，此处不再重复绑定
 
   // 快捷键保存（快捷键保留，按钮由 IIFE 处理）
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); document.getElementById('btn-quick-save').click(); }
-  });
+  // 快捷键由按钮处理，不再绑定 document keydown
 
   // 初始化
   updatePreview();
@@ -1226,6 +1245,34 @@ function initEditor() {
   if (!window.__editorCoverFilename) window.__editorCoverFilename = '';
   // 封面图数据不持久化到 localStorage（刷新后需重新上传），草稿加载时从 editor-draft-cover-{savedAt} 恢复
 
+  // [Editor] YAML frontmatter 构建工具
+  function _yamlEscape(str) {
+    if (!str) return str;
+    if (/[":\[\]{}&*?|>!%@`#]/.test(str)) {
+      return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    }
+    return str;
+  }
+  function buildFrontmatter(opts) {
+    var fm = '---\n';
+    fm += 'title: ' + _yamlEscape(opts.title) + '\n';
+    fm += 'published: ' + new Date().toISOString().split('T')[0] + '\n';
+    fm += 'draft: false\n';
+    if (opts.desc) fm += 'description: ' + _yamlEscape(opts.desc) + '\n';
+    if (opts.category) fm += 'category: ' + _yamlEscape(opts.category) + '\n';
+    if (opts.tags) {
+      var tagArr = opts.tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+      if (tagArr.length > 0) fm += 'tags: [' + tagArr.map(_yamlEscape).join(', ') + ']\n';
+    }
+    if (opts.cover && opts.cover.indexOf('data:') !== 0) fm += 'image: ' + _yamlEscape(opts.cover) + '\n';
+    if (opts.password) fm += 'password: ' + _yamlEscape(opts.password) + '\n';
+    if (opts.passwordHint) fm += 'passwordHint: ' + _yamlEscape(opts.passwordHint) + '\n';
+    if (opts.pinned) fm += 'pinned: true\n';
+    if (opts.comment === false) fm += 'comment: false\n';
+    fm += '---\n\n';
+    return fm;
+  }
+
   var templates = {
     publish: { title: '发布', html: '<div class="space-y-3"><button id="btn-github" class="w-full py-2.5 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer">发布到 GitHub</button><button id="btn-download" class="w-full py-2 rounded-lg border border-[var(--line-divider)] text-sm text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer">下载 .md 文件</button></div>' },
     meta: { title: '文章信息', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标题 <span class="text-red-500">*</span></label><div class="flex gap-2"><input id="post-title-input" type="text" placeholder="请输入文章标题" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-pinned"> 置顶 <input type="checkbox" id="chk-pinned-panel" class="hidden" /> </label> <label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-comment"> 评论 <input type="checkbox" id="chk-comment-panel" class="hidden" checked /> </label></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">描述</label><textarea id="post-desc" rows="2" placeholder="一句话描述文章内容" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 resize-none"></textarea></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">分类</label><input id="post-category" type="text" placeholder="如：技术笔记" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签 <span class="text-xs text-black/40 dark:text-white/40">（自定义用,隔开）</span></label><div class="flex gap-2"><input id="post-tag-1" type="text" placeholder="标签1" class="w-1/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-tag-3" type="text" placeholder="自定义标签" class="w-3/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图</label><div class="flex gap-2 flex-nowrap"><input id="post-cover" type="text" placeholder="图片 URL" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 cursor-pointer whitespace-nowrap shrink-0">上传<input id="cover-upload" type="file" accept="image/*" class="hidden" /></label><button id="btn-remove-cover" type="button" class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-red-400 hover:text-red-600 hover:border-red-400 cursor-pointer whitespace-nowrap shrink-0">删除</button></div><div id="cover-preview" class="mt-2 hidden"><img id="cover-preview-img" class="w-full h-24 object-cover rounded-lg" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">密码</label><div class="flex gap-2"><input id="post-password-hint" type="text" placeholder="密码提示" class="w-1/3 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-password" type="text" placeholder="输入密码（留空不加密）" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div></div>' },
@@ -1233,7 +1280,7 @@ function initEditor() {
     cover: { title: '封面图', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图 URL</label><input id="post-cover" type="text" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
     settings: { title: '设置', html: '<div class="text-sm text-black/50 dark:text-white/50">更多设置开发中...</div>' },
     github: { title: 'GitHub 设置', html: '<div class="space-y-4"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">GitHub Token</label><div class="flex gap-2"><input id="gh-token-panel" type="password" placeholder="ghp_xxxxx" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><button id="btn-save-token" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-xs font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap">保存</button><button id="btn-clear-gh" class="px-3 py-2 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer whitespace-nowrap">清空</button></div><p class="text-xs text-black/40 dark:text-white/40 mt-1">🔒 仅保存在本浏览器，刷新不丢失</p></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">仓库</label><input id="gh-repo-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">分支</label><input id="gh-branch-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
-    drafts: { title: '草稿箱', html: '<div style="padding:0 16px;"><div class="space-y-1"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="max-height:calc(100vh - 200px);overflow-y:auto;padding:0 14px 0 14px;scrollbar-width:none;-ms-overflow-style:none;"></div>' }
+    drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;"><div class="space-y-1" style="flex-shrink:0;padding-right:16px;"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="flex:1;overflow-y:auto;"></div></div>' }
   };
 
   var currentPanel = '';
@@ -1249,15 +1296,8 @@ function initEditor() {
     document.querySelectorAll('[data-panel]').forEach(function(b) { b.classList.remove('active'); });
     document.querySelectorAll('[data-panel="' + name + '"]').forEach(function(b) { b.classList.add('active'); });
     panelContent.classList.remove('overflow-hidden');
-    if (name === 'drafts') {
-      panelContent.classList.remove('overflow-y-auto');
-      panelContent.classList.add('overflow-hidden');
-      panelContent.style.padding = '0';
-    } else {
-      panelContent.classList.add('overflow-y-auto', 'overflow-x-hidden');
-      panelContent.style.padding = '';
-    }
-    panelContent.classList.add('overflow-x-hidden');
+    panelContent.classList.add('overflow-y-auto', 'overflow-x-hidden');
+    panelContent.style.padding = '';
     if (name === 'toc') {
       panelTitle.textContent = '目录';
       renderTocContent();
@@ -1268,7 +1308,10 @@ function initEditor() {
       var t = templates[name];
       if (!t) return;
       panelTitle.textContent = t.title;
-      panelContent.innerHTML = t.html;
+      var wrapperStyle = name === 'drafts'
+        ? 'padding:0 0 0 16px;display:flex;flex-direction:column;height:100%;'
+        : 'padding:0 16px;';
+      panelContent.innerHTML = '<div style="' + wrapperStyle + '">' + t.html + '</div>';
       if (name === 'meta') {
         var titleInput = document.getElementById('post-title-input');
         var mainTitle = document.getElementById('post-title');
@@ -1326,11 +1369,18 @@ function initEditor() {
     }
     slidePanel.style.width = '288px';
     panelInner.style.transform = 'translateX(0)';
+    // 确保 panel-inner 是 flex 容器，让 panel-content 的 flex-1 生效
+    panelInner.style.display = 'flex';
+    panelInner.style.flexDirection = 'column';
+    panelInner.style.height = '100%';
   }
 
   function closePanel() {
     slidePanel.style.width = '0px';
     panelInner.style.transform = 'translateX(-100%)';
+    panelInner.style.display = '';
+    panelInner.style.flexDirection = '';
+    panelInner.style.height = '';
     currentPanel = '';
     _tocCache = '';
     document.querySelectorAll('[data-panel]').forEach(function(b) { b.classList.remove('active'); });
@@ -1342,9 +1392,25 @@ function initEditor() {
     }
   }
 
-  // [Editor] GitHub 设置保存/清空按钮
+  // [Editor] 草稿缓存：避免每次操作都从 localStorage 读取+解析
+  var _draftsCache = null;
+  function _getDrafts() {
+    if (_draftsCache) return _draftsCache;
+    _draftsCache = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
+    return _draftsCache;
+  }
+  function _saveDrafts(drafts) {
+    _draftsCache = drafts;
+    localStorage.setItem('editor-drafts', JSON.stringify(drafts));
+  }
+  function _invalidateDraftsCache() { _draftsCache = null; }
+
+  // [Editor] 统一 click 事件委托（合并 GitHub 保存/清空 + 面板按钮 + 移除封面）
   panelContent.addEventListener('click', function(e) {
-    if (e.target.id === 'btn-save-token' || e.target.closest('#btn-save-token')) {
+    var target = e.target;
+
+    // GitHub 设置保存
+    if (target.id === 'btn-save-token' || target.closest('#btn-save-token')) {
       var tokenInput = document.getElementById('gh-token-panel');
       var repoInput = document.getElementById('gh-repo-panel');
       var branchInput = document.getElementById('gh-branch-panel');
@@ -1355,8 +1421,10 @@ function initEditor() {
       if (repo) localStorage.setItem('gh-repo', repo); else localStorage.removeItem('gh-repo');
       if (branch) localStorage.setItem('gh-branch', branch); else localStorage.removeItem('gh-branch');
       window.__editorShowToast('GitHub 设置已保存');
+      return;
     }
-    if (e.target.id === 'btn-clear-gh' || e.target.closest('#btn-clear-gh')) {
+    // GitHub 设置清空
+    if (target.id === 'btn-clear-gh' || target.closest('#btn-clear-gh')) {
       var tokenInput = document.getElementById('gh-token-panel');
       var repoInput = document.getElementById('gh-repo-panel');
       var branchInput = document.getElementById('gh-branch-panel');
@@ -1367,6 +1435,248 @@ function initEditor() {
       localStorage.removeItem('gh-repo');
       localStorage.removeItem('gh-branch');
       window.__editorShowToast('GitHub 设置已清空');
+      return;
+    }
+    // 置顶
+    if (target.id === 'btn-pinned' || target.closest('#btn-pinned')) {
+      var btn = target.id === 'btn-pinned' ? target : target.closest('#btn-pinned');
+      btn.classList.toggle('active');
+      return;
+    }
+    // 评论
+    if (target.id === 'btn-comment' || target.closest('#btn-comment')) {
+      var btn = target.id === 'btn-comment' ? target : target.closest('#btn-comment');
+      btn.classList.toggle('active');
+      return;
+    }
+    // 发布到 GitHub
+    if (target.id === 'btn-github' || target.closest('#btn-github')) {
+      document.getElementById('github-modal').classList.remove('hidden');
+      closePanel();
+      return;
+    }
+    // 下载 MD
+    if (target.id === 'btn-download' || target.closest('#btn-download')) {
+      var title = document.getElementById('post-title').value || 'untitled';
+      var getVal = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+      var desc = getVal('post-desc');
+      var category = getVal('post-category');
+      var tags = getVal('post-tags');
+      var cover = window.__editorCoverValue || getVal('post-cover');
+      var password = getVal('post-password');
+      var passwordHint = getVal('post-password-hint');
+      var pinned = (metaCheckboxState && metaCheckboxState.pinned) || false;
+      var comment = (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true;
+      var fm = buildFrontmatter({ title: title, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment });
+      var textarea = document.getElementById('markdown-input');
+      var blob = new Blob([fm + textarea.value], { type: 'text/markdown' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = title + '.md';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      return;
+    }
+    // 保存草稿
+    if (target.id === 'btn-save-draft' || target.closest('#btn-save-draft')) {
+      var draftName = document.getElementById('draft-name-input').value || '未命名草稿';
+      var getVal = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+      var savedAt = new Date().toISOString();
+      var drafts = _getDrafts();
+      drafts.push({
+        name: draftName,
+        title: getVal('post-title'),
+        content: document.getElementById('markdown-input').value,
+        desc: getVal('post-desc'),
+        category: getVal('post-category'),
+        tags: getVal('post-tags'),
+        cover: window.__editorCoverValue || getVal('post-cover'),
+        slug: getVal('post-slug'),
+        password: getVal('post-password'),
+        passwordHint: getVal('post-password-hint'),
+        pinned: metaCheckboxState.pinned,
+        comment: metaCheckboxState.comment,
+        savedAt: savedAt
+      });
+      _saveDrafts(drafts);
+      var content = document.getElementById('markdown-input').value;
+      var usedFiles = {};
+      var imgRegex2 = /!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g;
+      var m2;
+      while ((m2 = imgRegex2.exec(content)) !== null) { usedFiles[m2[2]] = true; }
+      var imageMap = window.__editorImageMap || {};
+      var imageKeys = Object.keys(usedFiles).filter(function(k) { return !!imageMap[k]; });
+      var imgSavePromises = imageKeys.map(function(k) {
+        return idbSet('img-' + savedAt + '-' + k, imageMap[k]).catch(function() {});
+      });
+      if (imageKeys.length > 0) {
+        imgSavePromises.push(idbSet('imgkeys-' + savedAt, imageKeys).catch(function() {}));
+      }
+      if (window.__editorCoverDataUrl) {
+        imgSavePromises.push(idbSet('cover-' + savedAt, window.__editorCoverDataUrl).catch(function() {}));
+      } else {
+        imgSavePromises.push(idbDel('cover-' + savedAt).catch(function() {}));
+      }
+      Promise.all(imgSavePromises).then(function() {
+        document.getElementById('draft-name-input').value = '';
+        renderDraftList();
+        showToast('草稿已保存');
+      });
+      return;
+    }
+    // 删除草稿
+    if (target.classList.contains('draft-delete')) {
+      e.stopPropagation();
+      var delSid = target.dataset.savedat;
+      var drafts = _getDrafts();
+      idbDelPrefix('img-' + delSid + '-').catch(function() {});
+      idbDel('imgkeys-' + delSid).catch(function() {});
+      idbDel('cover-' + delSid).catch(function() {});
+      localStorage.removeItem('editor-draft-img-' + delSid);
+      localStorage.removeItem('editor-draft-imgkeys-' + delSid);
+      localStorage.removeItem('editor-draft-cover-' + delSid);
+      drafts = drafts.filter(function(d) { return d.savedAt !== delSid; });
+      _saveDrafts(drafts);
+      renderDraftList();
+      return;
+    }
+    // 全选/取消全选
+    if (target.id === 'draft-select-all') {
+      var checkboxes = panelContent.querySelectorAll('.draft-checkbox');
+      checkboxes.forEach(function(cb) { cb.checked = target.checked; });
+      var toolbar = document.getElementById('draft-toolbar');
+      if (toolbar) {
+        var label = toolbar.querySelector('label');
+        var btn = toolbar.querySelector('button');
+        var show = target.checked;
+        if (label) { label.style.opacity = show ? '1' : '0'; label.style.pointerEvents = show ? 'auto' : 'none'; }
+        if (btn) { btn.style.opacity = show ? '1' : '0'; btn.style.pointerEvents = show ? 'auto' : 'none'; }
+      }
+      return;
+    }
+    // 删除选中
+    if (target.id === 'btn-delete-selected' || target.closest('#btn-delete-selected')) {
+      var checkedBoxes = panelContent.querySelectorAll('.draft-checkbox:checked');
+      if (checkedBoxes.length === 0) return;
+      var sids = Array.from(checkedBoxes).map(function(cb) { return cb.dataset.savedat; });
+      var drafts = _getDrafts();
+      sids.forEach(function(sid) {
+        idbDelPrefix('img-' + sid + '-').catch(function() {});
+        idbDel('imgkeys-' + sid).catch(function() {});
+        idbDel('cover-' + sid).catch(function() {});
+        localStorage.removeItem('editor-draft-img-' + sid);
+        localStorage.removeItem('editor-draft-imgkeys-' + sid);
+        localStorage.removeItem('editor-draft-cover-' + sid);
+      });
+      drafts = drafts.filter(function(d) { return sids.indexOf(d.savedAt) === -1; });
+      _saveDrafts(drafts);
+      renderDraftList();
+      return;
+    }
+    // 加载草稿
+    if (target.classList.contains('draft-load') || target.closest('.draft-load')) {
+      var item = target.classList.contains('draft-load') ? target : target.closest('.draft-load');
+      var loadSid = item.dataset.savedat;
+      var drafts = _getDrafts();
+      var d = drafts.find(function(dr) { return dr.savedAt === loadSid; });
+      if (d) {
+        var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
+        var setChecked = function(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; };
+        setVal('post-title', d.title);
+        setVal('post-desc', d.desc);
+        setVal('post-category', d.category);
+        setVal('post-tags', d.tags);
+        setVal('post-cover', d.cover);
+        window.__editorCoverValue = d.cover || '';
+        setVal('post-slug', d.slug);
+        setVal('post-password', d.password);
+        setVal('post-password-hint', d.passwordHint);
+        setChecked('chk-pinned', d.pinned);
+        setChecked('chk-comment', d.comment);
+        var mdInput = document.getElementById('markdown-input');
+        mdInput.value = d.content || '';
+        // 立即渲染预览，不等图片加载
+        window.__editorForcePreview();
+        window.__editorCoverDataUrl = '';
+        window.__editorCoverFilename = '';
+        if (d.cover) {
+          window.__editorCoverValue = d.cover;
+          var extractedFilename = d.cover.split('/').pop();
+          if (extractedFilename) window.__editorCoverFilename = extractedFilename;
+        }
+        var loadSid = d.savedAt;
+        var imgPromises = [];
+        imgPromises.push(
+          idbGet('imgkeys-' + loadSid).then(function(keyList) {
+            if (!keyList || !keyList.length) return 0;
+            var subPromises = keyList.map(function(k) {
+              return idbGet('img-' + loadSid + '-' + k).then(function(dataUrl) {
+                if (dataUrl) window.__editorImageMap[k] = dataUrl;
+              });
+            });
+            return Promise.all(subPromises).then(function() { return keyList.length; });
+          }).catch(function() { return 0; })
+        );
+        imgPromises.push(
+          new Promise(function(resolve) {
+            var savedImages = localStorage.getItem('editor-draft-img-' + loadSid);
+            if (savedImages) {
+              try {
+                var draftImgMap = JSON.parse(savedImages);
+                Object.assign(window.__editorImageMap, draftImgMap);
+                localStorage.removeItem('editor-draft-img-' + loadSid);
+              } catch(e) {}
+            }
+            resolve();
+          })
+        );
+        imgPromises.push(
+          idbGet('cover-' + loadSid).then(function(savedCover) {
+            if (savedCover) window.__editorCoverDataUrl = savedCover;
+          }).catch(function() {})
+        );
+        imgPromises.push(
+          new Promise(function(resolve) {
+            var savedCover = localStorage.getItem('editor-draft-cover-' + loadSid);
+            if (savedCover) {
+              window.__editorCoverDataUrl = savedCover;
+              localStorage.removeItem('editor-draft-cover-' + loadSid);
+            }
+            resolve();
+          })
+        );
+        Promise.all(imgPromises).then(function() {
+          var coverPreviewUrl = window.__editorCoverDataUrl || d.cover || '';
+          if (coverPreviewUrl) {
+            var coverPreviewEl = document.getElementById('cover-preview');
+            var coverImgEl = document.getElementById('cover-preview-img');
+            if (coverImgEl) coverImgEl.src = coverPreviewUrl;
+            if (coverPreviewEl) coverPreviewEl.classList.remove('hidden');
+            var coverPanelInput = panelContent.querySelector('#post-cover');
+            if (coverPanelInput) coverPanelInput.value = d.cover || '';
+          }
+        });
+        var titleInput = document.getElementById('post-title-input');
+        if (titleInput) titleInput.value = d.title || '';
+        closePanel();
+        showToast('草稿已加载');
+      }
+      return;
+    }
+    // 移除封面图
+    if (target.id === 'btn-remove-cover' || target.closest('#btn-remove-cover')) {
+      var hiddenCover = document.getElementById('post-cover');
+      if (hiddenCover) hiddenCover.value = '';
+      var panelCover = panelContent.querySelector('#post-cover');
+      if (panelCover) panelCover.value = '';
+      window.__editorCoverValue = '';
+      window.__editorCoverDataUrl = '';
+      window.__editorCoverFilename = '';
+      var preview = document.getElementById('cover-preview');
+      if (preview) preview.classList.add('hidden');
+      var fileInput = document.getElementById('cover-upload');
+      if (fileInput) fileInput.value = '';
+      return;
     }
   });
 
@@ -1382,7 +1692,7 @@ function initEditor() {
   function renderDraftList() {
     var list = document.getElementById('draft-list');
     if (!list) return;
-    var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
+    var drafts = _getDrafts();
     drafts.sort(function(a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
     var toolbar = document.getElementById('draft-toolbar');
     if (drafts.length === 0) {
@@ -1425,17 +1735,17 @@ function initEditor() {
       lbl.style.color = '';
     }
   }
+
+  // [Editor] 统一 change 事件委托（合并 checkbox 切换 + 封面图上传）
   panelContent.addEventListener('change', function(e) {
     if (e.target.id === 'chk-pinned-panel' || e.target.id === 'chk-comment-panel') {
       syncCheckboxStyle(e.target);
-      // [Editor] 同步到追踪变量和隐藏 checkbox
       var key = e.target.id === 'chk-pinned-panel' ? 'pinned' : 'comment';
       metaCheckboxState[key] = e.target.checked;
       var hiddenId = e.target.id.replace('-panel', '');
       var hidden = document.getElementById(hiddenId);
       if (hidden) hidden.checked = e.target.checked;
     }
-    // 草稿复选框变化时更新工具栏可见性
     if (e.target.classList.contains('draft-checkbox')) {
       var checkedCount = panelContent.querySelectorAll('.draft-checkbox:checked').length;
       var toolbar = document.getElementById('draft-toolbar');
@@ -1447,10 +1757,29 @@ function initEditor() {
         if (btn) { btn.style.opacity = show ? '1' : '0'; btn.style.pointerEvents = show ? 'auto' : 'none'; }
       }
     }
+    if (e.target.id === 'cover-upload') {
+      var file = e.target.files[0];
+      if (!file) return;
+      compressImage(file).then(function(dataUrl) {
+        var ext = file.type.split('/')[1] || 'png';
+        var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+        window.__editorCoverDataUrl = dataUrl;
+        var coverPath = './images/' + filename;
+        var coverInput = document.getElementById('post-cover');
+        if (coverInput) coverInput.value = coverPath;
+        window.__editorCoverValue = coverPath;
+        window.__editorCoverFilename = filename;
+        var preview = document.getElementById('cover-preview');
+        var previewImg = document.getElementById('cover-preview-img');
+        if (previewImg) previewImg.src = dataUrl;
+        if (preview) preview.classList.remove('hidden');
+        window.__editorShowToast('封面图已选择，发布时将上传');
+      });
+    }
   });
-  // [Editor] 面板输入时同步回隐藏字段（确保保存时可读取）
+
+  // [Editor] 统一 input 事件委托（合并 GitHub 自动保存 + 元信息同步 + 标签合并 + 标题同步 + 封面预览）
   panelContent.addEventListener('input', function(e) {
-    // GitHub 设置面板：仓库和分支输入时自动保存，Token 需手动点保存按钮
     if (e.target.id === 'gh-repo-panel') localStorage.setItem('gh-repo', e.target.value);
     if (e.target.id === 'gh-branch-panel') localStorage.setItem('gh-branch', e.target.value);
     var metaFields = ['post-desc', 'post-category', 'post-cover', 'post-slug', 'post-password', 'post-password-hint'];
@@ -1458,7 +1787,6 @@ function initEditor() {
       var hidden = document.getElementById(e.target.id);
       if (hidden && hidden !== e.target) hidden.value = e.target.value;
     }
-    // [Editor] 标签：输入框合并到隐藏字段（第二个框支持逗号分隔多个标签）
     if (e.target.id === 'post-tag-1' || e.target.id === 'post-tag-3') {
       var tags = [];
       var tag1 = panelContent.querySelector('#post-tag-1');
@@ -1473,405 +1801,20 @@ function initEditor() {
       var hiddenTags = document.getElementById('post-tags');
       if (hiddenTags) hiddenTags.value = tags.join(', ');
     }
-  });
-  // 打开面板时初始化已有 checkbox 的样式
-  var origOpenPanel = openPanel;
-  openPanel = function(name) {
-    origOpenPanel(name);
-    setTimeout(function() {
-      var chks = panelContent.querySelectorAll('#chk-pinned-panel, #chk-comment-panel');
-      chks.forEach(function(c) { syncCheckboxStyle(c); });
-    }, 0);
-  };
-
-  // 事件委托 - 面板内所有按钮
-  panelContent.addEventListener('click', function(e) {
-    var target = e.target;
-
-    // 置顶
-    if (target.id === 'btn-pinned' || target.closest('#btn-pinned')) {
-      var btn = target.id === 'btn-pinned' ? target : target.closest('#btn-pinned');
-      btn.classList.toggle('active');
-      return;
-    }
-    // 评论
-    if (target.id === 'btn-comment' || target.closest('#btn-comment')) {
-      var btn = target.id === 'btn-comment' ? target : target.closest('#btn-comment');
-      btn.classList.toggle('active');
-      return;
-    }
-    // 发布到 GitHub
-    if (target.id === 'btn-github' || target.closest('#btn-github')) {
-      document.getElementById('github-modal').classList.remove('hidden');
-      closePanel();
-      return;
-    }
-    // 下载 MD
-    if (target.id === 'btn-download' || target.closest('#btn-download')) {
-      var title = document.getElementById('post-title').value || 'untitled';
-      var getVal = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
-      var desc = getVal('post-desc');
-      var category = getVal('post-category');
-      var tags = getVal('post-tags');
-      var cover = window.__editorCoverValue || getVal('post-cover');
-      var password = getVal('post-password');
-      var passwordHint = getVal('post-password-hint');
-      var pinned = (metaCheckboxState && metaCheckboxState.pinned) || false;
-      var comment = (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true;
-      // 构建 frontmatter
-      var fm = '---\n';
-      fm += 'title: "' + title + '"\n';
-      fm += 'published: ' + new Date().toISOString().split('T')[0] + '\n';
-      fm += 'draft: false\n';
-      if (desc) fm += 'description: "' + desc + '"\n';
-      if (category) fm += 'category: "' + category + '"\n';
-      if (tags) {
-        var tagArr = tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
-        if (tagArr.length > 0) fm += 'tags: [' + tagArr.join(', ') + ']\n';
-      }
-      if (cover && cover.indexOf('data:') !== 0) fm += 'image: "' + cover + '"\n';
-      if (password) fm += 'password: "' + password + '"\n';
-      if (passwordHint) fm += 'passwordHint: "' + passwordHint + '"\n';
-      if (pinned) fm += 'pinned: true\n';
-      if (comment === false) fm += 'comment: false\n';
-      fm += '---\n\n';
-      var textarea = document.getElementById('markdown-input');
-      var blob = new Blob([fm + textarea.value], { type: 'text/markdown' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = title + '.md';
-      a.click();
-      return;
-    }
-    // [Editor] 保存草稿 — 收集所有表单字段
-    if (target.id === 'btn-save-draft' || target.closest('#btn-save-draft')) {
-      var draftName = document.getElementById('draft-name-input').value || '未命名草稿';
-      var getVal = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
-      var getChecked = function(id) { var el = document.getElementById(id); return el ? el.checked : false; };
-      var savedAt = new Date().toISOString();
-      var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
-      drafts.push({
-        name: draftName,
-        title: getVal('post-title'),
-        content: document.getElementById('markdown-input').value,
-        desc: getVal('post-desc'),
-        category: getVal('post-category'),
-        tags: getVal('post-tags'),
-        cover: window.__editorCoverValue || getVal('post-cover'),
-        slug: getVal('post-slug'),
-        password: getVal('post-password'),
-        passwordHint: getVal('post-password-hint'),
-        pinned: metaCheckboxState.pinned,
-        comment: metaCheckboxState.comment,
-        savedAt: savedAt
-      });
-      localStorage.setItem('editor-drafts', JSON.stringify(drafts));
-      // 保存图片映射到 IndexedDB（容量无上限）
-      var content = document.getElementById('markdown-input').value;
-      var usedFiles = {};
-      var imgRegex2 = /!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g;
-      var m2;
-      while ((m2 = imgRegex2.exec(content)) !== null) { usedFiles[m2[2]] = true; }
-      var imageMap = window.__editorImageMap || {};
-      var imageKeys = Object.keys(usedFiles).filter(function(k) { return !!imageMap[k]; });
-      var imgSavePromises = imageKeys.map(function(k) {
-        return idbSet('img-' + savedAt + '-' + k, imageMap[k]).catch(function() {});
-      });
-      if (imageKeys.length > 0) {
-        imgSavePromises.push(idbSet('imgkeys-' + savedAt, imageKeys).catch(function() {}));
-      }
-      // 封面图保存到 IndexedDB
-      if (window.__editorCoverDataUrl) {
-        imgSavePromises.push(idbSet('cover-' + savedAt, window.__editorCoverDataUrl).catch(function() {}));
-      } else {
-        imgSavePromises.push(idbDel('cover-' + savedAt).catch(function() {}));
-      }
-      Promise.all(imgSavePromises).then(function() {
-        document.getElementById('draft-name-input').value = '';
-        renderDraftList();
-        showToast('草稿已保存');
-      });
-      return;
-    }
-    // 删除草稿（必须在加载草稿之前判断）
-    if (target.classList.contains('draft-delete')) {
-      e.stopPropagation();
-      var delSid = target.dataset.savedat;
-      var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
-      // 从 IndexedDB 删除图片和封面
-      idbDelPrefix('img-' + delSid + '-').catch(function() {});
-      idbDel('imgkeys-' + delSid).catch(function() {});
-      idbDel('cover-' + delSid).catch(function() {});
-      // 兼容清理旧 localStorage 数据
-      localStorage.removeItem('editor-draft-img-' + delSid);
-      localStorage.removeItem('editor-draft-imgkeys-' + delSid);
-      localStorage.removeItem('editor-draft-cover-' + delSid);
-      drafts = drafts.filter(function(d) { return d.savedAt !== delSid; });
-      localStorage.setItem('editor-drafts', JSON.stringify(drafts));
-      renderDraftList();
-      return;
-    }
-    // 全选/取消全选
-    if (target.id === 'draft-select-all') {
-      var checkboxes = panelContent.querySelectorAll('.draft-checkbox');
-      checkboxes.forEach(function(cb) { cb.checked = target.checked; });
-      var toolbar = document.getElementById('draft-toolbar');
-      if (toolbar) {
-        var label = toolbar.querySelector('label');
-        var btn = toolbar.querySelector('button');
-        var show = target.checked;
-        if (label) { label.style.opacity = show ? '1' : '0'; label.style.pointerEvents = show ? 'auto' : 'none'; }
-        if (btn) { btn.style.opacity = show ? '1' : '0'; btn.style.pointerEvents = show ? 'auto' : 'none'; }
-      }
-      return;
-    }
-    // 删除选中
-    if (target.id === 'btn-delete-selected' || target.closest('#btn-delete-selected')) {
-      var checkedBoxes = panelContent.querySelectorAll('.draft-checkbox:checked');
-      if (checkedBoxes.length === 0) return;
-      var sids = Array.from(checkedBoxes).map(function(cb) { return cb.dataset.savedat; });
-      var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
-      // 从 IndexedDB 删除图片和封面
-      sids.forEach(function(sid) {
-        idbDelPrefix('img-' + sid + '-').catch(function() {});
-        idbDel('imgkeys-' + sid).catch(function() {});
-        idbDel('cover-' + sid).catch(function() {});
-        // 兼容清理旧 localStorage 数据
-        localStorage.removeItem('editor-draft-img-' + sid);
-        localStorage.removeItem('editor-draft-imgkeys-' + sid);
-        localStorage.removeItem('editor-draft-cover-' + sid);
-      });
-      drafts = drafts.filter(function(d) { return sids.indexOf(d.savedAt) === -1; });
-      localStorage.setItem('editor-drafts', JSON.stringify(drafts));
-      renderDraftList();
-      return;
-    }
-    // 加载草稿
-    if (target.classList.contains('draft-load') || target.closest('.draft-load')) {
-      var item = target.classList.contains('draft-load') ? target : target.closest('.draft-load');
-      var loadSid = item.dataset.savedat;
-      var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
-      var d = drafts.find(function(dr) { return dr.savedAt === loadSid; });
-      if (d) {
-        var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
-        var setChecked = function(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; };
-        // 恢复所有表单字段
-        setVal('post-title', d.title);
-        setVal('post-desc', d.desc);
-        setVal('post-category', d.category);
-        setVal('post-tags', d.tags);
-        setVal('post-cover', d.cover);
-        window.__editorCoverValue = d.cover || ''; // 同步到全局变量
-        setVal('post-slug', d.slug);
-        setVal('post-password', d.password);
-        setVal('post-password-hint', d.passwordHint);
-        setChecked('chk-pinned', d.pinned);
-        setChecked('chk-comment', d.comment);
-        // 恢复编辑器内容
-        var mdInput = document.getElementById('markdown-input');
-        mdInput.value = d.content || '';
-        // 先清空封面相关全局变量，防止加载无封面草稿时残留上一次的值
-        window.__editorCoverDataUrl = '';
-        window.__editorCoverFilename = '';
-        if (d.cover) {
-          window.__editorCoverValue = d.cover;
-          var extractedFilename = d.cover.split('/').pop();
-          if (extractedFilename) window.__editorCoverFilename = extractedFilename;
-        }
-        // 异步从 IndexedDB 恢复图片和封面（兼容旧 localStorage 格式）
-        var loadSid = d.savedAt;
-        var imgPromises = [];
-        // IndexedDB 新格式
-        imgPromises.push(
-          idbGet('imgkeys-' + loadSid).then(function(keyList) {
-            if (!keyList || !keyList.length) return 0;
-            var subPromises = keyList.map(function(k) {
-              return idbGet('img-' + loadSid + '-' + k).then(function(dataUrl) {
-                if (dataUrl) window.__editorImageMap[k] = dataUrl;
-              });
-            });
-            return Promise.all(subPromises).then(function() { return keyList.length; });
-          }).catch(function() { return 0; })
-        );
-        // 旧 localStorage 格式兼容
-        imgPromises.push(
-          new Promise(function(resolve) {
-            var savedImages = localStorage.getItem('editor-draft-img-' + loadSid);
-            if (savedImages) {
-              try {
-                var draftImgMap = JSON.parse(savedImages);
-                Object.assign(window.__editorImageMap, draftImgMap);
-                localStorage.removeItem('editor-draft-img-' + loadSid);
-              } catch(e) {}
-            }
-            resolve();
-          })
-        );
-        // 封面从 IndexedDB 恢复
-        imgPromises.push(
-          idbGet('cover-' + loadSid).then(function(savedCover) {
-            if (savedCover) window.__editorCoverDataUrl = savedCover;
-          }).catch(function() {})
-        );
-        // 旧 localStorage 封面兼容
-        imgPromises.push(
-          new Promise(function(resolve) {
-            var savedCover = localStorage.getItem('editor-draft-cover-' + loadSid);
-            if (savedCover) {
-              window.__editorCoverDataUrl = savedCover;
-              localStorage.removeItem('editor-draft-cover-' + loadSid);
-            }
-            resolve();
-          })
-        );
-        // 所有异步操作完成后更新预览
-        Promise.all(imgPromises).then(function() {
-          // 恢复封面图预览
-          var coverPreviewUrl = window.__editorCoverDataUrl || d.cover || '';
-          if (coverPreviewUrl) {
-            var coverPreviewEl = document.getElementById('cover-preview');
-            var coverImgEl = document.getElementById('cover-preview-img');
-            if (coverImgEl) coverImgEl.src = coverPreviewUrl;
-            if (coverPreviewEl) coverPreviewEl.classList.remove('hidden');
-            var coverPanelInput = panelContent.querySelector('#post-cover');
-            if (coverPanelInput) coverPanelInput.value = d.cover || '';
-          }
-          // 强制预览更新
-          setTimeout(function() {
-          previewRaf = null;
-          previewTimer = null;
-          var md = document.getElementById('markdown-input').value;
-          var imageMap = window.__editorImageMap || {};
-          var imageCount = Object.keys(imageMap).length;
-          // 手动执行预览更新逻辑
-          var previewEl = document.getElementById('preview-content');
-          if (previewEl) {
-            md = md.replace(/!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g, function(match, alt, filename) {
-              return imageMap[filename] ? '![' + alt + '](' + imageMap[filename] + ')' : match;
-            });
-            md = md.replace(/\[grid\]\n([\s\S]*?)\n\[\/grid\]/g, function(match, content) {
-              var images = [];
-              var imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-              var imgMatch;
-              while ((imgMatch = imgRegex.exec(content)) !== null) {
-                images.push({ alt: imgMatch[1], src: imgMatch[2] });
-              }
-              var count = images.length;
-              var cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
-              var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;margin:16px 0;">';
-              images.forEach(function(img) {
-                html += '<div style="text-align:center;">';
-                html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;" />';
-                if (img.alt) html += '<p style="font-size:12px;color:#999;margin:4px 0 0;">' + img.alt + '</p>';
-                html += '</div>';
-              });
-              html += '</div>';
-              return html;
-            });
-            var html = '';
-            try { html = (typeof marked !== 'undefined') ? marked.parse(md) : md.replace(/\n/g, '<br>'); }
-            catch(e) { html = '<p style="color:red">渲染错误: ' + e.message + '</p>'; }
-            previewEl.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
-          }
-        }, 150);
-        }); // end Promise.all
-        // 同步标题到面板内输入框（如果面板打开的话）
-        var titleInput = document.getElementById('post-title-input');
-        if (titleInput) titleInput.value = d.title || '';
-        closePanel();
-        showToast('草稿已加载');
-      }
-      return;
-    }
-  });
-
-  // 标题同步（面板内输入 → 顶部标题）
-  panelContent.addEventListener('input', function(e) {
     if (e.target.id === 'post-title-input') {
       document.getElementById('post-title').value = e.target.value;
     }
-  });
-
-  // 标题同步（顶部标题 → 面板内输入）
-  var mainTitleInput = document.getElementById('post-title');
-  if (mainTitleInput) {
-    mainTitleInput.addEventListener('input', function() {
-      var panelTitleInput = document.getElementById('post-title-input');
-      if (panelTitleInput) panelTitleInput.value = mainTitleInput.value;
-    });
-  }
-
-  // [Editor] 删除封面图
-  panelContent.addEventListener('click', function(e) {
-    if (e.target.id === 'btn-remove-cover' || e.target.closest('#btn-remove-cover')) {
-      // 清空隐藏 input（#meta-fields 里的）
-      var hiddenCover = document.getElementById('post-cover');
-      if (hiddenCover) hiddenCover.value = '';
-      // 清空面板里的 input
-      var panelCover = panelContent.querySelector('#post-cover');
-      if (panelCover) panelCover.value = '';
-      window.__editorCoverValue = '';
-      window.__editorCoverDataUrl = '';
-      window.__editorCoverFilename = '';
-      // 封面图数据不持久化，无需清除 localStorage
-      var preview = document.getElementById('cover-preview');
-      if (preview) preview.classList.add('hidden');
-      var fileInput = document.getElementById('cover-upload');
-      if (fileInput) fileInput.value = '';
-    }
-  });
-
-  // [Editor] 封面图上传 — 通过事件委托处理（元素动态生成）
-  // 改为本地存储 data URL，发布时统一上传
-  panelContent.addEventListener('change', function(e) {
-    if (e.target.id === 'cover-upload') {
-      var file = e.target.files[0];
-      if (!file) return;
-
-      // 读取 data URL 并存储（大图自动压缩）
-      compressImage(file).then(function(dataUrl) {
-        var ext = file.type.split('/')[1] || 'png';
-        var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-
-        // 存储 data URL 到全局变量
-        window.__editorCoverDataUrl = dataUrl;
-        // 设置 input 值为上传路径（仅作为 frontmatter 标识，使用相对路径）
-        var coverPath = './images/' + filename;
-        var coverInput = document.getElementById('post-cover');
-        if (coverInput) coverInput.value = coverPath;
-        window.__editorCoverValue = coverPath;
-        // 同时存储文件名用于发布时上传
-        window.__editorCoverFilename = filename;
-
-        // 预览
-        var preview = document.getElementById('cover-preview');
-        var previewImg = document.getElementById('cover-preview-img');
-        if (previewImg) previewImg.src = dataUrl;
-        if (preview) preview.classList.remove('hidden');
-
-        window.__editorShowToast('封面图已选择，发布时将上传');
-      });
-    }
-  });
-
-  // [Editor] 封面图 input 变更时自动更新预览（支持手动输入 URL 或草稿加载）
-  // 注意：面板 input 和隐藏 input(#meta-fields) id 相同，需同步回隐藏 input
-  panelContent.addEventListener('input', function(e) {
     if (e.target.id === 'post-cover') {
       var url = e.target.value.trim();
-      window.__editorCoverValue = url; // 同步到全局变量
-      // 同步回隐藏 input（#meta-fields 里的），确保 getVal 能读到
+      window.__editorCoverValue = url;
       var hiddenCover = document.getElementById('post-cover');
       if (hiddenCover && hiddenCover !== e.target) hiddenCover.value = url;
-      // 如果手动输入的是远程 URL，清空 data URL（因为不再是本地文件）
       if (url && !url.startsWith('data:')) {
         window.__editorCoverDataUrl = '';
         window.__editorCoverFilename = '';
       }
-      // 封面图数据不持久化到 localStorage
       var preview = document.getElementById('cover-preview');
       var img = document.getElementById('cover-preview-img');
-      // 优先用 data URL 预览，相对路径无法在浏览器中解析，不显示预览
       var displayUrl = window.__editorCoverDataUrl || url;
       var canDisplay = displayUrl && (displayUrl.startsWith('data:') || displayUrl.startsWith('http://') || displayUrl.startsWith('https://'));
       if (canDisplay) {
@@ -1882,6 +1825,25 @@ function initEditor() {
       }
     }
   });
+
+  // 打开面板时初始化已有 checkbox 的样式
+  var origOpenPanel = openPanel;
+  openPanel = function(name) {
+    origOpenPanel(name);
+    setTimeout(function() {
+      var chks = panelContent.querySelectorAll('#chk-pinned-panel, #chk-comment-panel');
+      chks.forEach(function(c) { syncCheckboxStyle(c); });
+    }, 0);
+  };
+
+  // 标题同步（顶部标题 → 面板内输入）
+  var mainTitleInput = document.getElementById('post-title');
+  if (mainTitleInput) {
+    mainTitleInput.addEventListener('input', function() {
+      var panelTitleInput = document.getElementById('post-title-input');
+      if (panelTitleInput) panelTitleInput.value = mainTitleInput.value;
+    });
+  }
 
   // 绑定所有 data-panel 按钮（图标栏 + 底部栏）
   document.querySelectorAll('[data-panel]').forEach(function(btn) {
@@ -1904,29 +1866,14 @@ function initEditor() {
     var passwordHint = getVal('post-password-hint');
     var pinned = (metaCheckboxState && metaCheckboxState.pinned) || false;
     var comment = (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true;
-    // 构建 frontmatter
-    var fm = '---\n';
-    fm += 'title: "' + title + '"\n';
-    fm += 'published: ' + new Date().toISOString().split('T')[0] + '\n';
-    fm += 'draft: false\n';
-    if (desc) fm += 'description: "' + desc + '"\n';
-    if (category) fm += 'category: "' + category + '"\n';
-    if (tags) {
-      var tagArr = tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
-      if (tagArr.length > 0) fm += 'tags: [' + tagArr.join(', ') + ']\n';
-    }
-    if (cover && cover.indexOf('data:') !== 0) fm += 'image: "' + cover + '"\n';
-    if (password) fm += 'password: "' + password + '"\n';
-    if (passwordHint) fm += 'passwordHint: "' + passwordHint + '"\n';
-    if (pinned) fm += 'pinned: true\n';
-    if (comment === false) fm += 'comment: false\n';
-    fm += '---\n\n';
+    var fm = buildFrontmatter({ title: title, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment });
     var textarea = document.getElementById('markdown-input');
     var blob = new Blob([fm + textarea.value], { type: 'text/markdown' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = title + '.md';
     a.click();
+    URL.revokeObjectURL(a.href);
   });
 
   // 底部保存草稿按钮
@@ -1938,7 +1885,7 @@ function initEditor() {
     var title = document.getElementById('post-title').value;
     var textarea = document.getElementById('markdown-input');
     var savedAt = new Date().toISOString();
-    var drafts = JSON.parse(localStorage.getItem('editor-drafts') || '[]');
+    var drafts = _getDrafts();
     drafts.push({
       name: title || '快速保存',
       title: title,
@@ -1950,11 +1897,11 @@ function initEditor() {
       slug: getVal('post-slug'),
       password: getVal('post-password'),
       passwordHint: getVal('post-password-hint'),
-      pinned: getChecked('chk-pinned'),
-      comment: getChecked('chk-comment'),
+      pinned: (metaCheckboxState && metaCheckboxState.pinned) || false,
+      comment: (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true,
       savedAt: savedAt
     });
-    localStorage.setItem('editor-drafts', JSON.stringify(drafts));
+    _saveDrafts(drafts);
     // 保存图片映射到 IndexedDB
     var content = textarea.value;
     var usedFiles = {};
@@ -2049,24 +1996,7 @@ function initEditor() {
     var slug = title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
     var filename = 'src/content/posts/' + slug + '.md';
 
-    // 构建 frontmatter
-    var fm = '---\n';
-    fm += 'title: "' + title + '"\n';
-    fm += 'published: ' + new Date().toISOString().split('T')[0] + '\n';
-    fm += 'draft: false\n';
-    if (desc) fm += 'description: "' + desc + '"\n';
-    if (category) fm += 'category: "' + category + '"\n';
-    if (tags) {
-      var tagArr = tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
-      if (tagArr.length > 0) fm += 'tags: [' + tagArr.join(', ') + ']\n';
-    }
-    // [Editor] 跳过 base64 数据 URL（太长不适合 frontmatter，博客不支持）
-    if (cover && cover.indexOf('data:') !== 0) fm += 'image: "' + cover + '"\n';
-    if (password) fm += 'password: "' + password + '"\n';
-    if (passwordHint) fm += 'passwordHint: "' + passwordHint + '"\n';
-    if (pinned) fm += 'pinned: true\n';
-    if (comment === false) fm += 'comment: false\n';
-    fm += '---\n\n';
+    var fm = buildFrontmatter({ title: title, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment });
 
     // [Editor] 上传文章内图片到 src/content/posts/images/
     function uploadDataUrlImages(text, token, repo, branch) {
@@ -2207,7 +2137,7 @@ function initEditor() {
   var imgAltInput = document.getElementById('img-alt-input');
   var pendingImgUrls = [];
 
-  // 打开图片弹窗
+  // 打开图片弹窗（合并本地 + 云端状态重置）
   var imgToolBtn = document.querySelector('[data-action="image"]');
   if (imgToolBtn && imgModal) imgToolBtn.addEventListener('click', function() {
     imgModal.classList.remove('hidden');
@@ -2219,6 +2149,15 @@ function initEditor() {
     if (imgStatus) { imgStatus.classList.add('hidden'); imgStatus.textContent = ''; }
     pendingImgUrls = [];
     if (imgFileInput) imgFileInput.value = '';
+    // 云端状态重置
+    cloudSelectedUrls = [];
+    cloudSelectedPaths = [];
+    cloudUpdateCount();
+    if (cloudImagesGrid) { cloudImagesGrid.innerHTML = ''; if (_cloudScrollHandler) { cloudImagesGrid.removeEventListener('scroll', _cloudScrollHandler); _cloudScrollHandler = null; } }
+    if (cloudImagesEmpty) { cloudImagesEmpty.classList.remove('hidden'); cloudImagesEmpty.querySelector('span').textContent = '请选择一个相簿或切换到文章图片'; }
+    if (cloudImagesLoading) cloudImagesLoading.classList.add('hidden');
+    if (cloudAlbumSelect) cloudAlbumSelect.value = '';
+    switchImgTab('local');
     setTimeout(function() { if (imgUrlInput) imgUrlInput.focus(); }, 100);
   });
 
@@ -2566,17 +2505,41 @@ function initEditor() {
   }
 
   // 渲染图片网格（预览用 base64，存储代理 URL 用于插入）
+  var _cloudBatchSize = 10;
+  var _cloudBatchIndex = 0;
+  var _cloudImgList = [];
+  var _cloudScrollHandler = null;
+
   function cloudRenderImages(imgList) {
+    // 清理旧的滚动监听
+    if (_cloudScrollHandler) { cloudImagesGrid.removeEventListener('scroll', _cloudScrollHandler); _cloudScrollHandler = null; }
     cloudImagesGrid.innerHTML = '';
-    imgList.forEach(function(img) {
+    _cloudImgList = imgList;
+    _cloudBatchIndex = 0;
+    // 加载第一批
+    _cloudLoadBatch();
+    // 滚动时加载更多
+    if (imgList.length > _cloudBatchSize) {
+      _cloudScrollHandler = function() {
+        if (cloudImagesGrid.scrollTop + cloudImagesGrid.clientHeight >= cloudImagesGrid.scrollHeight - 50) {
+          _cloudLoadBatch();
+        }
+      };
+      cloudImagesGrid.addEventListener('scroll', _cloudScrollHandler);
+    }
+  }
+
+  function _cloudLoadBatch() {
+    if (_cloudBatchIndex >= _cloudImgList.length) return;
+    var batch = _cloudImgList.slice(_cloudBatchIndex, _cloudBatchIndex + _cloudBatchSize);
+    _cloudBatchIndex += _cloudBatchSize;
+    batch.forEach(function(img) {
       var item = document.createElement('div');
       item.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-[var(--primary)]/50 transition group';
       item.setAttribute('data-insert-url', img.insertUrl);
       item.setAttribute('data-file-path', img.path);
-      // 占位 loading
       item.innerHTML = '<div class="w-full h-20 bg-black/5 dark:bg-white/5 animate-pulse rounded-lg"></div>' +
         '<div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition">' + img.name + '</div>';
-      // 通过 API 加载 base64 预览
       cloudFetchFileBase64(img.path).then(function(dataUrl) {
         var imgEl = document.createElement('img');
         imgEl.src = dataUrl;
@@ -2588,13 +2551,11 @@ function initEditor() {
         label.className = 'absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition';
         label.textContent = img.name;
         item.appendChild(label);
-        // 缓存 data URL 到 __editorImageMap，供预览使用
         var filename = img.path.split('/').pop();
         if (!window.__editorImageMap[filename]) {
           window.__editorImageMap[filename] = dataUrl;
         }
       }).catch(function() {
-        // 加载失败时显示错误提示
         item.innerHTML = '<div class="w-full h-20 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg"><span class="text-xs text-black/30 dark:text-white/30">加载失败</span></div>';
       });
       item.addEventListener('click', function() {
@@ -2622,21 +2583,7 @@ function initEditor() {
     }
   }
 
-  // 打开图片弹窗时重置云端状态
-  if (imgToolBtn && imgModal) {
-    imgToolBtn.addEventListener('click', function() {
-      setTimeout(function() {
-        cloudSelectedUrls = [];
-        cloudSelectedPaths = [];
-        cloudUpdateCount();
-        if (cloudImagesGrid) cloudImagesGrid.innerHTML = '';
-        if (cloudImagesEmpty) { cloudImagesEmpty.classList.remove('hidden'); cloudImagesEmpty.querySelector('span').textContent = '请选择一个相簿或切换到文章图片'; }
-        if (cloudImagesLoading) cloudImagesLoading.classList.add('hidden');
-        if (cloudAlbumSelect) cloudAlbumSelect.value = '';
-        switchImgTab('local');
-      }, 0);
-    });
-  }
+
 
   // ========== 链接弹窗 ==========
   var linkModal = document.getElementById('link-modal');
@@ -2724,12 +2671,99 @@ function initEditor() {
       { syntax: '', desc: 'Ctrl+I 斜体', select: null },
       { syntax: '', desc: 'Ctrl+K 链接', select: null },
       { syntax: '', desc: 'Ctrl+Z 撤销', select: null },
-      { syntax: '', desc: 'Ctrl+Shift+S 保存', select: null },
+      { syntax: '', desc: '保存草稿（按钮）', select: null },
     ],
   };
 
   // 缓存上次 TOC 数据，避免全量重建
   var _tocCache = '';
+
+  // [Editor] 事件委托：TOC 和语法面板（只绑定一次，渲染时不重复绑定）
+  panelContent.addEventListener('mouseenter', function(e) {
+    var tocItem = e.target.closest('.toc-item');
+    if (tocItem) { tocItem.style.background = 'color-mix(in srgb, var(--primary) 8%, transparent)'; return; }
+    var syntaxItem = e.target.closest('.syntax-item');
+    if (syntaxItem) {
+      syntaxItem.style.borderColor = 'var(--primary)';
+      syntaxItem.style.background = 'color-mix(in srgb, var(--primary) 5%, transparent)';
+    }
+  }, true);
+  panelContent.addEventListener('mouseleave', function(e) {
+    var tocItem = e.target.closest('.toc-item');
+    if (tocItem) { tocItem.style.background = ''; return; }
+    var syntaxItem = e.target.closest('.syntax-item');
+    if (syntaxItem) {
+      syntaxItem.style.borderColor = 'var(--line-divider)';
+      syntaxItem.style.background = '';
+    }
+  }, true);
+  panelContent.addEventListener('click', function(e) {
+    // TOC 项点击 → 跳转到对应行
+    var tocItem = e.target.closest('.toc-item');
+    if (tocItem) {
+      var line = parseInt(tocItem.getAttribute('data-line'));
+      var textarea = document.getElementById('markdown-input');
+      if (!textarea) return;
+      var lines = textarea.value.split('\n');
+      var pos = 0;
+      for (var i = 0; i < line; i++) pos += lines[i].length + 1;
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = pos;
+      textarea.setSelectionRange(pos, pos);
+      var lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 24;
+      textarea.scrollTop = line * lineHeight - textarea.clientHeight / 2;
+      return;
+    }
+    // 语法标签点击 → 切换分类
+    var syntaxTag = e.target.closest('.syntax-tag');
+    if (syntaxTag) {
+      currentSyntaxCat = syntaxTag.getAttribute('data-cat');
+      renderSyntaxContent();
+      return;
+    }
+    // 语法项点击 → 插入语法到编辑器
+    var syntaxItem = e.target.closest('.syntax-item');
+    if (syntaxItem) {
+      var idx = parseInt(syntaxItem.getAttribute('data-idx'));
+      var item = syntaxData[currentSyntaxCat][idx];
+      if (!item || !item.syntax) return;
+      var textarea = document.getElementById('markdown-input');
+      if (!textarea) return;
+      var start = textarea.selectionStart;
+      var end = textarea.selectionEnd;
+      var selected = textarea.value.substring(start, end);
+      if (selected && item.select) {
+        var prefix = item.syntax.substring(0, item.syntax.indexOf(item.select));
+        var suffix = item.syntax.substring(item.syntax.indexOf(item.select) + item.select.length);
+        // 检测选区前后是否已有 prefix/suffix → 取消包裹
+        if (suffix && start >= prefix.length && end <= textarea.value.length - suffix.length) {
+          var beforePrefix = textarea.value.substring(start - prefix.length, start);
+          var afterSuffix = textarea.value.substring(end, end + suffix.length);
+          if (beforePrefix === prefix && afterSuffix === suffix) {
+            textarea.setRangeText(selected, start - prefix.length, end + suffix.length, 'select');
+            textarea.focus();
+            textarea.dispatchEvent(new Event('input'));
+            return;
+          }
+        }
+        textarea.setRangeText(prefix + selected + suffix, start, end, 'end');
+        textarea.selectionStart = start + prefix.length;
+        textarea.selectionEnd = start + prefix.length + selected.length;
+      } else {
+        // 无选中文本时：插入语法并选中占位符
+        textarea.setRangeText(item.syntax, start, start, 'end');
+        if (item.select) {
+          var NewStart = textarea.value.indexOf(item.select, start);
+          if (NewStart !== -1) {
+            textarea.selectionStart = NewStart;
+            textarea.selectionEnd = NewStart + item.select.length;
+          }
+        }
+      }
+      textarea.focus();
+      textarea.dispatchEvent(new Event('input'));
+    }
+  });
 
   // 渲染 TOC 内容到 panelContent
   function renderTocContent() {
@@ -2742,44 +2776,29 @@ function initEditor() {
       if (m) headings.push({ level: m[1].length, text: m[2], line: idx });
     });
     if (headings.length === 0) {
-      var emptyHtml = '<div style="text-align:center;color:var(--font-color-light);font-size:13px;padding:24px 0;">暂无标题</div>';
+      var emptyHtml = '<div style="padding:0 16px;"><div style="text-align:center;color:var(--font-color-light);font-size:13px;padding:24px 0;">暂无标题</div></div>';
       if (_tocCache !== emptyHtml) {
         panelContent.innerHTML = emptyHtml;
         _tocCache = emptyHtml;
       }
       return;
     }
-    var html = '';
+    var html = '<div style="padding:0 16px;">';
     headings.forEach(function(h) {
       var indent = (h.level - 1) * 12;
       html += '<div class="toc-item" data-line="' + h.line + '" title="' + h.text + '" style="padding:6px 12px 6px ' + (12 + indent) + 'px;cursor:pointer;font-size:13px;color:var(--font-color);transition:background 0.12s;border-radius:6px;margin:1px 4px;"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + h.text + '</span></div>';
     });
+    html += '</div>';
     if (html === _tocCache) return;
     _tocCache = html;
     panelContent.innerHTML = html;
-    panelContent.querySelectorAll('.toc-item').forEach(function(item) {
-      item.addEventListener('mouseenter', function() { item.style.background = 'color-mix(in srgb, var(--primary) 8%, transparent)'; });
-      item.addEventListener('mouseleave', function() { item.style.background = ''; });
-      item.addEventListener('click', function() {
-        var line = parseInt(item.getAttribute('data-line'));
-        var textarea = document.getElementById('markdown-input');
-        if (!textarea) return;
-        var lines = textarea.value.split('\n');
-        var pos = 0;
-        for (var i = 0; i < line; i++) pos += lines[i].length + 1;
-        textarea.focus();
-        textarea.selectionStart = textarea.selectionEnd = pos;
-        textarea.setSelectionRange(pos, pos);
-        textarea.scrollTop = line * 24 - textarea.clientHeight / 2;
-      });
-    });
   }
 
   // 渲染语法内容到 panelContent
   function renderSyntaxContent() {
     var items = syntaxData[currentSyntaxCat] || [];
     // 标签栏
-    var tagsHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px;border-bottom:1px solid var(--line-divider);margin-bottom:8px;">';
+    var tagsHtml = '<div style="padding:0 16px;"><div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px;border-bottom:1px solid var(--line-divider);margin-bottom:8px;">';
     Object.keys(syntaxData).forEach(function(cat) {
       var active = cat === currentSyntaxCat;
       var style = active
@@ -2795,8 +2814,7 @@ function initEditor() {
       items.forEach(function(item) {
         listHtml += '<div style="padding:8px 0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid color-mix(in srgb, var(--font-color) 5%, transparent);"><span style="font-size:13px;color:var(--font-color);">' + item.desc + '</span></div>';
       });
-      panelContent.innerHTML = tagsHtml + listHtml;
-      bindSyntaxTagEvents();
+      panelContent.innerHTML = tagsHtml + listHtml + '</div>';
       return;
     }
 
@@ -2805,71 +2823,7 @@ function initEditor() {
       var codeDisplay = item.syntax ? item.syntax.replace(/</g, '&lt;').replace(/\n/g, '<br>') : '';
       listHtml += '<div class="syntax-item" data-idx="' + idx + '" style="margin:4px 0;padding:6px 8px;cursor:pointer;transition:all 0.15s;border:1px solid var(--line-divider);border-radius:6px;"><div style="font-size:12px;font-weight:600;color:color-mix(in srgb, currentColor 80%, transparent);margin-bottom:3px;">' + item.desc + '</div><code style="font-size:11px;color:color-mix(in srgb, currentColor 55%, transparent);background:color-mix(in srgb, currentColor 8%, transparent);padding:4px 6px;border-radius:4px;white-space:pre-wrap;display:block;line-height:1.4;border:1px solid color-mix(in srgb, currentColor 8%, transparent);">' + codeDisplay + '</code></div>';
     });
-    panelContent.innerHTML = tagsHtml + listHtml;
-    bindSyntaxTagEvents();
-    bindSyntaxItemEvents();
-  }
-
-  function bindSyntaxTagEvents() {
-    panelContent.querySelectorAll('.syntax-tag').forEach(function(tag) {
-      tag.addEventListener('click', function() {
-        currentSyntaxCat = tag.getAttribute('data-cat');
-        renderSyntaxContent();
-      });
-    });
-  }
-
-  function bindSyntaxItemEvents() {
-    panelContent.querySelectorAll('.syntax-item').forEach(function(el) {
-      el.addEventListener('mouseenter', function() {
-        el.style.borderColor = 'var(--primary)';
-        el.style.background = 'color-mix(in srgb, var(--primary) 5%, transparent)';
-      });
-      el.addEventListener('mouseleave', function() {
-        el.style.borderColor = 'var(--line-divider)';
-        el.style.background = '';
-      });
-      el.addEventListener('click', function() {
-        var idx = parseInt(el.getAttribute('data-idx'));
-        var item = syntaxData[currentSyntaxCat][idx];
-        if (!item || !item.syntax) return;
-        var textarea = document.getElementById('markdown-input');
-        if (!textarea) return;
-        var start = textarea.selectionStart;
-        var end = textarea.selectionEnd;
-        var selected = textarea.value.substring(start, end);
-        if (selected && item.select) {
-          var prefix = item.syntax.substring(0, item.syntax.indexOf(item.select));
-          var suffix = item.syntax.substring(item.syntax.indexOf(item.select) + item.select.length);
-          // 检测选区前后是否已有 prefix/suffix → 取消包裹
-          if (suffix && start >= prefix.length && end <= textarea.value.length - suffix.length) {
-            var beforePrefix = textarea.value.substring(start - prefix.length, start);
-            var afterSuffix = textarea.value.substring(end, end + suffix.length);
-            if (beforePrefix === prefix && afterSuffix === suffix) {
-              textarea.setRangeText(selected, start - prefix.length, end + suffix.length, 'select');
-              textarea.focus();
-              textarea.dispatchEvent(new Event('input'));
-              return;
-            }
-          }
-          textarea.setRangeText(prefix + selected + suffix, start, end, 'end');
-          textarea.selectionStart = start + prefix.length;
-          textarea.selectionEnd = start + prefix.length + selected.length;
-        } else {
-          // 无选中文本时：插入语法并选中占位符
-          textarea.setRangeText(item.syntax, start, start, 'end');
-          if (item.select) {
-            var NewStart = textarea.value.indexOf(item.select, start);
-            if (NewStart !== -1) {
-              textarea.selectionStart = NewStart;
-              textarea.selectionEnd = NewStart + item.select.length;
-            }
-          }
-        }
-        textarea.focus();
-        textarea.dispatchEvent(new Event('input'));
-      });
-    });
+    panelContent.innerHTML = tagsHtml + listHtml + '</div>';
   }
 
 
@@ -2889,7 +2843,7 @@ function initEditor() {
   }
 
   // ESC 键关闭弹窗和面板（优先关闭弹窗，再关闭面板）
-  document.addEventListener('keydown', function(e) {
+  window.__editorKeydownEsc = function(e) {
     if (e.key === 'Escape') {
       var modals = [
         document.getElementById('fullscreen-preview'),
@@ -2910,7 +2864,8 @@ function initEditor() {
         closePanel();
       }
     }
-  });
+  };
+  document.addEventListener('keydown', window.__editorKeydownEsc);
 })();
 </script>
 

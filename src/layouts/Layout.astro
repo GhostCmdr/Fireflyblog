@@ -1207,7 +1207,139 @@ function disableAnimation() {
         });
       }
     });
+    // [Editor] 编辑器模式：检测 /editor/ 页面并注入/移除全屏编辑器 CSS（必须在 Layout 中，因为 editor.astro 的 script 在 swup 容器内不会被 SPA 导航重新执行）
+    let editorStyleEl: HTMLStyleElement | null = null;
+    let editorResizeHandler: (() => void) | null = null;
+    function isEditorPath() {
+      var p = window.location.pathname;
+      return p === '/editor/' || p === '/editor';
+    }
+    function applyEditorModeLayout() {
+      if (editorStyleEl) return;
+      // 测量滚动条宽度
+      var scrollDiv = document.createElement('div');
+      scrollDiv.style.cssText = 'overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;';
+      document.body.appendChild(scrollDiv);
+      var scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth;
+      document.body.removeChild(scrollDiv);
+      // 读取缓存的导航栏宽度
+      var cachedWidth = sessionStorage.getItem('navbar-width');
+      var navbarCss = cachedWidth
+        ? 'body.editor-page.sticky-navbar #top-row { width: ' + cachedWidth + 'px !important; max-width: ' + cachedWidth + 'px !important; transform: translateX(-8px) !important; transition: none !important; }'
+        : 'body.editor-page.sticky-navbar #top-row { transform: translateX(-' + Math.round(scrollbarWidth * 0.92) + 'px) !important; transition: none !important; }';
+      document.body.classList.add('editor-page');
+      document.documentElement.classList.add('editor-page');
+      editorStyleEl = document.createElement('style');
+      editorStyleEl.id = 'editor-dynamic-style';
+      editorStyleEl.textContent = [
+        'body.editor-page #left-sidebar-wrapper,',
+        'body.editor-page #left-sidebar-dynamic,',
+        'body.editor-page #right-sidebar-static,',
+        'body.editor-page #right-sidebar-dynamic,',
+        'body.editor-page #category-bar-wrapper,',
+        'body.editor-page .footer,',
+        'body.editor-page #sidebar-sticky,',
+        'body.editor-page .sidebar-container { display: none !important; }',
+        'body.editor-page #main-grid { display: flex !important; flex-direction: column !important; grid-template-columns: none !important; width: 100% !important; padding: 0 !important; }',
+        'body.editor-page #swup-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; flex: 1 !important; }',
+        'body.editor-page #main-grid > div:first-child { max-width: 100% !important; width: 100% !important; padding: 0 !important; }',
+        'body.editor-page #main-grid ~ div,',
+        'body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }',
+        'body.editor-page #main-grid > div { max-width: 100% !important; }',
+        'body.editor-page #wallpaper-wrapper { width: calc(100% - ' + scrollbarWidth + 'px) !important; max-width: calc(100% - ' + scrollbarWidth + 'px) !important; }',
+        'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background: linear-gradient(to right, transparent, var(--page-bg)); z-index: 15; pointer-events: none; opacity: 0.5; }',
+        'body.editor-page { overflow: hidden !important; }',
+        'body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; }',
+        'body.editor-page #markdown-input::-webkit-scrollbar { display: none; }',
+        'body.editor-page #preview-content { scrollbar-width: none; -ms-overflow-style: none; }',
+        'body.editor-page #preview-content::-webkit-scrollbar { display: none; }',
+        'body.editor-page { scrollbar-width: none; -ms-overflow-style: none; }',
+        'body.editor-page::-webkit-scrollbar { display: none; }',
+        'html.editor-page { scrollbar-width: none; -ms-overflow-style: none; }',
+        'html.editor-page::-webkit-scrollbar { display: none; }',
+        /* 目录面板和图标栏：允许独立滚动 */
+        'body.editor-page #panel-inner { display: flex !important; flex-direction: column !important; height: 100% !important; }',
+        'body.editor-page #panel-content { overflow-y: auto !important; overflow-x: hidden !important; }',
+        'body.editor-page #right-icon-bar { overflow-y: auto !important; }',
+        navbarCss
+      ].join('\n');
+      document.head.appendChild(editorStyleEl);
+      // 导航栏偏移
+      var row = document.getElementById('top-row');
+      if (row && cachedWidth) {
+        row.style.width = cachedWidth + 'px';
+        row.style.maxWidth = cachedWidth + 'px';
+        row.style.transform = 'translateX(-8px)';
+      }
+      // resize 监听
+      var _resizeDebounce: ReturnType<typeof setTimeout> | null = null;
+      editorResizeHandler = function() {
+        if (_resizeDebounce) clearTimeout(_resizeDebounce);
+        _resizeDebounce = setTimeout(function() {
+          _resizeDebounce = null;
+          var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
+          var newCached = sessionStorage.getItem('navbar-width');
+          if (editorStyleEl) {
+            var rules = editorStyleEl.textContent || '';
+            rules = rules.replace(/calc\(100% - \d+px\)/g, 'calc(100% - ' + sw2 + 'px)');
+            rules = rules.replace(/body\.editor-page::after \{ content: ""; position: fixed; right: 0; top: 0; width: \d+px;/, 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + sw2 + 'px;');
+            if (newCached) {
+              rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
+            }
+            editorStyleEl.textContent = rules;
+          }
+          var r = document.getElementById('top-row');
+          if (r && newCached) {
+            r.style.width = newCached + 'px';
+            r.style.maxWidth = newCached + 'px';
+            r.style.transform = 'translateX(-8px)';
+          }
+        }, 100);
+      };
+      window.addEventListener('resize', editorResizeHandler);
+    }
+    function removeEditorModeLayout() {
+      document.body.classList.remove('editor-page');
+      document.documentElement.classList.remove('editor-page');
+      if (editorStyleEl) { editorStyleEl.remove(); editorStyleEl = null; }
+      if (editorResizeHandler) { window.removeEventListener('resize', editorResizeHandler); editorResizeHandler = null; }
+      // 清除自动保存定时器
+      if (window.__editorAutosaveTimer) {
+        clearInterval(window.__editorAutosaveTimer);
+        window.__editorAutosaveTimer = null;
+      }
+      // 清理编辑器全局状态（释放 Base64 图片数据占用的内存）
+      window.__editorImageMap = {};
+      window.__editorCoverValue = '';
+      window.__editorCoverDataUrl = '';
+      window.__editorCoverFilename = '';
+      window.__editorMetaCheckbox = { pinned: false, comment: true };
+      var row = document.getElementById('top-row');
+      if (row) {
+        // 先禁用过渡动画，避免清除 offset 时导航栏弹动
+        row.style.transition = 'none';
+        row.style.width = '';
+        row.style.maxWidth = '';
+        row.style.transform = '';
+        // 下一帧恢复过渡动画
+        requestAnimationFrame(function() {
+          row.style.transition = '';
+        });
+      }
+    }
+    // 首次加载时检测编辑器页面
+    if (isEditorPath()) {
+      applyEditorModeLayout();
+    }
+
     window.swup.hooks.on("page:view", () => {
+      // [Editor] 每次页面切换后检测编辑器页面（必须在 updateMainGridCols 之后执行，确保 editor-page class 在 body 上）
+      if (isEditorPath()) {
+        applyEditorModeLayout();
+      } else {
+        removeEditorModeLayout();
+      }
+
       // 恢复 #main-grid 的过渡动画（visit:start 中禁用了）
       const mainGrid = document.getElementById("main-grid");
       if (mainGrid) {
