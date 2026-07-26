@@ -288,12 +288,12 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
 .custom-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.55); }
 
 /* slide-panel 滚动条：默认隐藏，hover 时显示 */
+#panel-content { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+#panel-content:hover { scrollbar-color: rgba(128, 128, 128, 0.35) transparent; }
 #panel-content::-webkit-scrollbar { width: 4px; }
 #panel-content::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; transition: background 0.2s; }
 #panel-content:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }
 #panel-content:hover::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.55); }
-#panel-content { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-#panel-content:hover { scrollbar-color: rgba(128, 128, 128, 0.35) transparent; }
 
 /* 任务列表：隐藏圆点 */
 #preview-content ul:has(li > input[type="checkbox"]),
@@ -1280,7 +1280,7 @@ function initEditor() {
     cover: { title: '封面图', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图 URL</label><input id="post-cover" type="text" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
     settings: { title: '设置', html: '<div class="text-sm text-black/50 dark:text-white/50">更多设置开发中...</div>' },
     github: { title: 'GitHub 设置', html: '<div class="space-y-4"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">GitHub Token</label><div class="flex gap-2"><input id="gh-token-panel" type="password" placeholder="ghp_xxxxx" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><button id="btn-save-token" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-xs font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap">保存</button><button id="btn-clear-gh" class="px-3 py-2 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer whitespace-nowrap">清空</button></div><p class="text-xs text-black/40 dark:text-white/40 mt-1">🔒 仅保存在本浏览器，刷新不丢失</p></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">仓库</label><input id="gh-repo-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">分支</label><input id="gh-branch-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
-    drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;"><div class="space-y-1" style="flex-shrink:0;padding-right:16px;"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="flex:1;overflow-y:auto;"></div></div>' }
+    drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;"><div class="space-y-1" style="flex-shrink:0;padding-right:12px;"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="flex:1;overflow-y:auto;"></div></div>' }
   };
 
   var currentPanel = '';
@@ -1296,8 +1296,15 @@ function initEditor() {
     document.querySelectorAll('[data-panel]').forEach(function(b) { b.classList.remove('active'); });
     document.querySelectorAll('[data-panel="' + name + '"]').forEach(function(b) { b.classList.add('active'); });
     panelContent.classList.remove('overflow-hidden');
-    panelContent.classList.add('overflow-y-auto', 'overflow-x-hidden');
+    if (name === 'drafts' || name === 'syntax') {
+      // 草稿箱和语法面板：panel-content 不滚动，由内部元素独立处理滚动
+      panelContent.classList.remove('overflow-y-auto');
+      panelContent.classList.add('overflow-hidden');
+    } else {
+      panelContent.classList.add('overflow-y-auto', 'overflow-x-hidden');
+    }
     panelContent.style.padding = '';
+    panelContent.style.scrollbarGutter = name === 'toc' ? 'stable' : '';
     if (name === 'toc') {
       panelTitle.textContent = '目录';
       renderTocContent();
@@ -1309,8 +1316,8 @@ function initEditor() {
       if (!t) return;
       panelTitle.textContent = t.title;
       var wrapperStyle = name === 'drafts'
-        ? 'padding:0 0 0 16px;display:flex;flex-direction:column;height:100%;'
-        : 'padding:0 16px;';
+        ? 'padding:10px 5px 0 16px;display:flex;flex-direction:column;height:100%;'
+        : 'padding:10px 16px;';
       panelContent.innerHTML = '<div style="' + wrapperStyle + '">' + t.html + '</div>';
       if (name === 'meta') {
         var titleInput = document.getElementById('post-title-input');
@@ -1703,7 +1710,7 @@ function initEditor() {
     if (toolbar) toolbar.classList.remove('hidden');
     list.innerHTML = drafts.map(function(d) {
       var sid = d.savedAt || '';
-      return '<div class="draft-item rounded-lg border border-[var(--line-divider)] hover:border-[var(--primary)]/30 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" data-savedat="' + sid + '" style="padding:4px 12px;margin-bottom:4px;">' +
+      return '<div class="draft-item rounded-lg border border-[var(--line-divider)] hover:border-[var(--primary)]/30 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" data-savedat="' + sid + '" style="padding:4px 12px;margin:0 0 4px 0;">' +
         '<div class="flex items-center gap-2">' +
           '<input type="checkbox" class="draft-checkbox shrink-0 rounded" data-savedat="' + sid + '" />' +
           '<div class="flex-1 min-w-0 cursor-pointer draft-load" data-savedat="' + sid + '">' +
@@ -2776,17 +2783,17 @@ function initEditor() {
       if (m) headings.push({ level: m[1].length, text: m[2], line: idx });
     });
     if (headings.length === 0) {
-      var emptyHtml = '<div style="padding:0 16px;"><div style="text-align:center;color:var(--font-color-light);font-size:13px;padding:24px 0;">暂无标题</div></div>';
+      var emptyHtml = '<div style="padding:10px 5px 0 16px;"><div style="text-align:center;color:var(--font-color-light);font-size:13px;padding:24px 0;">暂无标题</div></div>';
       if (_tocCache !== emptyHtml) {
         panelContent.innerHTML = emptyHtml;
         _tocCache = emptyHtml;
       }
       return;
     }
-    var html = '<div style="padding:0 16px;">';
+    var html = '<div style="padding:10px 5px 0 16px;">';
     headings.forEach(function(h) {
       var indent = (h.level - 1) * 12;
-      html += '<div class="toc-item" data-line="' + h.line + '" title="' + h.text + '" style="padding:6px 12px 6px ' + (12 + indent) + 'px;cursor:pointer;font-size:13px;color:var(--font-color);transition:background 0.12s;border-radius:6px;margin:1px 4px;"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + h.text + '</span></div>';
+      html += '<div class="toc-item" data-line="' + h.line + '" title="' + h.text + '" style="padding:6px 12px 6px ' + (12 + indent) + 'px;cursor:pointer;font-size:13px;color:var(--font-color);transition:background 0.12s;border-radius:6px;margin:1px 0;"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + h.text + '</span></div>';
     });
     html += '</div>';
     if (html === _tocCache) return;
@@ -2798,7 +2805,7 @@ function initEditor() {
   function renderSyntaxContent() {
     var items = syntaxData[currentSyntaxCat] || [];
     // 标签栏
-    var tagsHtml = '<div style="padding:0 16px;"><div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px;border-bottom:1px solid var(--line-divider);margin-bottom:8px;">';
+    var tagsHtml = '<div style="padding:10px 5px 0 16px;display:flex;flex-direction:column;height:100%;"><div style="flex-shrink:0;display:flex;flex-wrap:wrap;gap:6px;padding:0 7px 12px 0;border-bottom:1px solid var(--line-divider);margin-bottom:8px;">';
     Object.keys(syntaxData).forEach(function(cat) {
       var active = cat === currentSyntaxCat;
       var style = active
@@ -2806,23 +2813,28 @@ function initEditor() {
         : '';
       tagsHtml += '<span class="syntax-tag" data-cat="' + cat + '" style="padding:3px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid var(--line-divider);color:var(--font-color-light);transition:all 0.15s;user-select:none;' + style + '">' + cat + '</span>';
     });
+    for (var ti = 0; ti < 5; ti++) {
+      tagsHtml += '<span style="padding:3px 10px;border-radius:12px;font-size:12px;background:red;color:white;">T' + (ti+1) + '</span>';
+    }
     tagsHtml += '</div>';
 
     // 快捷键分类只显示说明
     if (currentSyntaxCat === '快捷键') {
-      var listHtml = '';
+      var listHtml = '<div class="syntax-scroll" style="flex:1;overflow-y:auto;">';
       items.forEach(function(item) {
-        listHtml += '<div style="padding:8px 0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid color-mix(in srgb, var(--font-color) 5%, transparent);"><span style="font-size:13px;color:var(--font-color);">' + item.desc + '</span></div>';
+        listHtml += '<div style="padding:8px 0;margin-right:5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid color-mix(in srgb, var(--font-color) 5%, transparent);"><span style="font-size:13px;color:var(--font-color);">' + item.desc + '</span></div>';
       });
+      listHtml += '</div>';
       panelContent.innerHTML = tagsHtml + listHtml + '</div>';
       return;
     }
 
-    var listHtml = '';
+    var listHtml = '<div class="syntax-scroll" style="flex:1;overflow-y:auto;">';
     items.forEach(function(item, idx) {
       var codeDisplay = item.syntax ? item.syntax.replace(/</g, '&lt;').replace(/\n/g, '<br>') : '';
-      listHtml += '<div class="syntax-item" data-idx="' + idx + '" style="margin:4px 0;padding:6px 8px;cursor:pointer;transition:all 0.15s;border:1px solid var(--line-divider);border-radius:6px;"><div style="font-size:12px;font-weight:600;color:color-mix(in srgb, currentColor 80%, transparent);margin-bottom:3px;">' + item.desc + '</div><code style="font-size:11px;color:color-mix(in srgb, currentColor 55%, transparent);background:color-mix(in srgb, currentColor 8%, transparent);padding:4px 6px;border-radius:4px;white-space:pre-wrap;display:block;line-height:1.4;border:1px solid color-mix(in srgb, currentColor 8%, transparent);">' + codeDisplay + '</code></div>';
+      listHtml += '<div class="syntax-item" data-idx="' + idx + '" style="margin:4px 0;padding:4px 12px;cursor:pointer;transition:all 0.15s;border:1px solid var(--line-divider);border-radius:6px;"><div style="font-size:12px;font-weight:600;color:color-mix(in srgb, currentColor 80%, transparent);margin-bottom:3px;">' + item.desc + '</div><code style="font-size:11px;color:color-mix(in srgb, currentColor 55%, transparent);background:color-mix(in srgb, currentColor 8%, transparent);padding:4px 6px;border-radius:4px;white-space:pre-wrap;display:block;line-height:1.4;border:1px solid color-mix(in srgb, currentColor 8%, transparent);">' + codeDisplay + '</code></div>';
     });
+    listHtml += '</div>';
     panelContent.innerHTML = tagsHtml + listHtml + '</div>';
   }
 
