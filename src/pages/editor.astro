@@ -1276,9 +1276,6 @@ function initEditor() {
   var templates = {
     publish: { title: '发布', html: '<div class="space-y-3"><button id="btn-github" class="w-full py-2.5 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer">发布到 GitHub</button><button id="btn-download" class="w-full py-2 rounded-lg border border-[var(--line-divider)] text-sm text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer">下载 .md 文件</button></div>' },
     meta: { title: '文章信息', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标题 <span class="text-red-500">*</span></label><div class="flex gap-2"><input id="post-title-input" type="text" placeholder="请输入文章标题" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-pinned"> 置顶 <input type="checkbox" id="chk-pinned-panel" class="hidden" /> </label> <label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-comment"> 评论 <input type="checkbox" id="chk-comment-panel" class="hidden" checked /> </label></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">描述</label><textarea id="post-desc" rows="2" placeholder="一句话描述文章内容" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 resize-none"></textarea></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">分类</label><input id="post-category" type="text" placeholder="如：技术笔记" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签 <span class="text-xs text-black/40 dark:text-white/40">（自定义用,隔开）</span></label><div class="flex gap-2"><input id="post-tag-1" type="text" placeholder="标签1" class="w-1/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-tag-3" type="text" placeholder="自定义标签" class="w-3/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图</label><div class="flex gap-2 flex-nowrap"><input id="post-cover" type="text" placeholder="图片 URL" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 cursor-pointer whitespace-nowrap shrink-0">上传<input id="cover-upload" type="file" accept="image/*" class="hidden" /></label><button id="btn-remove-cover" type="button" class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-red-400 hover:text-red-600 hover:border-red-400 cursor-pointer whitespace-nowrap shrink-0">删除</button></div><div id="cover-preview" class="mt-2 hidden"><img id="cover-preview-img" class="w-full h-24 object-cover rounded-lg" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">密码</label><div class="flex gap-2"><input id="post-password-hint" type="text" placeholder="密码提示" class="w-1/3 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-password" type="text" placeholder="输入密码（留空不加密）" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div></div>' },
-    tags: { title: '标签', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签（逗号分隔）</label><input id="post-tags" type="text" placeholder="JavaScript, Astro" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
-    cover: { title: '封面图', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图 URL</label><input id="post-cover" type="text" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
-    settings: { title: '设置', html: '<div class="text-sm text-black/50 dark:text-white/50">更多设置开发中...</div>' },
     github: { title: 'GitHub 设置', html: '<div class="space-y-4"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">GitHub Token</label><div class="flex gap-2 w-full"><input id="gh-token-panel" type="password" placeholder="ghp_xxxxx" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><button id="btn-save-token" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-xs font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap">保存</button><button id="btn-clear-gh" class="px-3 py-2 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer whitespace-nowrap">清空</button></div><p class="text-xs text-black/40 dark:text-white/40 mt-1">🔒 仅保存在本浏览器，刷新不丢失</p></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">仓库</label><input id="gh-repo-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">分支</label><input id="gh-branch-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
     drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;"><div class="space-y-1" style="flex-shrink:0;padding-right:11px;"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="flex:1;overflow-y:auto;"></div></div>' }
   };
@@ -1323,7 +1320,7 @@ function initEditor() {
         var titleInput = document.getElementById('post-title-input');
         var mainTitle = document.getElementById('post-title');
         if (titleInput && mainTitle) titleInput.value = mainTitle.value;
-        var syncFields = ['post-desc', 'post-category', 'post-cover', 'post-slug', 'post-password', 'post-password-hint'];
+        var syncFields = ['post-desc', 'post-category', 'post-cover', 'post-password', 'post-password-hint'];
         syncFields.forEach(function(id) {
           var hidden = document.getElementById(id);
           var panel = panelContent.querySelector('#' + id);
@@ -1442,18 +1439,6 @@ function initEditor() {
       localStorage.removeItem('gh-repo');
       localStorage.removeItem('gh-branch');
       window.__editorShowToast('GitHub 设置已清空');
-      return;
-    }
-    // 置顶
-    if (target.id === 'btn-pinned' || target.closest('#btn-pinned')) {
-      var btn = target.id === 'btn-pinned' ? target : target.closest('#btn-pinned');
-      btn.classList.toggle('active');
-      return;
-    }
-    // 评论
-    if (target.id === 'btn-comment' || target.closest('#btn-comment')) {
-      var btn = target.id === 'btn-comment' ? target : target.closest('#btn-comment');
-      btn.classList.toggle('active');
       return;
     }
     // 发布到 GitHub
@@ -1789,7 +1774,7 @@ function initEditor() {
   panelContent.addEventListener('input', function(e) {
     if (e.target.id === 'gh-repo-panel') localStorage.setItem('gh-repo', e.target.value);
     if (e.target.id === 'gh-branch-panel') localStorage.setItem('gh-branch', e.target.value);
-    var metaFields = ['post-desc', 'post-category', 'post-cover', 'post-slug', 'post-password', 'post-password-hint'];
+    var metaFields = ['post-desc', 'post-category', 'post-cover', 'post-password', 'post-password-hint'];
     if (metaFields.indexOf(e.target.id) !== -1) {
       var hidden = document.getElementById(e.target.id);
       if (hidden && hidden !== e.target) hidden.value = e.target.value;
@@ -2812,14 +2797,6 @@ function initEditor() {
         ? 'background:color-mix(in srgb, var(--primary) 12%, transparent);color:var(--primary);border-color:var(--primary);'
         : '';
       tagsHtml += '<span class="syntax-tag" data-cat="' + cat + '" style="padding:3px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid var(--line-divider);color:var(--font-color-light);transition:all 0.15s;user-select:none;' + style + '">' + cat + '</span>';
-    });
-    var testTags = ['1','2','3','4','----------------------------------------------'];
-    testTags.forEach(function(t) {
-      var active = t === currentSyntaxCat;
-      var style = active
-        ? 'background:color-mix(in srgb, var(--primary) 12%, transparent);color:var(--primary);border-color:var(--primary);'
-        : '';
-      tagsHtml += '<span class="syntax-tag" data-cat="' + t + '" style="padding:3px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid var(--line-divider);color:var(--font-color-light);transition:all 0.15s;user-select:none;' + style + '">' + t + '</span>';
     });
     tagsHtml += '</div>';
 
