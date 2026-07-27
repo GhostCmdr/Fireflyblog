@@ -8,7 +8,7 @@ self.onmessage = function(e) {
   var html = '';
   try {
     if (typeof marked !== 'undefined') {
-      marked.setOptions({ breaks: true, gfm: true });
+      marked.setOptions({ breaks: false, gfm: true });
       html = marked.parse(md);
     } else {
       html = md.replace(/\n/g, '<br>');
