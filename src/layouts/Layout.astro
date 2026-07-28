@@ -1248,10 +1248,13 @@ function disableAnimation() {
         'body.editor-page #main-grid > div { max-width: 100% !important; }',
         'body.editor-page #wallpaper-wrapper { width: calc(100% - ' + scrollbarWidth + 'px) !important; max-width: calc(100% - ' + scrollbarWidth + 'px) !important; }',
         (function() {
+          console.log('[Editor] IIFE 开始执行');
           var ww = document.getElementById('wallpaper-wrapper');
+          console.log('[Editor] wallpaper-wrapper:', ww);
           var imgUrl = '';
           var activeImgEl = null;
           if (ww) {
+            console.log('[Editor] wallpaper-wrapper 找到了');
             // 1. 轮播模式：根据视口找当前激活的 slide
             var isDesktop = window.innerWidth >= 1024;
             var activeSlides = ww.querySelectorAll('.slide-item.active');
@@ -1285,16 +1288,45 @@ function disableAnimation() {
               if (bg && bg !== 'none') imgUrl = bg;
             }
           }
-          console.log('[Editor] 找到的壁纸图片:', imgUrl);
+          console.log('[Editor] imgUrl:', imgUrl);
           if (imgUrl) {
             var url = imgUrl.indexOf('url(') === -1 ? 'url(' + imgUrl + ')' : imgUrl;
-            // 获取壁纸图片的 object-position（裁切位置）
-            var pos = 'center';
+            var pos = '50% 50%';
             if (activeImgEl) {
               var op = getComputedStyle(activeImgEl).objectPosition;
-              if (op && op !== '50% 50%') pos = op;
+              if (op) pos = op;
             }
-            return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background-image: ' + url + '; background-size: cover; background-position: ' + pos + '; transform: scaleX(-1); z-index: 15; pointer-events: none; }';
+            var img = new Image();
+            img.src = imgUrl.indexOf('url(') === -1 ? imgUrl : imgUrl.replace(/url\(|\)/g, '');
+            function calcBg(iw, ih) {
+              if (!iw) return 'background-size: cover; background-position: right center;';
+              var vw = window.innerWidth, vh = window.innerHeight;
+              var pw = vw - scrollbarWidth; // 壁纸实际宽度
+              var scale = Math.max(pw / iw, vh / ih); // 和壁纸用同样的缩放
+              var sw = Math.round(iw * scale), sh = Math.round(ih * scale);
+              var posParts = pos.match(/([\d.]+)%/g) || [50, 50];
+              var px = parseFloat(posParts[0]) / 100;
+              var py = parseFloat(posParts[1]) / 100;
+              var ox = Math.round((sw - pw) * px);
+              var oy = Math.round((sh - vh) * py);
+              var wwTop = parseInt(getComputedStyle(ww).top) || 0;
+              // 壁纸显示图片：ox → ox+pw
+              // 滚动条接在后面：ox+pw → ox+pw+scrollbarWidth
+              // 如果超出图片范围，显示图片最后 scrollbarWidth 像素
+              var bgX = -Math.min(ox + pw, sw - scrollbarWidth);
+              var bgY = -(oy + wwTop);
+              console.log('[Editor] bg:', {pw, sw, sh, ox, bgX, bgY});
+              return 'background-size: ' + sw + 'px ' + sh + 'px; background-position: ' + bgX + 'px ' + bgY + 'px;';
+            }
+            var bg = (img.complete && img.naturalWidth) ? calcBg(img.naturalWidth, img.naturalHeight) : 'background-size: cover; background-position: right center;';
+            if (!(img.complete && img.naturalWidth)) {
+              img.onload = function() {
+                var st = document.getElementById('editor-after-style');
+                if (!st) { st = document.createElement('style'); st.id = 'editor-after-style'; document.head.appendChild(st); }
+                st.textContent = 'body.editor-page::after { ' + calcBg(img.naturalWidth, img.naturalHeight).replace(/; /g, ' !important; ') + ' }';
+              };
+            }
+            return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background-image: ' + url + '; ' + bg + ' z-index: 15; pointer-events: none; }';
           }
           return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background: linear-gradient(to right, transparent, var(--page-bg)); z-index: 15; pointer-events: none; opacity: 0.5; }';
         })(),
