@@ -1247,7 +1247,57 @@ function disableAnimation() {
         'body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }',
         'body.editor-page #main-grid > div { max-width: 100% !important; }',
         'body.editor-page #wallpaper-wrapper { width: calc(100% - ' + scrollbarWidth + 'px) !important; max-width: calc(100% - ' + scrollbarWidth + 'px) !important; }',
-        'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background: linear-gradient(to right, transparent, var(--page-bg)); z-index: 15; pointer-events: none; opacity: 0.5; }',
+        (function() {
+          var ww = document.getElementById('wallpaper-wrapper');
+          var imgUrl = '';
+          var activeImgEl = null;
+          if (ww) {
+            // 1. 轮播模式：根据视口找当前激活的 slide
+            var isDesktop = window.innerWidth >= 1024;
+            var activeSlides = ww.querySelectorAll('.slide-item.active');
+            for (var i = 0; i < activeSlides.length; i++) {
+              var isHidden = getComputedStyle(activeSlides[i]).display === 'none';
+              if (!isHidden) {
+                var img = activeSlides[i].querySelector('img');
+                if (img && img.src) { imgUrl = img.src; activeImgEl = img; break; }
+              }
+            }
+            // 2. 非轮播：根据视口找桌面端或移动端图片
+            if (!imgUrl) {
+              var slot = isDesktop ? ww.querySelector('.banner-image-slot-desktop img') : ww.querySelector('.banner-image-slot-mobile img');
+              if (!slot) {
+                // 没有 slot 分类时，找所有可见的 img
+                var allImgs = ww.querySelectorAll('img');
+                for (var i = 0; i < allImgs.length; i++) {
+                  var s = getComputedStyle(allImgs[i].parentElement || allImgs[i]);
+                  if (s.display !== 'none' && allImgs[i].src) { slot = allImgs[i]; break; }
+                }
+              }
+              if (slot && slot.src) { imgUrl = slot.src; activeImgEl = slot; }
+            }
+            // 3. 降级：第一个 img 或 CSS background
+            if (!imgUrl) {
+              var img = ww.querySelector('img');
+              if (img && img.src) { imgUrl = img.src; activeImgEl = img; }
+            }
+            if (!imgUrl) {
+              var bg = getComputedStyle(ww).backgroundImage;
+              if (bg && bg !== 'none') imgUrl = bg;
+            }
+          }
+          console.log('[Editor] 找到的壁纸图片:', imgUrl);
+          if (imgUrl) {
+            var url = imgUrl.indexOf('url(') === -1 ? 'url(' + imgUrl + ')' : imgUrl;
+            // 获取壁纸图片的 object-position（裁切位置）
+            var pos = 'center';
+            if (activeImgEl) {
+              var op = getComputedStyle(activeImgEl).objectPosition;
+              if (op && op !== '50% 50%') pos = op;
+            }
+            return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background-image: ' + url + '; background-size: cover; background-position: ' + pos + '; transform: scaleX(-1); z-index: 15; pointer-events: none; }';
+          }
+          return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background: linear-gradient(to right, transparent, var(--page-bg)); z-index: 15; pointer-events: none; opacity: 0.5; }';
+        })(),
         'body.editor-page { overflow: hidden !important; }',
         'body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; }',
         'body.editor-page #markdown-input::-webkit-scrollbar { display: none; }',
