@@ -996,6 +996,14 @@ function disableAnimation() {
       // 更新侧边栏组件的可见性（根据新页面的 URL）
       updateSidebarComponentsVisibility();
 
+      // 编辑器页面壁纸模式：content:replace 阶段切换到全屏透明
+      if (isEditorPath()) {
+        var _curMode = document.documentElement.getAttribute('data-wallpaper-mode');
+        if (_curMode !== 'overlay' && _curMode !== 'none') {
+          setWallpaperMode('overlay');
+        }
+      }
+
       // 只处理katex元素的容器，使用浏览器原生滚动条
       scheduleContentOverflowEnhancements();
 
@@ -1042,6 +1050,25 @@ function disableAnimation() {
         // Force reflow so the animation restarts cleanly
         void progressBar.offsetWidth;
         progressBar.classList.add("loading");
+      }
+
+      // 编辑器页面壁纸模式：visit:start 只保存原模式，实际切换在 content:replace 阶段
+      const _visitPath = new URL(visit.to.url, location.origin).pathname;
+      const _isGoingToEditor = _visitPath === '/editor/' || _visitPath === '/editor';
+      const _isCurrentlyEditor = location.pathname === '/editor/' || location.pathname === '/editor';
+      if (_isGoingToEditor && !_isCurrentlyEditor) {
+        // 进入编辑器：只保存当前模式，不切换（避免主页动画变透明）
+        const curMode = document.documentElement.getAttribute('data-wallpaper-mode');
+        if (curMode !== 'overlay' && curMode !== 'none') {
+          sessionStorage.setItem('wallpaper-mode-before-editor', curMode!);
+        }
+      } else if (!_isGoingToEditor && _isCurrentlyEditor) {
+        // 离开编辑器：恢复原模式
+        const savedMode = sessionStorage.getItem('wallpaper-mode-before-editor');
+        if (savedMode) {
+          sessionStorage.removeItem('wallpaper-mode-before-editor');
+          setWallpaperMode(savedMode as any);
+        }
       }
 
       // change banner height immediately when a link is clicked
@@ -1214,6 +1241,51 @@ function disableAnimation() {
       var p = window.location.pathname;
       return p === '/editor/' || p === '/editor';
     }
+    // 计算滚动条区域的背景图片 CSS（可复用，壁纸模式切换时重新计算）
+
+    // 冻结壁纸视觉状态：编辑器页面壁纸和主页保持一致，右边多出滚动条宽度的区域自然露出
+    function freezeWallpaperForEditor(scrollbarWidth: number) {
+      var ww = document.getElementById('wallpaper-wrapper');
+      if (!ww) return;
+      // 找到壁纸图片
+      var img = ww.querySelector('img') as HTMLImageElement;
+      if (!img || !img.src) return;
+      // 计算主页视口宽度（减去滚动条）
+      var homeVW = window.innerWidth - scrollbarWidth;
+      var homeVH = window.innerHeight;
+      // 等图片加载完再计算
+      function apply(iw: number, ih: number) {
+        if (!iw) return;
+        // 和 object-fit: cover 相同的缩放算法，但基于主页视口宽度
+        var scale = Math.max(homeVW / iw, homeVH / ih);
+        var sw = Math.round(iw * scale);
+        var sh = Math.round(ih * scale);
+        // object-position: center
+        var ox = Math.round((sw - homeVW) / 2);
+        var oy = Math.round((sh - homeVH) / 2);
+        // 隐藏 <img>，用 background-image 代替
+        img.style.setProperty('display', 'none', 'important');
+        ww.style.backgroundImage = 'url(' + img.src + ')';
+        ww.style.backgroundSize = sw + 'px ' + sh + 'px';
+        ww.style.backgroundPosition = '-' + ox + 'px -' + oy + 'px';
+        ww.style.backgroundRepeat = 'no-repeat';
+      }
+      if (img.complete && img.naturalWidth) {
+        apply(img.naturalWidth, img.naturalHeight);
+      } else {
+        img.onload = function() { apply(img.naturalWidth, img.naturalHeight); };
+      }
+    }
+    function unfreezeWallpaper() {
+      var ww = document.getElementById('wallpaper-wrapper');
+      if (!ww) return;
+      var img = ww.querySelector('img') as HTMLImageElement;
+      if (img) img.style.removeProperty('display');
+      ww.style.removeProperty('background-image');
+      ww.style.removeProperty('background-size');
+      ww.style.removeProperty('background-position');
+      ww.style.removeProperty('background-repeat');
+    }
     function applyEditorModeLayout() {
       if (editorStyleEl) return;
       // 测量滚动条宽度
@@ -1246,90 +1318,7 @@ function disableAnimation() {
         'body.editor-page #main-grid ~ div,',
         'body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }',
         'body.editor-page #main-grid > div { max-width: 100% !important; }',
-        'body.editor-page #wallpaper-wrapper { width: calc(100% - ' + scrollbarWidth + 'px) !important; max-width: calc(100% - ' + scrollbarWidth + 'px) !important; }',
-        (function() {
-          console.log('[Editor] IIFE 开始执行');
-          var ww = document.getElementById('wallpaper-wrapper');
-          console.log('[Editor] wallpaper-wrapper:', ww);
-          var imgUrl = '';
-          var activeImgEl = null;
-          if (ww) {
-            console.log('[Editor] wallpaper-wrapper 找到了');
-            // 1. 轮播模式：根据视口找当前激活的 slide
-            var isDesktop = window.innerWidth >= 1024;
-            var activeSlides = ww.querySelectorAll('.slide-item.active');
-            for (var i = 0; i < activeSlides.length; i++) {
-              var isHidden = getComputedStyle(activeSlides[i]).display === 'none';
-              if (!isHidden) {
-                var img = activeSlides[i].querySelector('img');
-                if (img && img.src) { imgUrl = img.src; activeImgEl = img; break; }
-              }
-            }
-            // 2. 非轮播：根据视口找桌面端或移动端图片
-            if (!imgUrl) {
-              var slot = isDesktop ? ww.querySelector('.banner-image-slot-desktop img') : ww.querySelector('.banner-image-slot-mobile img');
-              if (!slot) {
-                // 没有 slot 分类时，找所有可见的 img
-                var allImgs = ww.querySelectorAll('img');
-                for (var i = 0; i < allImgs.length; i++) {
-                  var s = getComputedStyle(allImgs[i].parentElement || allImgs[i]);
-                  if (s.display !== 'none' && allImgs[i].src) { slot = allImgs[i]; break; }
-                }
-              }
-              if (slot && slot.src) { imgUrl = slot.src; activeImgEl = slot; }
-            }
-            // 3. 降级：第一个 img 或 CSS background
-            if (!imgUrl) {
-              var img = ww.querySelector('img');
-              if (img && img.src) { imgUrl = img.src; activeImgEl = img; }
-            }
-            if (!imgUrl) {
-              var bg = getComputedStyle(ww).backgroundImage;
-              if (bg && bg !== 'none') imgUrl = bg;
-            }
-          }
-          console.log('[Editor] imgUrl:', imgUrl);
-          if (imgUrl) {
-            var url = imgUrl.indexOf('url(') === -1 ? 'url(' + imgUrl + ')' : imgUrl;
-            var pos = '50% 50%';
-            if (activeImgEl) {
-              var op = getComputedStyle(activeImgEl).objectPosition;
-              if (op) pos = op;
-            }
-            var img = new Image();
-            img.src = imgUrl.indexOf('url(') === -1 ? imgUrl : imgUrl.replace(/url\(|\)/g, '');
-            function calcBg(iw, ih) {
-              if (!iw) return 'background-size: cover; background-position: right center;';
-              var vw = window.innerWidth, vh = window.innerHeight;
-              var pw = vw - scrollbarWidth; // 壁纸实际宽度
-              var scale = Math.max(pw / iw, vh / ih); // 和壁纸用同样的缩放
-              var sw = Math.round(iw * scale), sh = Math.round(ih * scale);
-              var posParts = pos.match(/([\d.]+)%/g) || [50, 50];
-              var px = parseFloat(posParts[0]) / 100;
-              var py = parseFloat(posParts[1]) / 100;
-              var ox = Math.round((sw - pw) * px);
-              var oy = Math.round((sh - vh) * py);
-              var wwTop = parseInt(getComputedStyle(ww).top) || 0;
-              // 壁纸显示图片：ox → ox+pw
-              // 滚动条接在后面：ox+pw → ox+pw+scrollbarWidth
-              // 如果超出图片范围，显示图片最后 scrollbarWidth 像素
-              var bgX = -Math.min(ox + pw, sw - scrollbarWidth);
-              var bgY = -(oy + wwTop);
-              console.log('[Editor] bg:', {pw, sw, sh, ox, bgX, bgY});
-              return 'background-size: ' + sw + 'px ' + sh + 'px; background-position: ' + bgX + 'px ' + bgY + 'px;';
-            }
-            var bg = (img.complete && img.naturalWidth) ? calcBg(img.naturalWidth, img.naturalHeight) : 'background-size: cover; background-position: right center;';
-            if (!(img.complete && img.naturalWidth)) {
-              img.onload = function() {
-                var st = document.getElementById('editor-after-style');
-                if (!st) { st = document.createElement('style'); st.id = 'editor-after-style'; document.head.appendChild(st); }
-                st.textContent = 'body.editor-page::after { ' + calcBg(img.naturalWidth, img.naturalHeight).replace(/; /g, ' !important; ') + ' }';
-              };
-            }
-            return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background-image: ' + url + '; ' + bg + ' z-index: 15; pointer-events: none; }';
-          }
-          return 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + scrollbarWidth + 'px; height: 100%; background: linear-gradient(to right, transparent, var(--page-bg)); z-index: 15; pointer-events: none; opacity: 0.5; }';
-        })(),
+        'body.editor-page #wallpaper-wrapper { width: 100% !important; max-width: 100% !important; }',
         'body.editor-page { overflow: hidden !important; }',
         'body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; }',
         'body.editor-page #markdown-input::-webkit-scrollbar { display: none; }',
@@ -1363,6 +1352,8 @@ function disableAnimation() {
         row.style.maxWidth = cachedWidth + 'px';
         row.style.transform = 'translateX(-8px)';
       }
+      // 冻结壁纸视觉状态，和主页保持一致
+      freezeWallpaperForEditor(scrollbarWidth);
       // resize 监听
       var _resizeDebounce: ReturnType<typeof setTimeout> | null = null;
       editorResizeHandler = function() {
@@ -1393,6 +1384,7 @@ function disableAnimation() {
     function removeEditorModeLayout() {
       document.body.classList.remove('editor-page');
       document.documentElement.classList.remove('editor-page');
+      unfreezeWallpaper();
       if (editorStyleEl) { editorStyleEl.remove(); editorStyleEl = null; }
       if (editorResizeHandler) { window.removeEventListener('resize', editorResizeHandler); editorResizeHandler = null; }
       // 清除自动保存定时器
@@ -1423,6 +1415,7 @@ function disableAnimation() {
     if (isEditorPath()) {
       applyEditorModeLayout();
     }
+
 
     window.swup.hooks.on("page:view", () => {
       // [Editor] 每次页面切换后检测编辑器页面（必须在 updateMainGridCols 之后执行，确保 editor-page class 在 body 上）
@@ -1875,7 +1868,7 @@ function disableAnimation() {
   }
 
   // Initialize wallpaper mode
-  import { initWallpaperMode, initThemeListener } from "@/utils/setting-utils";
+  import { initWallpaperMode, initThemeListener, setWallpaperMode } from "@/utils/setting-utils";
   import { initIconLoader } from "@/utils/icon-loader";
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
