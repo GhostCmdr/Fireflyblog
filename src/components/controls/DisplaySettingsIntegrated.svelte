@@ -72,6 +72,12 @@ let isMobileWidth = $state(
 	typeof window !== "undefined" ? window.innerWidth < 780 : false,
 );
 let isSwitching = $state(false);
+// 是否处于编辑器页面（用于禁用横幅/全屏壁纸切换，避免破坏编辑器布局）
+let isEditor = $state(false);
+function checkIsEditor() {
+	const p = window.location.pathname;
+	isEditor = p === "/editor/" || p === "/editor";
+}
 let wavesEnabled = $state(true);
 const defaultWavesEnabled = getDefaultWavesEnabled();
 let gradientEnabled = $state(true);
@@ -214,6 +220,13 @@ function resetHue() {
 }
 
 function resetWallpaperMode() {
+	// 编辑器内重置：若默认是横幅/全屏则回退到全屏透明（编辑器仅支持 overlay/none）
+	if (isEditor) {
+		const target = (defaultWallpaperMode === WALLPAPER_BANNER || defaultWallpaperMode === WALLPAPER_FULLSCREEN) ? WALLPAPER_OVERLAY : defaultWallpaperMode;
+		wallpaperMode = target;
+		setWallpaperMode(target);
+		return;
+	}
 	wallpaperMode = defaultWallpaperMode;
 	setWallpaperMode(defaultWallpaperMode);
 }
@@ -310,6 +323,8 @@ function toggleSakuraEnabled() {
 }
 
 function switchWallpaperMode(newMode: WALLPAPER_MODE) {
+	// 编辑器内禁止切换到横幅/全屏（避免破坏编辑器布局，仅允许全屏透明/纯色）
+	if (isEditor && (newMode === WALLPAPER_BANNER || newMode === WALLPAPER_FULLSCREEN)) return;
 	wallpaperMode = newMode;
 	setWallpaperMode(newMode);
 	window.scrollTo({ top: 0 });
@@ -468,6 +483,21 @@ onMount(() => {
 	};
 });
 
+onMount(() => {
+	checkIsEditor();
+	const registerSwup = () => {
+		if (window.swup && window.swup.hooks) {
+			window.swup.hooks.on("page:view", checkIsEditor);
+		}
+	};
+	if (window.swup && window.swup.hooks) {
+		registerSwup();
+	} else {
+		document.addEventListener("swup:enable", registerSwup, { once: true });
+	}
+	document.addEventListener("astro:page-load", checkIsEditor);
+});
+
 $effect(() => {
 	if (hue || hue === 0) {
 		setHue(hue);
@@ -542,6 +572,8 @@ $effect(() => {
                     class:opacity-60={wallpaperMode !== WALLPAPER_BANNER}
                     class:bg-(--btn-regular-bg-hover)={wallpaperMode === WALLPAPER_BANNER}
                     onclick={() => switchWallpaperMode(WALLPAPER_BANNER)}
+                    disabled={isEditor}
+                    style={isEditor ? "opacity: 0.4; pointer-events: none;" : ""}
                 >
                     <Icon icon="material-symbols:image-outline" class="text-[1.25rem] shrink-0"></Icon>
                     <span class="text-xs font-medium">{i18n(I18nKey.wallpaperBannerMode)}</span>
@@ -551,6 +583,8 @@ $effect(() => {
                     class:opacity-60={wallpaperMode !== WALLPAPER_FULLSCREEN}
                     class:bg-(--btn-regular-bg-hover)={wallpaperMode === WALLPAPER_FULLSCREEN}
                     onclick={() => switchWallpaperMode(WALLPAPER_FULLSCREEN)}
+                    disabled={isEditor}
+                    style={isEditor ? "opacity: 0.4; pointer-events: none;" : ""}
                 >
                     <Icon icon="material-symbols:wallpaper" class="text-[1.25rem] shrink-0"></Icon>
                     <span class="text-xs font-medium">{i18n(I18nKey.wallpaperFullscreenMode)}</span>

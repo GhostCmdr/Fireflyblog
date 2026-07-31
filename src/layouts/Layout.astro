@@ -88,7 +88,7 @@ const siteLang = lang.replace("_", "-");
 ---
 
 <!doctype html>
-<html lang={siteLang} class="bg-(--page-bg) text-[12px] md:text-[14px]" data-wallpaper-mode={backgroundWallpaper.mode}>
+<html lang={siteLang} class:list={["bg-(--page-bg) text-[12px] md:text-[14px]"]} data-wallpaper-mode={backgroundWallpaper.mode}>
   <head>
     <meta charset="UTF-8" />
     {analyticsConfig?.googleAnalyticsId && (
@@ -996,13 +996,7 @@ function disableAnimation() {
       // 更新侧边栏组件的可见性（根据新页面的 URL）
       updateSidebarComponentsVisibility();
 
-      // 编辑器页面壁纸模式：content:replace 阶段切换到全屏透明
-      if (isEditorPath()) {
-        var _curMode = document.documentElement.getAttribute('data-wallpaper-mode');
-        if (_curMode !== 'overlay' && _curMode !== 'none') {
-          setWallpaperMode('overlay');
-        }
-      }
+      // 编辑器背景模式（全屏透明/纯色）统一在 applyEditorModeLayout 中处理，此处不再介入。
 
       // 只处理katex元素的容器，使用浏览器原生滚动条
       scheduleContentOverflowEnhancements();
@@ -1243,32 +1237,82 @@ function disableAnimation() {
     }
     // 计算滚动条区域的背景图片 CSS（可复用，壁纸模式切换时重新计算）
 
+    // 编辑器背景模糊/透明度所跟随的主页来源模式（仅 'overlay' 才模糊+半透明，其余模式不额外模糊）
+    var editorSrcMode: string | null = null;
     // 冻结壁纸视觉状态：编辑器页面壁纸和主页保持一致，右边多出滚动条宽度的区域自然露出
     function freezeWallpaperForEditor(scrollbarWidth: number) {
       var ww = document.getElementById('wallpaper-wrapper');
       if (!ww) return;
-      // 找到壁纸图片
-      var img = ww.querySelector('img') as HTMLImageElement;
+      // 找到桌面端实际显示的壁纸图片：
+      // 1) 轮播模式：当前 .active 的桌面端 slide 内的 img（避免冻结到 index 0 而与主页当前图不一致）
+      // 2) 单图模式：.banner-image-slot-desktop 内的 img
+      // 3) 轮播模式回退：第一个桌面端 slide 内的 img
+      // 4) 回退：wrapper 内第一个 img
+      // 注意 HTML 中 mobile img 在 DOM 顺序上更靠前，直接 querySelector('img') 会拿到 mobile img，
+      // 导致 src/尺寸错误且 desktop img 未被隐藏
+      var img = (ww.querySelector('.slide-item.active.hidden.lg\\:block img') as HTMLImageElement)
+        || (ww.querySelector('.banner-image-slot-desktop img') as HTMLImageElement)
+        || (ww.querySelector('.slide-item.hidden.lg\\:block img') as HTMLImageElement)
+        || (ww.querySelector('img') as HTMLImageElement);
       if (!img || !img.src) return;
-      // 计算主页视口宽度（减去滚动条）
+      // 用主页真实内容宽高计算 cover，保证与主页 object-fit:cover 像素级一致：
+      // homeVW 取 window.innerWidth - scrollbarWidth（= 主页内容区宽 W-s，enter 前在带滚动条的主页测得），
+      // 不能用 clientWidth（编辑器 overflow:hidden 无滚动条，clientWidth 会返回整窗宽 W，导致 cover 按更宽算而放大/拉伸）。
+      // homeVH 取 innerHeight（与 100vh 一致）。编辑器 wrapper 为 100% 全视口宽度，右侧自然多露出滚动条盖住的原图区域（无拉伸）。
       var homeVW = window.innerWidth - scrollbarWidth;
       var homeVH = window.innerHeight;
+      // 记录被冻结时使用的图片 src，用于 unfreeze 时只清理对应图片的 inline display
+      ww.dataset.frozenImgSrc = img.src;
       // 等图片加载完再计算
       function apply(iw: number, ih: number) {
         if (!iw) return;
-        // 和 object-fit: cover 相同的缩放算法，但基于主页视口宽度
-        var scale = Math.max(homeVW / iw, homeVH / ih);
-        var sw = Math.round(iw * scale);
-        var sh = Math.round(ih * scale);
-        // object-position: center
-        var ox = Math.round((sw - homeVW) / 2);
-        var oy = Math.round((sh - homeVH) / 2);
-        // 隐藏 <img>，用 background-image 代替
-        img.style.setProperty('display', 'none', 'important');
-        ww.style.backgroundImage = 'url(' + img.src + ')';
-        ww.style.backgroundSize = sw + 'px ' + sh + 'px';
-        ww.style.backgroundPosition = '-' + ox + 'px -' + oy + 'px';
-        ww.style.backgroundRepeat = 'no-repeat';
+        // 和主页 object-fit: cover 相同的缩放算法，基于主页可见宽度（内边距一致）
+        var coverScale = Math.max(homeVW / iw, homeVH / ih);
+        // 编辑器对壁纸来源恒定使用「全屏透明」(overlay) 的布局：cover 后再放大 1.05x，
+        // 与主页全屏壁纸形成 1.05 倍关系；不再按来源模式区分布局，避免复现 fullscreen/banner 带来的卡顿/错乱。
+        // 1.05x 由内层 #editor-bg-layer 的 transform:scale(1.05) 提供（而非烘焙进 background-size），
+        // 放大的模糊羽化边缘被 #wallpaper-wrapper（.wallpaper-overlay 自带 overflow:hidden）裁掉，
+        // 与主页 overlay「放大 1.05 的 img 被裁切」机制完全等价，页面四边不再出现白色模糊边。
+        // 注意：模糊度不恒定——跟随主页来源模式（见下方 layer.style.filter），仅主页本身是 overlay 才模糊，避免比主页更糊。
+        var sw = Math.round(iw * coverScale);
+        var sh = Math.round(ih * coverScale);
+        // 复现主页 img 真实的 object-position（默认 center），精确对齐"插入点"，
+        // 避免硬编码 center 导致与主页起始位置不一致、切换产生视觉位移/移动。
+        var opRaw = (getComputedStyle(img).objectPosition || '50% 50%').trim().split(/\s+/);
+        function parsePos(p: string) {
+          p = p.toLowerCase();
+          if (p === 'center') return { v: 0.5, pct: true };
+          if (p === 'left' || p === 'top') return { v: 0, pct: true };
+          if (p === 'right' || p === 'bottom') return { v: 1, pct: true };
+          if (p.indexOf('%') >= 0) return { v: parseFloat(p) / 100, pct: true };
+          return { v: parseFloat(p) || 0, pct: false }; // px / 数值按绝对偏移
+        }
+        var pX = parsePos(opRaw[0] || '50%');
+        var pY = parsePos(opRaw[1] || '50%');
+        // object-position 百分比语义与 background-position 一致：偏移 = pct ? p*(容器-图片) : 绝对px；
+        // 容器取主页实际渲染尺寸（homeVW/homeVH），使编辑器背景图左上角与主页完全一致（固定四角插入点）。
+        var bgX = pX.pct ? pX.v * (homeVW - sw) : pX.v;
+        var bgY = pY.pct ? pY.v * (homeVH - sh) : pY.v;
+        // 标记冻结状态：由 CSS 把 wrapper 内的 img / LQIP 渐变占位 / 过渡遮罩一并隐藏，
+        // 否则这些 absolute inset-0 的遮挡层会盖在 background-image 之上（LQIP 为不透明渐变），
+        // 导致壁纸看起来"消失"
+        ww.classList.add('editor-frozen');
+        // 背景与模糊改画在内层 #editor-bg-layer 上（复刻主页 overlay 的「放大+裁切」机制，消除四边白色模糊边）：
+        // 获取或创建内层背景层，置于视频 #bg-player 之下（作为 ww 首个子节点）
+        var layer = ww.querySelector('#editor-bg-layer') as HTMLElement | null;
+        if (!layer) {
+          layer = document.createElement('div');
+          layer.id = 'editor-bg-layer';
+          ww.insertBefore(layer, ww.firstChild);
+        }
+        layer.style.backgroundImage = 'url(' + img.src + ')';
+        layer.style.backgroundSize = sw + 'px ' + sh + 'px';
+        layer.style.backgroundPosition = bgX + 'px ' + bgY + 'px';
+        layer.style.backgroundRepeat = 'no-repeat';
+        layer.style.transform = 'scale(1.05)';
+        // 模糊跟随主页来源模式：仅主页本身是"全屏透明(overlay)"时才模糊，与主页一致；
+        // 全屏/横幅主页本身无模糊，编辑器不再额外加模糊（避免比主页更模糊）。透明度仍由 wallpaper-overlay 类提供（保持"全屏透明"观感）
+        layer.style.filter = editorSrcMode === 'overlay' ? 'blur(var(--overlay-blur, 0px))' : 'none';
       }
       if (img.complete && img.naturalWidth) {
         apply(img.naturalWidth, img.naturalHeight);
@@ -1279,12 +1323,12 @@ function disableAnimation() {
     function unfreezeWallpaper() {
       var ww = document.getElementById('wallpaper-wrapper');
       if (!ww) return;
-      var img = ww.querySelector('img') as HTMLImageElement;
-      if (img) img.style.removeProperty('display');
-      ww.style.removeProperty('background-image');
-      ww.style.removeProperty('background-size');
-      ww.style.removeProperty('background-position');
-      ww.style.removeProperty('background-repeat');
+      // 取消冻结状态，恢复遮挡层（img / LQIP / 过渡遮罩）的可见性
+      ww.classList.remove('editor-frozen');
+      delete ww.dataset.frozenImgSrc;
+      // 移除编辑器内层背景层（背景与模糊已不再设在 ww 上）
+      var layer = ww.querySelector('#editor-bg-layer');
+      if (layer) layer.remove();
     }
     function applyEditorModeLayout() {
       if (editorStyleEl) return;
@@ -1301,6 +1345,16 @@ function disableAnimation() {
         : 'body.editor-page.sticky-navbar #top-row { transform: translateX(-' + Math.round(scrollbarWidth * 0.92) + 'px) !important; transition: none !important; }';
       document.body.classList.add('editor-page');
       document.documentElement.classList.add('editor-page');
+      // 编辑器仅保留两种背景模式：
+      // 来源是纯色背景(none) → 纯色背景；来源是壁纸(横幅/全屏/透明) → 全屏透明(overlay：1.05x+模糊)。
+      // setWallpaperMode 同步写入 data-wallpaper-mode，使后续 page:view 的 fullscreen/banner 布局分支被跳过，杜绝卡顿/错乱。
+      var _srcMode = document.documentElement.getAttribute('data-wallpaper-mode');
+      editorSrcMode = _srcMode;
+      if (_srcMode === 'none') {
+        setWallpaperMode('none');
+      } else {
+        setWallpaperMode('overlay');
+      }
       editorStyleEl = document.createElement('style');
       editorStyleEl.id = 'editor-dynamic-style';
       editorStyleEl.textContent = [
@@ -1318,7 +1372,19 @@ function disableAnimation() {
         'body.editor-page #main-grid ~ div,',
         'body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }',
         'body.editor-page #main-grid > div { max-width: 100% !important; }',
-        'body.editor-page #wallpaper-wrapper { width: 100% !important; max-width: 100% !important; }',
+        // 壁纸层固定全屏定位：编辑器需要一层固定的全屏背景，而主页可能是 banner/fullscreen/overlay 任一模式。
+        // 这里统一用 fixed inset:0 让编辑器壁纸始终是固定全屏层（不再依赖强制 overlay 类提供定位），
+        // 具体的 cover/1.05x/模糊由 freezeWallpaperForEditor 按主页当前模式复现，保证"插入点"与主页一致。
+        // transition:none 关闭过渡：避免进入编辑器时 wrapper 定位变化被 animate 成漂移。
+        'body.editor-page #wallpaper-wrapper { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100vh !important; height: 100lvh !important; left: 0 !important; top: 0 !important; z-index: -1 !important; transition: none !important; }',
+        // 冻结状态下隐藏壁纸层内的遮挡元素（img / LQIP 渐变占位 / 过渡遮罩），
+        // 让 background-image 能正常透出，避免壁纸"消失"
+        'body.editor-page #wallpaper-wrapper.editor-frozen .lqip-placeholder,',
+        'body.editor-page #wallpaper-wrapper.editor-frozen .transition,',
+        'body.editor-page #wallpaper-wrapper.editor-frozen img { display: none !important; }',
+        // 轮播模式下 #banner-images-container 带 bg-black，作为 wrapper 子元素会盖在
+        // background-image 之上导致编辑器背景变黑；冻结时置为透明让背景透出
+        'body.editor-page #wallpaper-wrapper.editor-frozen #banner-images-container { background-color: transparent !important; }',
         'body.editor-page { overflow: hidden !important; }',
         'body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; }',
         'body.editor-page #markdown-input::-webkit-scrollbar { display: none; }',
@@ -1352,8 +1418,10 @@ function disableAnimation() {
         row.style.maxWidth = cachedWidth + 'px';
         row.style.transform = 'translateX(-8px)';
       }
-      // 冻结壁纸视觉状态，和主页保持一致
-      freezeWallpaperForEditor(scrollbarWidth);
+      // 冻结壁纸视觉状态（仅全屏透明模式需要；纯色背景不冻结，wrapper 由 hideAllWallpapers 隐藏透出 body 纯色）
+      if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
+        freezeWallpaperForEditor(scrollbarWidth);
+      }
       // resize 监听
       var _resizeDebounce: ReturnType<typeof setTimeout> | null = null;
       editorResizeHandler = function() {
@@ -1362,14 +1430,14 @@ function disableAnimation() {
           _resizeDebounce = null;
           var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
           var newCached = sessionStorage.getItem('navbar-width');
-          if (editorStyleEl) {
+          if (editorStyleEl && newCached) {
             var rules = editorStyleEl.textContent || '';
-            rules = rules.replace(/calc\(100% - \d+px\)/g, 'calc(100% - ' + sw2 + 'px)');
-            rules = rules.replace(/body\.editor-page::after \{ content: ""; position: fixed; right: 0; top: 0; width: \d+px;/, 'body.editor-page::after { content: ""; position: fixed; right: 0; top: 0; width: ' + sw2 + 'px;');
-            if (newCached) {
-              rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
-            }
+            rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
             editorStyleEl.textContent = rules;
+          }
+          // 窗口尺寸变化后按新的视口宽度重新冻结壁纸（仅全屏透明模式）
+          if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
+            freezeWallpaperForEditor(sw2);
           }
           var r = document.getElementById('top-row');
           if (r && newCached) {
@@ -1381,6 +1449,35 @@ function disableAnimation() {
       };
       window.addEventListener('resize', editorResizeHandler);
     }
+    // [编辑器背景视频] 与正常页面保持一致：播放时隐藏冻结壁纸并去掉模糊，露出清晰视频；停止时恢复冻结壁纸。
+    // 正常页面播放背景视频会淡出壁纸(img opacity:0)，此处用同一思路（隐藏冻结层 + 取消模糊）。
+    function syncEditorBgVideo() {
+      if (!document.body.classList.contains('editor-page')) return;
+      var ww2 = document.getElementById('wallpaper-wrapper');
+      if (!ww2) return;
+      var layer2 = ww2.querySelector('#editor-bg-layer') as HTMLElement | null;
+      var playing = document.documentElement.hasAttribute('data-bg-video-playing');
+      if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
+        if (playing) {
+          // 播放时隐藏内层冻结壁纸，露出清晰的背景视频（视频 #bg-player 在其上方）
+          if (layer2) layer2.style.display = 'none';
+        } else {
+          // 停止时：若内层背景层已被移除则重建（resize 重冻结会复用），否则恢复显示
+          if (!layer2) {
+            // 重新测量滚动条宽度并恢复冻结壁纸
+            var _d = document.createElement('div');
+            _d.style.cssText = 'overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;';
+            document.body.appendChild(_d);
+            var _sbw = _d.offsetWidth - _d.clientWidth;
+            document.body.removeChild(_d);
+            freezeWallpaperForEditor(_sbw);
+          } else {
+            layer2.style.display = '';
+          }
+        }
+      }
+    }
+    window.addEventListener('bg-player-state-change', syncEditorBgVideo);
     function removeEditorModeLayout() {
       document.body.classList.remove('editor-page');
       document.documentElement.classList.remove('editor-page');
@@ -1421,6 +1518,7 @@ function disableAnimation() {
       // [Editor] 每次页面切换后检测编辑器页面（必须在 updateMainGridCols 之后执行，确保 editor-page class 在 body 上）
       if (isEditorPath()) {
         applyEditorModeLayout();
+        syncEditorBgVideo();
       } else {
         removeEditorModeLayout();
       }

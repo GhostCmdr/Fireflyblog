@@ -698,6 +698,18 @@ html[data-wallpaper-mode="fullscreen"] .absolute.w-full.z-30.no-banner-layout {
     transform: scale(1.05);
 }
 
+/* 编辑器冻结壁纸的内层背景层：复刻主页 overlay——背景画在该层、对其做 scale(1.05)+blur，
+   由 #wallpaper-wrapper（.wallpaper-overlay 自带 overflow:hidden）裁掉放大的模糊羽化边缘，
+   从而页面四边不再出现主页没有的白色模糊边。层置于视频之下、不拦截事件。 */
+#editor-bg-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    transform-origin: center;
+    pointer-events: none;
+    will-change: transform;
+}
+
 /* Overlay 模式隐藏 Banner 专属元素 */
 #wallpaper-wrapper.wallpaper-overlay .banner-home-text-overlay,
 #wallpaper-wrapper.wallpaper-overlay .banner-page-title-overlay,
