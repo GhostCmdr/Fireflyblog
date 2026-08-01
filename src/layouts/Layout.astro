@@ -1338,11 +1338,31 @@ function disableAnimation() {
       document.body.appendChild(scrollDiv);
       var scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth;
       document.body.removeChild(scrollDiv);
-      // 读取缓存的导航栏宽度
-      var cachedWidth = sessionStorage.getItem('navbar-width');
-      var navbarCss = cachedWidth
-        ? 'body.editor-page.sticky-navbar #top-row { width: ' + cachedWidth + 'px !important; max-width: ' + cachedWidth + 'px !important; transform: translateX(-8px) !important; transition: none !important; }'
-        : 'body.editor-page.sticky-navbar #top-row { transform: translateX(-' + Math.round(scrollbarWidth * 0.92) + 'px) !important; transition: none !important; }';
+      // 编辑器导航栏与主页"同宽同位置"：
+      // #top-row 在 sticky 下是 position:fixed; left:0; right:0，内层靠 mx-auto + max-w 在这个空间里居中。
+      // 主页有滚动条，可用空间 = innerWidth - sw；编辑器 body overflow:hidden 无滚动条，可用空间 = innerWidth，
+      // 比主页宽 sw，内层居中后整体右移 sw/2。
+      // #top-row 自身带 w-full xl:w-[92vw] max-w-(--page-width) + mx-auto（MainGridLayout.astro:295-301）。
+      // 实测（视口1528/sw15）：主页 #top-row 宽1392 左60；编辑器 宽1400 左64。
+      // 成因：92vw 的 vw 按"含滚动条视口"算(1405.76)，两边相同；主页因有滚动条布局宽只有 clientWidth=1513，
+      // 92% 实际落到 1392 并被 max-w(1400) 之下；编辑器 clientWidth=1528，92vw 超过 1400 被截成 1400 → 宽多8px。
+      // 仅收 left/right 无效：可用空间变了但 vw 不变，max-w 依旧把宽度截在 1400。
+      // 修法分两步（缺一不可）：
+      //  1) 宽度：按主页坐标系复算上限 homeMax = min(--page-width, (innerWidth-sw)*0.92) 设为 max-width。
+      //  2) 位置：left 保持 0、right 收 sw（不是各收 sw/2！滚动条只占右侧，主页包含块起点就是 0；
+      //     对称收缩会把起点推到 sw/2，实测导致右偏 8px）。包含块宽=innerWidth-sw 与主页一致，
+      //     mx-auto 居中结果自然重合。
+      // 两步都做才对齐：只做 2) 宽度仍被 max-w 截断；只做 1) 位置仍偏 sw/2。
+      var _pw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')) || 0;
+      var _pwPx = _pw > 0 && _pw < 200 ? _pw * 16 : _pw; // rem→px（配置为 rem 值时换算）
+      var homeClient = window.innerWidth - scrollbarWidth;
+      // 宽度上限保留亚像素（如 1391.96），不手动取整 —— 实测宽度已与主页精确一致(1392)，取整反而破坏对齐。
+      var homeMax = Math.min(_pwPx || Infinity, homeClient * 0.92);
+      // 居中起点 (1513-1392)/2 = 60.5：主页走 92vw 未触发 max-width，舍入到 60；
+      // 编辑器被 max-width 截断，舍入路径不同得到 61 —— 恒定差 1px。
+      // 不动宽度（已对齐），改为把包含块右界多收 1px 让居中起点下移 0.5 触发向下舍入。
+      var rightInset = scrollbarWidth + ((homeClient - Math.round(homeMax)) % 2 !== 0 ? 1 : 0);
+      var navbarCss = 'body.editor-page.sticky-navbar #top-row { max-width: ' + homeMax + 'px !important; left: 0px !important; right: ' + rightInset + 'px !important; transition: none !important; }';
       document.body.classList.add('editor-page');
       document.documentElement.classList.add('editor-page');
       // 编辑器仅保留两种背景模式：
@@ -1411,12 +1431,16 @@ function disableAnimation() {
         navbarCss
       ].join('\n');
       document.head.appendChild(editorStyleEl);
-      // 导航栏偏移
+      // 导航栏：复算宽度上限 + 右界收 sw（左界保持 0，与主页包含块起点一致）（与 navbarCss 一致）
+      // 注意：必须用 setProperty(..., 'important')。body.sticky-navbar #top-row 里有 `right: 0 !important`，
+      // 内联的**普通**声明打不过 !important（实测 inlineRight=15px 但 computedRight=0px），必须同级对抗。
       var row = document.getElementById('top-row');
-      if (row && cachedWidth) {
-        row.style.width = cachedWidth + 'px';
-        row.style.maxWidth = cachedWidth + 'px';
-        row.style.transform = 'translateX(-8px)';
+      if (row) {
+        row.style.width = '';
+        row.style.transform = '';
+        row.style.setProperty('max-width', homeMax + 'px', 'important');
+        row.style.setProperty('left', '0px', 'important');
+        row.style.setProperty('right', rightInset + 'px', 'important');
       }
       // 冻结壁纸视觉状态（仅全屏透明模式需要；纯色背景不冻结，wrapper 由 hideAllWallpapers 隐藏透出 body 纯色）
       if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
@@ -1429,21 +1453,28 @@ function disableAnimation() {
         _resizeDebounce = setTimeout(function() {
           _resizeDebounce = null;
           var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
-          var newCached = sessionStorage.getItem('navbar-width');
-          if (editorStyleEl && newCached) {
+          // 拖窗时按新视口在"主页坐标系"下实时复算宽度上限与右界收缩量（公式与进入时一致）。
+          var homeClient2 = window.innerWidth - sw2;
+          var homeMax2 = Math.min(_pwPx || Infinity, homeClient2 * 0.92);
+          // 与进入时同一套 1px 奇偶补偿
+          var rightInset2 = sw2 + ((homeClient2 - Math.round(homeMax2)) % 2 !== 0 ? 1 : 0);
+          var r = document.getElementById('top-row');
+          if (r) {
+            r.style.width = '';
+            r.style.transform = '';
+            // 同样必须 important，否则被 body.sticky-navbar #top-row 的 right:0 !important 压制
+            r.style.setProperty('max-width', homeMax2 + 'px', 'important');
+            r.style.setProperty('left', '0px', 'important');
+            r.style.setProperty('right', rightInset2 + 'px', 'important');
+          }
+          if (editorStyleEl) {
             var rules = editorStyleEl.textContent || '';
-            rules = rules.replace(/width: \d+px !important; max-width: \d+px !important;/, 'width: ' + newCached + 'px !important; max-width: ' + newCached + 'px !important;');
+            rules = rules.replace(/max-width: [\d.]+px !important; left: [\d.]+px !important; right: [\d.]+px !important;/, 'max-width: ' + homeMax2 + 'px !important; left: 0px !important; right: ' + rightInset2 + 'px !important;');
             editorStyleEl.textContent = rules;
           }
           // 窗口尺寸变化后按新的视口宽度重新冻结壁纸（仅全屏透明模式）
           if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
             freezeWallpaperForEditor(sw2);
-          }
-          var r = document.getElementById('top-row');
-          if (r && newCached) {
-            r.style.width = newCached + 'px';
-            r.style.maxWidth = newCached + 'px';
-            r.style.transform = 'translateX(-8px)';
           }
         }, 100);
       };
@@ -1500,8 +1531,11 @@ function disableAnimation() {
         // 先禁用过渡动画，避免清除 offset 时导航栏弹动
         row.style.transition = 'none';
         row.style.width = '';
-        row.style.maxWidth = '';
         row.style.transform = '';
+        // 这三个是用 setProperty(..., 'important') 写入的，必须 removeProperty 才能清干净（= '' 对 important 无效）
+        row.style.removeProperty('max-width');
+        row.style.removeProperty('left');
+        row.style.removeProperty('right');
         // 下一帧恢复过渡动画
         requestAnimationFrame(function() {
           row.style.transition = '';
@@ -2018,8 +2052,13 @@ function disableAnimation() {
   function cacheNavbarWidth() {
     var topRow = document.getElementById('top-row');
     if (topRow && !document.body.classList.contains('editor-page')) {
-      var w = topRow.getBoundingClientRect().width;
-      if (w > 0) sessionStorage.setItem('navbar-width', String(Math.round(w)));
+      var rect = topRow.getBoundingClientRect();
+      if (rect.width > 0) {
+        sessionStorage.setItem('navbar-width', String(Math.round(rect.width)));
+        // 缓存主页真实滚动条宽度（仅在主页时机测，100% 准确），供编辑器推算同款左界
+        var sb = window.innerWidth - document.documentElement.clientWidth;
+        sessionStorage.setItem('navbar-sb', String(Math.round(sb)));
+      }
     }
   }
   cacheNavbarWidth();
