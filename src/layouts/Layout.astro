@@ -1356,12 +1356,14 @@ function disableAnimation() {
       var _pw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')) || 0;
       var _pwPx = _pw > 0 && _pw < 200 ? _pw * 16 : _pw; // rem→px（配置为 rem 值时换算）
       var homeClient = window.innerWidth - scrollbarWidth;
-      // 宽度上限保留亚像素（如 1391.96），不手动取整 —— 实测宽度已与主页精确一致(1392)，取整反而破坏对齐。
-      var homeMax = Math.min(_pwPx || Infinity, homeClient * 0.92);
-      // 居中起点 (1513-1392)/2 = 60.5：主页走 92vw 未触发 max-width，舍入到 60；
-      // 编辑器被 max-width 截断，舍入路径不同得到 61 —— 恒定差 1px。
-      // 不动宽度（已对齐），改为把包含块右界多收 1px 让居中起点下移 0.5 触发向下舍入。
-      var rightInset = scrollbarWidth + ((homeClient - Math.round(homeMax)) % 2 !== 0 ? 1 : 0);
+      // 优先读主页缓存的精确宽度（浏览器按主页 vw 路径渲染的实测值），逐位复刻，
+      // 消除 JS 现算 0.01px 浮点差导致的居中后亚像素位移；无缓存（直接进编辑器）时回退现算。
+      var _cachedExact = parseFloat(sessionStorage.getItem('navbar-width-exact') || '');
+      var _usedCache = (_cachedExact > 0);
+      var homeMax = _usedCache ? _cachedExact : Math.min(_pwPx || Infinity, homeClient * 0.92);
+      // 1px 奇偶补偿仅在"无缓存、JS 现算宽度"时启用：修正"编辑器被 max-width 截断 vs 主页走 92vw"的舍入路径差，
+      // 恢复 memory 验证过的稳定对齐；有精确缓存时宽度已与主页逐位一致，无需补偿。
+      var rightInset = _usedCache ? scrollbarWidth : (scrollbarWidth + ((homeClient - Math.round(homeMax)) % 2 !== 0 ? 1 : 0));
       var navbarCss = 'body.editor-page.sticky-navbar #top-row { max-width: ' + homeMax + 'px !important; left: 0px !important; right: ' + rightInset + 'px !important; transition: none !important; }';
       document.body.classList.add('editor-page');
       document.documentElement.classList.add('editor-page');
@@ -1456,7 +1458,7 @@ function disableAnimation() {
           // 拖窗时按新视口在"主页坐标系"下实时复算宽度上限与右界收缩量（公式与进入时一致）。
           var homeClient2 = window.innerWidth - sw2;
           var homeMax2 = Math.min(_pwPx || Infinity, homeClient2 * 0.92);
-          // 与进入时同一套 1px 奇偶补偿
+          // resize 时缓存为旧视口不可用，恒定走 memory 方案：JS 现算 + 1px 奇偶补偿
           var rightInset2 = sw2 + ((homeClient2 - Math.round(homeMax2)) % 2 !== 0 ? 1 : 0);
           var r = document.getElementById('top-row');
           if (r) {
@@ -2055,6 +2057,9 @@ function disableAnimation() {
       var rect = topRow.getBoundingClientRect();
       if (rect.width > 0) {
         sessionStorage.setItem('navbar-width', String(Math.round(rect.width)));
+        // 缓存不取整的精确宽度：主页 top-row 由浏览器按 vw 路径渲染（如 1391.9500…），
+        // 编辑器 JS 现算 1513*0.92=1391.96 有 0.01px 浮点差，逐位复刻此实测值可消除居中后的亚像素位移。
+        sessionStorage.setItem('navbar-width-exact', String(rect.width));
         // 缓存主页真实滚动条宽度（仅在主页时机测，100% 准确），供编辑器推算同款左界
         var sb = window.innerWidth - document.documentElement.clientWidth;
         sessionStorage.setItem('navbar-sb', String(Math.round(sb)));
