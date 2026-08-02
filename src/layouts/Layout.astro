@@ -88,7 +88,7 @@ const siteLang = lang.replace("_", "-");
 ---
 
 <!doctype html>
-<html lang={siteLang} class:list={["bg-(--page-bg) text-[12px] md:text-[14px]"]} data-wallpaper-mode={backgroundWallpaper.mode}>
+<html lang={siteLang} class="bg-(--page-bg) text-[12.6px] md:text-[14.4px]" data-wallpaper-mode={backgroundWallpaper.mode}>
   <head>
     <meta charset="UTF-8" />
     {analyticsConfig?.googleAnalyticsId && (
@@ -1360,7 +1360,10 @@ function disableAnimation() {
       // 消除 JS 现算 0.01px 浮点差导致的居中后亚像素位移；无缓存（直接进编辑器）时回退现算。
       var _cachedExact = parseFloat(sessionStorage.getItem('navbar-width-exact') || '');
       var _usedCache = (_cachedExact > 0);
-      var homeMax = _usedCache ? _cachedExact : Math.min(_pwPx || Infinity, homeClient * 0.92);
+      // 公式必须与主页 CSS 一致：92vw = innerWidth * 0.92（不是 (innerWidth - sw) * 0.92）。
+      // 主页 CSS 的 92vw 基于含滚动条的视口宽度，编辑器 JS 也必须用 window.innerWidth，
+      // 否则在非 100% 缩放下会差 sw * 0.92 ≈ 15.6px。
+      var homeMax = _usedCache ? _cachedExact : Math.min(_pwPx || Infinity, window.innerWidth * 0.92);
       // 1px 奇偶补偿仅在"无缓存、JS 现算宽度"时启用：修正"编辑器被 max-width 截断 vs 主页走 92vw"的舍入路径差，
       // 恢复 memory 验证过的稳定对齐；有精确缓存时宽度已与主页逐位一致，无需补偿。
       var rightInset = _usedCache ? scrollbarWidth : (scrollbarWidth + ((homeClient - Math.round(homeMax)) % 2 !== 0 ? 1 : 0));
@@ -1457,7 +1460,8 @@ function disableAnimation() {
           var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
           // 拖窗时按新视口在"主页坐标系"下实时复算宽度上限与右界收缩量（公式与进入时一致）。
           var homeClient2 = window.innerWidth - sw2;
-          var homeMax2 = Math.min(_pwPx || Infinity, homeClient2 * 0.92);
+          // 公式与主页 CSS 一致：92vw = innerWidth * 0.92
+          var homeMax2 = Math.min(_pwPx || Infinity, window.innerWidth * 0.92);
           // resize 时缓存为旧视口不可用，恒定走 memory 方案：JS 现算 + 1px 奇偶补偿
           var rightInset2 = sw2 + ((homeClient2 - Math.round(homeMax2)) % 2 !== 0 ? 1 : 0);
           var r = document.getElementById('top-row');

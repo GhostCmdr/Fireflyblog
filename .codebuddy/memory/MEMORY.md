@@ -1,7 +1,7 @@
 # 项目长期记忆（xiaomaiFirefly）
 
-> 本文件汇总了编辑器壁纸冻结体系与樱花特效的历次修改，便于跨会话快速回顾。
-> 原始逐日日志见 `.codebuddy/memory/2026-07-30.md` 与 `2026-07-31.md`（已并入本文件，可保留或删除）。
+> 本文件是唯一的记忆主文件，已合并原 `2026-07-31.md` / `2026-08-01.md` 的全部内容。
+> 逐日日志已并入本章节，不再单独保留日期文件。
 
 ---
 
@@ -66,5 +66,88 @@
 
 ---
 
-## 三、已删除/未采纳的方案
-- `fix-editor-wallpaper-offset`（计划文件）：将 `homeVW` 从 `innerWidth` 改回 `innerWidth - scrollbarWidth` 以消左侧 7px 偏移。**状态 pending/未完成**，且与 7-30 已落地的 `homeVW=innerWidth` 方案冲突，未纳入正式代码，故丢弃该计划文件。
+## 三、编辑器导航栏与主页对齐体系（src/layouts/Layout.astro）
+
+> 本章节为导航栏对齐的完整档案（合并自 2026-07-31.md 与 2026-08-01.md）。
+
+### 需求
+编辑器导航栏必须与主页**同宽、同位置、同大小**，且**跨浏览器（Edge+Chrome）一致**；编辑器背景与主页一致、无拉伸、右边自然显示被主页滚动条盖住的图。
+
+### 铁律（违反必踩坑）
+1. **绝不能给 `#top-row` 设 `width`**：它是 `position:fixed` 且 `left:0`+`right:0` 并存，一旦设 `width`，`right` 失效退化为左对齐、居中崩溃。**只能用 `max-width` 限宽**。
+2. **内联 `left`/`right` 必须 `setProperty(...,'important')`**（对抗 `body.sticky-navbar #top-row` 的 `!important`）；清理用 `removeProperty`。
+3. **1px 奇偶补偿不是多余的**：修正"编辑器被 max-width 截断 vs 主页走 92vw"的舍入路径差，无缓存/JS 现算时必须加（`rightInset = sw + ((homeClient - round(homeMax)) % 2 !== 0 ? 1 : 0)`）。
+
+### 根因链条（为什么需要这套对齐）
+- 编辑器 `body{overflow:hidden}` 删滚动条 → 视觉视口（1528）比主页（1513）宽一个滚动条 sw≈15px。
+- `#top-row` 是 `position:fixed; left:0; right:0` + `mx-auto` 居中（sticky 下 `left:0!important; right:0!important`），宽度由 `w-full xl:w-[92vw] max-w-(--page-width)` 决定，`--page-width`=`siteConfig.pageWidth(100)rem=1600px`（Layout.astro:537）远大于主页实测宽、从不截断 → 主页宽度 = `92vw`（基准=视觉视口 1513）。
+- 因编辑器视口宽 15px，导航栏居中后变宽且右移 → 需收右界 + 复算宽度让其与主页对齐。
+
+### 决定性 CSS 事实（踩坑核心）
+`#top-row` 在 sticky 下（Layout.astro:657-664）：
+```css
+body.sticky-navbar #top-row {
+  position: fixed !important; top: 0 !important;
+  left: 0 !important; right: 0 !important;
+}
+```
+`left:0` 与 `right:0` **同时存在**，内层靠 `mx-auto`+`max-w` 居中。**一旦再给 `width`，`right` 被忽略、退化左对齐、居中失效**（早期"方案3"即因此失败）。结论：**绝不设 `width`/`max-width` 之外的 width 属性**。
+
+第二个陷阱：内联普通 `el.style.right='15px'` 优先级低于 `!important` 规则，必须用 `el.style.setProperty('right', v, 'important')` 同级对抗；清理用 `el.style.removeProperty('right')`。
+
+### 走过的弯路（勿重蹈）
+1. **固定 px 宽度快照**（`sessionStorage.navbar-width` 写死 `width/max-width !important`）：`!important` 覆盖响应式规则，拖窗卡死；resize 重测在无滚动条环境读 92vw 比主页宽 15px，越调越偏。
+2. **仅 translateX 偏移、不写宽度**（`translateX(-sw*0.92)`）：平移≠缩宽，宽度天然多 sw，单纯平移无法同时修正宽度和左界。
+3. **实时算宽 `width=innerWidth-sw` + `translateX(-sw/2)`**：左右不对称、居中失效。
+4. **只收右界 `right: sw`**（无补偿）：vw 不受 right 影响，仍偏。
+5. **左右各收 `sw/2`**：宽度纹丝不动（92vw 按含滚动条视口算不变）。
+6. **复算 max-width + 左右各收 `sw/2`**：宽度对上但位置右偏 sw/2（滚动条只占右侧，起点应留 0）。
+7. **只收右界 + 复算 max-width**：宽度对上，但左界差 1px（亚像素舍入，结构性）。
+8. **去掉 Math.round 保留亚像素**：仍是 61，舍入路径不同绕不开。
+9. **`width:92%` 方案（曾误提，已废弃）**：`%` 相对包含块在编辑器无滚动条时为整窗 1528，算成 1405≠主页 1392；且 fixed 元素设 width 会让 right 失效。**死胡同，绝不再用。**
+
+### ✅ 最终方案（复算 max-width + 只收右界 + 1px 奇偶补偿）
+三步缺一不可：
+- `homeClient = innerWidth - sw`（主页布局可用宽）
+- `homeMax = min(--page-width, homeClient * 0.92)` → 设为 `max-width`（**不取整**，保留亚像素）
+- `rightInset = sw + ((homeClient - round(homeMax)) % 2 !== 0 ? 1 : 0)` → 设为 `right`
+- `left: 0`（滚动条只占右侧，起点必须留 0）
+- **不设** `width`
+- `--page-width` 读取：`parseFloat(getComputedStyle(documentElement).getPropertyValue('--page-width'))`，值 < 200 视为 rem 需 ×16 换算。
+- 1px 补偿原理：`包含块宽 - 内容宽` 为奇数时居中落在 `.5`，编辑器侧向上舍入；右界多收 1px 使包含块变偶数差，居中起点下压 0.5 触发向下舍入，与主页一致。差值偶数时不补偿。
+- 宽度与补偿量每次实时算（进入 + resize），随视口自适应，非快照。
+- 验算（视口1528/sw15）：`1513-1392=121`(奇) → right=16 → 包含块 1512 → `(1512-1392)/2=60` ✓
+- 实测验证（视口1528）：主页/编辑器 `#top-row` 均 `60/1452/1392` ✅，`#navbar-wrapper`/`#navbar` 均 `74/1438/1364` ✅
+
+### 后续演进：精确宽度缓存 + Chrome 修复（8-01 定稿）
+1. **0.4px 整体位移**：主页 `#top-row` 宽度由浏览器按 vw 渲染（1391.950073…），编辑器 JS 现算 `1513*0.92=1391.96` 差 0.01px；叠加过时 1px 补偿把左界推到 60.025 → 真实 0.4px 位移（`btnLeft` 342.000 vs 341.600，但 `realGap=10.500` 两页一致）。修复：`cacheNavbarWidth` 新增缓存不取整精确宽度 `navbar-width-exact`；`applyEditorModeLayout` 优先读它做 `max-width`；并去掉进入/resize 的 1px 补偿。
+2. **Chrome 崩**：上述改法依赖 `navbar-width-exact` 缓存（仅主页写入，`sessionStorage` 不跨浏览器），Chrome 直接进编辑器无缓存、回退 JS 现算 + **无补偿** → 比原方案偏更多。修复：
+   - `applyEditorModeLayout`：`_usedCache=(_cachedExact>0)`；`rightInset` 分支——**有缓存**=`scrollbarWidth`（精确宽度已逐位一致，无需补偿）；**无缓存**=`scrollbarWidth + 1px补偿`（恢复 memory 稳定方案）。
+   - `editorResizeHandler`：resize 无缓存，恒定 JS 现算 + `rightInset2 = sw2 + 1px补偿`。
+   - 方案本质：**回到验证过的稳定方案（JS 现算 + 1px 补偿 + 不设 width）作兜底，仅在有精确缓存时用精确宽度增强精度。** 跨浏览器稳定靠前者，精度靠后者。
+3. **验证通过**：Chrome 直接进编辑器 `topRow left=60.838 width=1399.313` 与主页**逐位一致**；Edge 同水平。按钮 `realGap=10.500` 两页一致。跨浏览器偏移已修复。
+
+### 最终定性：导航栏"间距变化"感知 = 亚像素抗锯齿（非 bug）
+1. 按钮内"图标↔文字间距" `realGap=10.500`、`htmlFontSize=14px`、`btnFontSize=14px` 两页**完全一致**——间距从未变化。
+2. 用户实测"**网页缩放到某程度就正常**"——亚像素渲染铁证（真间距变化不会有此现象）。
+3. 用户"87% 缩放参数"经 `getComputedStyle(html).zoom=1` 证实**不是 CSS zoom**，而是**根字体 14px**（`16×0.875`，来自浏览器字体设置，项目代码里未设根字体）。
+4. 真凶：`devicePixelRatio=1.25`（Windows 系统显示缩放 125%，`visualViewport.scale=1` 排除浏览器页面 zoom）× 导航栏 vw 小数位置（`left=60.838×1.25=76.05` 物理像素非整数）→ 文字/图标边缘抗锯齿发虚 → 看着像"间距变了"。
+5. 根字体实验（13/15px）更正：根字体虽不影响导航栏 vw 整体位置，但**按钮内部图标/文字/`gap`/`mr` 是 rem**，随根字体缩放改变物理像素落点——用户改 13px 后大部分按钮"间距变化"感消失（只剩"留言"），证明根字体确实影响按钮内部亚像素落点。但"凑巧压网格"**不稳定**（换视口/zoom/设备落点又变），只是验证手段，非可靠修复。已撤销 `main.css` 的 `font-size` 实验（`html` 回到仅 `scroll-behavior`）。**项目代码全程未设根字体/缩放**。
+6. 关键认知：根字体 ≠ 网页缩放（CSS `zoom` 同时缩放 vw/px/rem 方能改变映射；根字体只缩 rem）。这是系统渲染层正常现象，非代码 bug；布局层面 topRow 逐位一致、跨浏览器一致、间距实测一致，已无可改之处。应对：用户侧用浏览器 zoom 调到清晰档位，**不应为此改代码或根字体**。devicePixelRatio=1.25 是系统/硬件层，代码无法干预。
+
+### 背景（与导航栏独立，勿动）
+`freezeWallpaperForEditor` 用 `homeVW = window.innerWidth` 整窗 cover，背景铺满整窗、右边露出主页被滚动条盖住的图。
+
+### 代码改动位置（Layout.astro）
+- **~1345-1358** `navbarCss`：计算 `_pwPx`/`homeMax`，生成 `#top-row { max-width:<homeMax>px !important; left:0px !important; right:<sw>px !important; transition:none !important; }`
+- **~1360** `applyEditorModeLayout`：`_cachedExact`/`_usedCache` 分支决定 `rightInset`。
+- **~1422-1430** 进入编辑器内联样式：清 `width/transform`，设 `maxWidth`、`left='0px'`、`right=sw+'px'`（important）。
+- **~1447-1462** `editorResizeHandler`：用 `sw2` 复算 `homeMax2`，写回内联；`rightInset2 = sw2 + 1px补偿`。
+- **~1517-1530** `removeEditorModeLayout`：已清 `width/maxWidth/transform/left/right`，无需改动。
+- **~2052** `cacheNavbarWidth`：写 `navbar-width`（取整）与 `navbar-width-exact`（不取整）。
+
+---
+
+## 四、已删除/未采纳的方案
+- `fix-editor-wallpaper-offset`（计划文件）：将 `homeVW` 从 `innerWidth` 改回 `innerWidth - scrollbarWidth` 以消左侧 7px 偏移。**状态 pending/未完成**，且与已落地的 `homeVW=innerWidth` 方案冲突，未纳入正式代码，故丢弃该计划文件。
+- 导航栏"固定 px 宽度快照""仅 translateX""实时算宽+translateX""左右各收 sw/2""`width:92%`"等方案均因破坏居中或宽度对不齐而废弃（详见第三章弯路清单）。
