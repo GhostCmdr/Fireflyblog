@@ -551,6 +551,12 @@ function initEditor() {
     _mdWorker = new Worker('/marked-worker.js');
     _mdWorker.onmessage = function(e) {
       var html = e.data;
+      // 保存 textarea 滚动位置，防止 preview innerHTML 更新触发 reflow 时被重置
+      var savedScrollTop = textarea.scrollTop;
+      var savedSelStart = textarea.selectionStart;
+      var savedSelEnd = textarea.selectionEnd;
+      // 保存预览区滚动位置，避免 innerHTML 重写后高度变化导致预览页跳动/下滑
+      var savedPreviewScroll = preview.scrollTop;
       // 主线程补处理：Worker 只做基础 markdown→HTML，代码高亮和列表样式在主线程完成
       if (html && typeof hljs !== 'undefined') {
         var tmp = document.createElement('div');
@@ -564,6 +570,24 @@ function initEditor() {
       }
       preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
       if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
+      // 恢复预览区滚动位置：innerHTML 重写后浏览器尚未完成 layout，
+      // 立即赋值 scrollTop 会因新高度未生效而失效/被 clamp，故延迟到下一帧恢复。
+      // 关键：html 全局 scroll-behavior:smooth 会继承到 preview-content，
+      // 导致 scrollTop 赋值变成平滑滚动动画（即"跳动/下滑"观感），
+      // 因此恢复前临时关闭 smooth，恢复完再还原。
+      requestAnimationFrame(function() {
+        var prevBehavior = preview.style.scrollBehavior;
+        preview.style.scrollBehavior = 'auto';
+        preview.scrollTop = savedPreviewScroll;
+        preview.style.scrollBehavior = prevBehavior;
+      });
+      // 恢复 textarea 滚动位置和选区（textarea 也临时关闭 smooth，避免同样动画）
+      var taBehavior = textarea.style.scrollBehavior;
+      textarea.style.scrollBehavior = 'auto';
+      textarea.scrollTop = savedScrollTop;
+      textarea.style.scrollBehavior = taBehavior;
+      textarea.selectionStart = savedSelStart;
+      textarea.selectionEnd = savedSelEnd;
     };
     _mdWorker.onerror = function() { _workerReady = false; };
     _workerReady = true;
@@ -587,16 +611,28 @@ function initEditor() {
       var cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
       var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;margin:16px 0;">';
       images.forEach(function(img) {
+        var isResolvable = imageMap[img.src] || /^https?:\/\//.test(img.src) || img.src.indexOf('data:') === 0;
         html += '<div style="text-align:center;">';
-        html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;" />';
+        if (!isResolvable) {
+          html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;opacity:0.6;font-size:12px;text-align:center;">图片不可用</div>';
+        } else {
+          html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));object-fit:cover;" />';
+        }
         if (img.alt) html += '<p style="font-size:12px;color:#999;margin:4px 0 0;">' + img.alt + '</p>';
         html += '</div>';
       });
       html += '</div>';
       return html;
     });
+    // 单图：图片真实可加载（path 在 imageMap 中，通常是粘贴进来的 Base64）才渲染 <img>；
+    // 否则（编辑器里加载不到的相对路径，如 ./images/xxx）渲染成静态灰色占位 div，
+    // 避免每次 innerHTML 重建都重新请求 404 导致占位框闪烁/跳动
     md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(match, alt, src) {
-      var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;border-radius:8px;" />';
+      var isResolvable = imageMap[src] || /^https?:\/\//.test(src) || src.indexOf('data:') === 0;
+      if (!isResolvable) {
+        return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;">图片不可用：' + (alt || src) + '</div>';
+      }
+      var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;border-radius:8px;min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));object-fit:cover;" />';
       if (alt) imgHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
       return imgHtml;
     });
@@ -608,8 +644,14 @@ function initEditor() {
       var html = '';
       try { html = (typeof marked !== 'undefined') ? marked.parse(md) : md.replace(/\n/g, '<br>'); }
       catch(e) { html = '<p style="color:red">渲染错误: ' + e.message + '</p>'; }
+      var savedPreviewScrollFallback = preview.scrollTop;
       preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
       if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
+      // 临时关闭 smooth，避免 scrollTop 恢复变成平滑动画（跳动观感）
+      var fbBehavior = preview.style.scrollBehavior;
+      preview.style.scrollBehavior = 'auto';
+      preview.scrollTop = savedPreviewScrollFallback;
+      preview.style.scrollBehavior = fbBehavior;
     }
     updateCounts(md);
   }
@@ -991,25 +1033,30 @@ function initEditor() {
       var startScrollTop = 0;
 
       function updateThumb() {
+        // 批量读取布局属性（一次性 reflow）
         var scrollH = target.scrollHeight;
         var clientH = target.clientHeight;
+        var scrollTop = target.scrollTop;
         if (scrollH <= clientH) { bar.style.display = 'none'; return; }
-        bar.style.display = '';
+        // 批量写入样式（一次性 reflow）
         var ratio = clientH / scrollH;
         var thumbH = Math.max(ratio * clientH, 20);
         var maxTop = clientH - thumbH;
-        var scrollRatio = target.scrollTop / (scrollH - clientH);
+        var scrollRatio = scrollTop / (scrollH - clientH);
+        bar.style.display = '';
         thumb.style.height = thumbH + 'px';
         thumb.style.top = (scrollRatio * maxTop) + 'px';
       }
 
-      // [Editor] 自定义滚动条：用 RAF 节流，避免高频 scroll 事件重复计算布局属性
+      // [Editor] 自定义滚动条：用双重 RAF 节流，确保在浏览器完成滚动和布局后再更新 thumb，避免 reflow 导致编辑区弹跳
       var _thumbRaf = null;
       target.addEventListener('scroll', function() {
         if (_thumbRaf) return;
         _thumbRaf = requestAnimationFrame(function() {
-          _thumbRaf = null;
-          updateThumb();
+          requestAnimationFrame(function() {
+            _thumbRaf = null;
+            updateThumb();
+          });
         });
       });
       updateThumb();

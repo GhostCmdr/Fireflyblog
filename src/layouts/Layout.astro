@@ -1526,6 +1526,16 @@ function disableAnimation() {
         clearInterval(window.__editorAutosaveTimer);
         window.__editorAutosaveTimer = null;
       }
+      // 移除 ESC 全局监听器
+      if (window.__editorKeydownEsc) {
+        document.removeEventListener('keydown', window.__editorKeydownEsc);
+        window.__editorKeydownEsc = null;
+      }
+      // 终止 Markdown 预览 Web Worker
+      if (window.__editorMdWorker) {
+        window.__editorMdWorker.terminate();
+        window.__editorMdWorker = null;
+      }
       // 清理编辑器全局状态（释放 Base64 图片数据占用的内存）
       window.__editorImageMap = {};
       window.__editorCoverValue = '';
