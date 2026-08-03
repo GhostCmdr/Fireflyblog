@@ -16,6 +16,7 @@ export interface TOCConfig {
 export class TOCManager {
 	private tocItems: HTMLElement[] = [];
 	private observer: IntersectionObserver | null = null;
+	private visibleHeadingIds: Set<string> = new Set();
 	private minDepth = 10;
 	private maxLevel: number;
 	private scrollTimeout: number | null = null;
@@ -214,46 +215,38 @@ export class TOCManager {
 	}
 
 	/**
-	 * 获取可见的标题ID
+	 * 获取元素到文档顶部的绝对偏移（累加 offsetParent 链，不触发 reflow）
+	 */
+	private getAbsoluteOffsetTop(el: HTMLElement): number {
+		let top = 0;
+		let current: HTMLElement | null = el;
+		while (current) {
+			top += current.offsetTop;
+			current = current.offsetParent as HTMLElement | null;
+		}
+		return top;
+	}
+
+	/**
+	 * 获取可见的标题ID（使用 IntersectionObserver 维护的集合，无 reflow）
 	 */
 	private getVisibleHeadingIds(): string[] {
-		const headings = this.getAllHeadings();
-		const visibleHeadingIds: string[] = [];
-
-		headings.forEach((heading) => {
-			if (heading.id) {
-				const rect = heading.getBoundingClientRect();
-				const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
-
-				if (isVisible) {
-					visibleHeadingIds.push(heading.id);
-				}
-			}
-		});
-
-		// 如果没有可见标题，选择最接近屏幕顶部的标题
-		if (visibleHeadingIds.length === 0 && headings.length > 0) {
-			let closestHeading: string | null = null;
-			let minDistance = Number.POSITIVE_INFINITY;
-
-			headings.forEach((heading) => {
-				if (heading.id) {
-					const rect = heading.getBoundingClientRect();
-					const distance = Math.abs(rect.top);
-
-					if (distance < minDistance) {
-						minDistance = distance;
-						closestHeading = heading.id;
-					}
-				}
-			});
-
-			if (closestHeading) {
-				visibleHeadingIds.push(closestHeading);
-			}
+		if (this.visibleHeadingIds.size > 0) {
+			return Array.from(this.visibleHeadingIds);
 		}
-
-		return visibleHeadingIds;
+		// 没有可见标题时，用 offsetTop 链（不触发 reflow）找最近的
+		const headings = this.getAllHeadings();
+		if (headings.length === 0) return [];
+		const scrollTop = window.scrollY;
+		let closestId: string | null = null;
+		let minDist = Infinity;
+		headings.forEach((h) => {
+			if (!h.id) return;
+			const absTop = this.getAbsoluteOffsetTop(h);
+			const dist = Math.abs(absTop - scrollTop - this.scrollOffset);
+			if (dist < minDist) { minDist = dist; closestId = h.id; }
+		});
+		return closestId ? [closestId] : [];
 	}
 
 	/**
@@ -387,7 +380,7 @@ export class TOCManager {
 	}
 
 	/**
-	 * 设置IntersectionObserver
+	 * 设置IntersectionObserver（利用 entries 直接跟踪可见标题，避免遍历全部 heading）
 	 */
 	public setupObserver(): void {
 		const headings = this.getAllHeadings();
@@ -396,8 +389,19 @@ export class TOCManager {
 			this.observer.disconnect();
 		}
 
+		this.visibleHeadingIds.clear();
+
 		this.observer = new IntersectionObserver(
-			() => {
+			(entries) => {
+				for (const entry of entries) {
+					const id = (entry.target as HTMLElement).id;
+					if (!id) continue;
+					if (entry.isIntersecting) {
+						this.visibleHeadingIds.add(id);
+					} else {
+						this.visibleHeadingIds.delete(id);
+					}
+				}
 				this.updateActiveState();
 			},
 			{
