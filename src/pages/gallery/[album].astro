@@ -584,7 +584,7 @@ const coverLqipProps = cover
         if (selectedFiles.length === 0) return;
 
         const token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-        const repo = localStorage.getItem('gh-editor-repo') || 'Ghost-Insititue/Fireflyblog';
+        const repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
 
         if (!token) {
           showStatus('❌ 请先在编辑器页面配置 GitHub Token（点击「发布到 GitHub」设置）', 'error');
@@ -684,7 +684,7 @@ const coverLqipProps = cover
         if (!newId) { showEditStatus('请输入相册 ID', 'error'); return; }
 
         const token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-        const repo = localStorage.getItem('gh-editor-repo') || 'Ghost-Insititue/Fireflyblog';
+        const repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
         if (!token) { showEditStatus('请先在编辑器页面配置 GitHub Token', 'error'); return; }
 
         document.getElementById('edit-confirm').disabled = true;
@@ -759,7 +759,7 @@ const coverLqipProps = cover
         deleteBtn.dataset.bound = 'true';
         document.getElementById('delete-confirm').addEventListener('click', async () => {
           const token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-          const repo = localStorage.getItem('gh-editor-repo') || 'Ghost-Insititue/Fireflyblog';
+          const repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
           if (!token) { showDeleteStatus('请先在编辑器页面配置 GitHub Token', 'error'); return; }
           document.getElementById('delete-confirm').disabled = true;
           document.getElementById('delete-confirm').textContent = '删除中...';
@@ -1111,7 +1111,7 @@ const coverLqipProps = cover
       // 删除照片（通过 GitHub API）
       async function deletePhotos(photoSrcs) {
         const token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-        const repo = localStorage.getItem('gh-editor-repo') || 'Ghost-Insititue/Fireflyblog';
+        const repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
         if (!token) { alert('请先在编辑器页面配置 GitHub Token'); return; }
 
         // 显示进度

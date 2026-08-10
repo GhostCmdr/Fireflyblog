@@ -36,7 +36,7 @@ export const profileConfig: ProfileConfig = {
 		{
 			name: "GitHub",
 			icon: "fa7-brands:github",
-			url: "https://github.com/Ghost-Insititue",
+			url: "https://github.com/GhostCmdr",
 			showName: false,
 		},
 		/*

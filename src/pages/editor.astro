@@ -1834,7 +1834,7 @@ function initEditor() {
     var repoEl = document.getElementById('gh-repo-panel');
     var branchEl = document.getElementById('gh-branch-panel');
     var token = (tokenEl ? tokenEl.value : '') || localStorage.getItem('gh-token') || '';
-    var repo = (repoEl ? repoEl.value : '') || localStorage.getItem('gh-repo') || 'Ghost-Insititue/Fireflyblog';
+    var repo = (repoEl ? repoEl.value : '') || localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
     var branch = (branchEl ? branchEl.value : '') || localStorage.getItem('gh-branch') || 'main';
     var title = document.getElementById('post-title').value;
     var textarea = document.getElementById('markdown-input');
@@ -2189,7 +2189,7 @@ function initEditor() {
 
   function cloudGetGithubConfig() {
     var token = localStorage.getItem('gh-token') || '';
-    var repo = localStorage.getItem('gh-repo') || 'Ghost-Insititue/Fireflyblog';
+    var repo = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
     var branch = localStorage.getItem('gh-branch') || 'main';
     return { token: token, repo: repo, branch: branch };
   }

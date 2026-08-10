@@ -1237,8 +1237,6 @@ function disableAnimation() {
     }
     // 计算滚动条区域的背景图片 CSS（可复用，壁纸模式切换时重新计算）
 
-    // 编辑器背景模糊/透明度所跟随的主页来源模式（仅 'overlay' 才模糊+半透明，其余模式不额外模糊）
-    var editorSrcMode: string | null = null;
     // 冻结壁纸视觉状态：编辑器页面壁纸和主页保持一致，右边多出滚动条宽度的区域自然露出
     function freezeWallpaperForEditor(scrollbarWidth: number) {
       var ww = document.getElementById('wallpaper-wrapper');
@@ -1270,12 +1268,18 @@ function disableAnimation() {
         var coverScale = Math.max(homeVW / iw, homeVH / ih);
         // 编辑器对壁纸来源恒定使用「全屏透明」(overlay) 的布局：cover 后再放大 1.05x，
         // 与主页全屏壁纸形成 1.05 倍关系；不再按来源模式区分布局，避免复现 fullscreen/banner 带来的卡顿/错乱。
-        // 1.05x 由内层 #editor-bg-layer 的 transform:scale(1.05) 提供（而非烘焙进 background-size），
-        // 放大的模糊羽化边缘被 #wallpaper-wrapper（.wallpaper-overlay 自带 overflow:hidden）裁掉，
-        // 与主页 overlay「放大 1.05 的 img 被裁切」机制完全等价，页面四边不再出现白色模糊边。
+        // 1.05x 直接烘焙进 background-size（sw*1.05 × sh*1.05），不再用 transform:scale(1.05)。
+        // 原因：transform 方案依赖 #editor-bg-layer 的 will-change:transform 预留独立合成层，
+        // 而编辑期内背景静止（仅缩放、无动画），持久 will-change 会迫使浏览器长期保留全屏合成层，
+        // 每次文本输入/选区变化时该模糊层被迫重参与合成，造成编辑器输入延迟（仅 overlay 来源有模糊、故仅此路径卡）。
+        // 改用 background-size 烘焙后无需 transform/will-change，放大的模糊羽化边缘仍由
+        // #wallpaper-wrapper（.wallpaper-overlay 自带 overflow:hidden）裁掉，与主页 overlay 机制完全等价，四边不再出现白色模糊边。
         // 注意：模糊度不恒定——跟随主页来源模式（见下方 layer.style.filter），仅主页本身是 overlay 才模糊，避免比主页更糊。
         var sw = Math.round(iw * coverScale);
         var sh = Math.round(ih * coverScale);
+        // 1.05x 放大烘焙进背景尺寸（替代 transform:scale），与主页 overlay img 的 1.05 放大视觉一致
+        var swScaled = Math.round(sw * 1.05);
+        var shScaled = Math.round(sh * 1.05);
         // 复现主页 img 真实的 object-position（默认 center），精确对齐"插入点"，
         // 避免硬编码 center 导致与主页起始位置不一致、切换产生视觉位移/移动。
         var opRaw = (getComputedStyle(img).objectPosition || '50% 50%').trim().split(/\s+/);
@@ -1291,8 +1295,9 @@ function disableAnimation() {
         var pY = parsePos(opRaw[1] || '50%');
         // object-position 百分比语义与 background-position 一致：偏移 = pct ? p*(容器-图片) : 绝对px；
         // 容器取主页实际渲染尺寸（homeVW/homeVH），使编辑器背景图左上角与主页完全一致（固定四角插入点）。
-        var bgX = pX.pct ? pX.v * (homeVW - sw) : pX.v;
-        var bgY = pY.pct ? pY.v * (homeVH - sh) : pY.v;
+        // 注意：图片尺寸用放大后的 swScaled/shScaled，使 1.05x 放大下的"插入点"与主页 cover+1.05 完全一致。
+        var bgX = pX.pct ? pX.v * (homeVW - swScaled) : pX.v;
+        var bgY = pY.pct ? pY.v * (homeVH - shScaled) : pY.v;
         // 标记冻结状态：由 CSS 把 wrapper 内的 img / LQIP 渐变占位 / 过渡遮罩一并隐藏，
         // 否则这些 absolute inset-0 的遮挡层会盖在 background-image 之上（LQIP 为不透明渐变），
         // 导致壁纸看起来"消失"
@@ -1306,13 +1311,19 @@ function disableAnimation() {
           ww.insertBefore(layer, ww.firstChild);
         }
         layer.style.backgroundImage = 'url(' + img.src + ')';
-        layer.style.backgroundSize = sw + 'px ' + sh + 'px';
+        layer.style.backgroundSize = swScaled + 'px ' + shScaled + 'px';
         layer.style.backgroundPosition = bgX + 'px ' + bgY + 'px';
         layer.style.backgroundRepeat = 'no-repeat';
-        layer.style.transform = 'scale(1.05)';
-        // 模糊跟随主页来源模式：仅主页本身是"全屏透明(overlay)"时才模糊，与主页一致；
-        // 全屏/横幅主页本身无模糊，编辑器不再额外加模糊（避免比主页更模糊）。透明度仍由 wallpaper-overlay 类提供（保持"全屏透明"观感）
-        layer.style.filter = editorSrcMode === 'overlay' ? 'blur(var(--overlay-blur, 0px))' : 'none';
+        // 1.05x 已由 background-size 烘焙，无需 transform（避免持久合成层导致的编辑器输入卡顿）
+        layer.style.transform = 'none';
+        // 编辑器模糊统一跟随全局主题设置（--overlay-blur），不再按主页来源 mode 二选一：
+        // 只要进入了 overlay 布局（壁纸/透明来源 freeze 出 #editor-bg-layer），就读取全局模糊变量，
+        // 导航栏/设置面板调整模糊度时编辑器自动同步，与其他页面完全一致（满足"模糊跟随主题设置"需求）。
+        // 主页是纯色(none) 时根本不 freeze、无 layer，模糊对其无意义（保持纯色背景）。
+        // 透明度仍由 wallpaper-overlay 类提供（保持"全屏透明"观感）。
+        // 注：1.05x 已由 background-size 烘焙 + 已移除 will-change，模糊层不再是持久合成层，
+        // 调模糊不会重新引入之前编辑器输入卡顿。
+        layer.style.filter = 'blur(var(--overlay-blur, 0px))';
       }
       if (img.complete && img.naturalWidth) {
         apply(img.naturalWidth, img.naturalHeight);
@@ -1374,7 +1385,6 @@ function disableAnimation() {
       // 来源是纯色背景(none) → 纯色背景；来源是壁纸(横幅/全屏/透明) → 全屏透明(overlay：1.05x+模糊)。
       // setWallpaperMode 同步写入 data-wallpaper-mode，使后续 page:view 的 fullscreen/banner 布局分支被跳过，杜绝卡顿/错乱。
       var _srcMode = document.documentElement.getAttribute('data-wallpaper-mode');
-      editorSrcMode = _srcMode;
       if (_srcMode === 'none') {
         setWallpaperMode('none');
       } else {

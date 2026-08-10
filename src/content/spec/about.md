@@ -23,7 +23,7 @@
 
 ## 📬 联系方式
 
-- **GitHub：** [Ghost-Insititue](https://github.com/Ghost-Insititue)
+- **GitHub：** [GhostCmdr](https://github.com/GhostCmdr)
 - **Gitee：** [ghostwebdata](https://gitee.com/ghostwebdata)
 - **CSDN：** [qq_49525131](https://blog.csdn.net/qq_49525131?type=blog)
 

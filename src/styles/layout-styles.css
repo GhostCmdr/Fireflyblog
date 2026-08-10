@@ -700,14 +700,16 @@ html[data-wallpaper-mode="fullscreen"] .absolute.w-full.z-30.no-banner-layout {
 
 /* 编辑器冻结壁纸的内层背景层：复刻主页 overlay——背景画在该层、对其做 scale(1.05)+blur，
    由 #wallpaper-wrapper（.wallpaper-overlay 自带 overflow:hidden）裁掉放大的模糊羽化边缘，
-   从而页面四边不再出现主页没有的白色模糊边。层置于视频之下、不拦截事件。 */
+   从而页面四边不再出现主页没有的白色模糊边。层置于视频之下、不拦截事件。
+   注意：不声明 will-change。编辑期内该层静止（1.05x 放大由 background-size 烘焙，非动画），
+   持久 will-change 会迫使浏览器长期保留全屏独立合成层，在每次文本输入/选区时被迫重参与合成，
+   造成编辑器输入延迟（仅主页 overlay 来源时出现，壁纸来源无模糊故无此问题）。去掉后消除该开销。 */
 #editor-bg-layer {
     position: absolute;
     inset: 0;
     z-index: 0;
     transform-origin: center;
     pointer-events: none;
-    will-change: transform;
 }
 
 /* Overlay 模式隐藏 Banner 专属元素 */

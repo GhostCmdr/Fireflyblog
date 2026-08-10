@@ -36,7 +36,7 @@ export const friendsConfig: FriendLink[] = [
 		title: "GitHub",
 		imgurl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
 		desc: "小埋团长的主页",
-		siteurl: "https://github.com/Ghost-Insititue",
+		siteurl: "https://github.com/GhostCmdr",
 		tags: ["Web"],
 		weight: 9,
 		enabled: true,

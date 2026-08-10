@@ -1,6 +1,0 @@
-{
-  "$schema": "https://mimo.xiaomi.com/mimocode/config.json",
-  "checkpoint": {
-    "thresholds": ["20%", "35%", "50%", "65%", "80%"]
-  }
-}

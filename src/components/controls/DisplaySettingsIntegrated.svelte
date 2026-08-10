@@ -471,6 +471,11 @@ onMount(() => {
 	const handleWallpaperModeChange = (event: Event) => {
 		const customEvent = event as CustomEvent<{ mode: WALLPAPER_MODE }>;
 		wallpaperMode = customEvent.detail.mode;
+		// 切换到 overlay 时透明设置面板会从 DOM 中重新插入，必须重新计算进度条
+		// 的 --range-progress 样式，否则进度条会停留在默认值 50%，与真实数值不符
+		if (customEvent.detail.mode === WALLPAPER_OVERLAY) {
+			requestAnimationFrame(refreshAllRangeProgress);
+		}
 	};
 
 	window.addEventListener("wallpaperModeChange", handleWallpaperModeChange);

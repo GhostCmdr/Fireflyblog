@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-brightgreen)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D9-blue)](https://pnpm.io/)
-[![License](https://img.shields.io/github/license/Ghost-Insititue/Fireflyblog)](LICENSE)
+[![License](https://img.shields.io/github/license/GhostCmdr/Fireflyblog)](LICENSE)
 
 **[🖥️ 在线预览](https://xiaomaisos.me)** · **[📝 原版文档](https://docs-firefly.cuteleaf.cn/)** · **[🍀 原版仓库](https://github.com/CuteLeaf/Firefly)** · **[📖 English](README.en.md)**
 
@@ -117,7 +117,7 @@ node scripts/generate-music-playlist.mjs
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Ghost-Insititue/Fireflyblog.git
+git clone https://github.com/GhostCmdr/Fireflyblog.git
 cd Fireflyblog
 
 # 2. 安装依赖

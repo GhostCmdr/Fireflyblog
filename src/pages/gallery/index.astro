@@ -538,7 +538,7 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
         }
 
         var token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-        var repo = localStorage.getItem('gh-editor-repo') || 'Ghost-Insititue/Fireflyblog';
+        var repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
         if (!token) {
           showStatus('请先在编辑器页面配置 GitHub Token（点击「发布到 GitHub」设置）', 'error');
           return;

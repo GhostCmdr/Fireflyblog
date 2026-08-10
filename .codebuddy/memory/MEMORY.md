@@ -23,16 +23,22 @@
 | 切编辑器换图 | 轮播模式 freeze 取了 slide 0，主页已转到其他图 | img 选择器优先抓 `.slide-item.active.hidden.lg\:block img` |
 | 右侧白边 | cover 用 `homeVW=innerWidth-scrollbarWidth` 但 wrapper=100%，右侧无图透白 | `homeVW` 改 `window.innerWidth`（代价：左侧约 7px 偏移） |
 | 四边白色模糊边 | `filter:blur` 直接加在 wrapper（边界=视口）上，羽化暴露 | 见下"#editor-bg-layer 方案" |
-| 比主页更糊 | 主页 fullscreen 无模糊，编辑器被强制 overlay 天生 blur | `editorSrcMode` 跟随主页 `_srcMode`，仅主页本身 overlay 才模糊 |
+| 比主页更糊 | 主页 fullscreen 无模糊，编辑器被强制 overlay 天生 blur | 早期 `editorSrcMode` 跟随主页来源二选一；**2026-08-04 改为统一跟随全局 `--overlay-blur`**（见 3b），不再按来源区分 |
 | 漂移/位移 | wrapper 上 Tailwind `transition duration-700` 动画化定位切换；强制 setWallpaperMode('overlay') 与主页模式不一致 | 编辑器加 `transition: none !important`；改为精确复现主页当前模式，不再强制 overlay |
 | 左右不一致 | cover 硬编码 `object-position:center`，与主页自定义锚点不符 | 读取主页 img 真实 `object-position` 计算 `background-position` |
 
 ### 3. `#editor-bg-layer` 方案（消除四边白边）— 已落地
-- 新增内层 `#editor-bg-layer`（CSS：`position:absolute; inset:0; transform-origin:center; pointer-events:none; will-change:transform; z-index:0`），置于视频 `#bg-player` 之下（`ww.firstChild`）。
-- 背景图与 `filter:blur` 设到 layer；1.05 放大从 `background-size` 改为 `layer.style.transform='scale(1.05)'`（sw 仅做 cover）。放大的模糊羽化被 `.wallpaper-overlay` 的 `overflow:hidden` 裁掉，复刻主页。
+- 新增内层 `#editor-bg-layer`（CSS：`position:absolute; inset:0; transform-origin:center; pointer-events:none; z-index:0`），置于视频 `#bg-player` 之下（`ww.firstChild`）。
+- 背景图与 `filter:blur` 设到 layer；1.05 放大由 `background-size` 烘焙（`sw*1.05 × sh*1.05` + `bgX/bgY` 同步用放大后值重算），**不再用 `transform:scale`**。
 - `ww` 不再设 background/filter，仅保留 `editor-frozen` 类。
 - `unfreezeWallpaper` 改为 `ww.querySelector('#editor-bg-layer').remove()`。
 - `syncEditorBgVideo`：播放时 `layer.style.display='none'` 露视频；停止时若 layer 不存在则重 freeze、否则 `display=''`。
+
+### 3b. 编辑器输入卡顿修复（2026-08-04 落地）
+- **现象**：主页全屏透明(overlay) → 编辑器，文本输入/删除/选区高亮延迟；全屏壁纸(fullscreen) → 编辑器无此问题。
+- **根因**：overlay 来源下 `#editor-bg-layer` 持久 `will-change:transform` + `transform:scale(1.05)` 把全屏层钉成独立合成层，每次输入触发整页合成时模糊层被迫重算 → 主线程阻塞。fullscreen 来源 `filter:none` 故不卡。
+- **修复**：(1) 删除 `#editor-bg-layer` 的 `will-change:transform`；(2) 1.05x 由 `transform:scale` 改为 `background-size` 烘焙（移除 transform）；(3) `filter` 统一 `blur(var(--overlay-blur,0px))` 跟随全局主题变量（不再用 `editorSrcMode` 二选一，删除了 `editorSrcMode` 变量）。纯色来源(none) 不 freeze、无 layer。
+- **用户约束**（改此体系时务必遵守）：导航栏对齐设置、滚动条相关、背景图位置/宽度/右边自然露出被滚动条盖住的图——这四项功能绝对不能动。模糊度跟随主题设置，编辑器不另设专属模糊。
 
 ### 4. 两种模式重构（仅全屏透明 / 纯色）— 已落地
 - 需求：编辑器只保留两种背景——壁纸来源（横幅/全屏/透明）→「全屏透明」(overlay：1.05x+模糊)；纯色来源(none)→「纯色背景」。
@@ -48,6 +54,11 @@
 - `homeVW` **必须用** `window.innerWidth - scrollbarWidth`（主页内容区宽），**不能用 `document.documentElement.clientWidth`**——freeze 在编辑器环境（无滚动条）执行，clientWidth 返回整窗宽会错位。`scrollbarWidth` 由 `applyEditorModeLayout` 用 `overflow:scroll` 的 div 测得。
 - overlay 判定用 `document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay'`（setWallpaperMode 内同步写入，早于 rAF 加类），消除 `classList.contains` 竞态。
 - `unfreezeWallpaper` / `removeEditorModeLayout` 会清 wrapper 内联样式，离开编辑器不残留。
+
+### 7. 透明设置面板进度条显示偏差修复（2026-08-04 落地）
+- **现象**：主页全屏壁纸 → 切编辑器 → 打开设置面板，透明/模糊/卡片透明度三个进度条填充显示约一半（与真实值不符），数值文本正确，可拖动设置。
+- **根因**：进度条绿色填充宽度由 JS 计算的 `--range-progress` CSS 变量决定（`refreshAllRangeProgress()`），该函数只在组件首次 `onMount` 调用一次。设置面板是导航栏一部分（Swup 外部组件，SPA 导航不重挂载）；主页 fullscreen 时透明面板 DOM 不存在，切编辑器后 `setWallpaperMode('overlay')` 派发 `wallpaperModeChange`，面板**重新插入 DOM** 却不再触发 `onMount` → `--range-progress` 停在 fallback 50%。
+- **修复**：`DisplaySettingsIntegrated.svelte` 的 `wallpaperModeChange` 监听里，切到 `overlay` 时 `requestAnimationFrame(refreshAllRangeProgress)` 重新计算进度条样式。
 
 ---
 
