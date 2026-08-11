@@ -28,4 +28,4 @@ content:
       - name: body
         label: 内容
         type: rich-text
-        format: markdownsrc/content/posts/
+        format: markdown
