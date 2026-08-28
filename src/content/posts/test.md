@@ -9,6 +9,8 @@ tags: [编辑, 测试, 功能验证]
 image: "./images/1.png"
 pinned: true
 comment: true
+password: "123456"
+passwordHint: "示例文章密码123456"
 ---
 
 # 测试云端草稿
