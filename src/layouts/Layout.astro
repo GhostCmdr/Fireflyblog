@@ -1405,20 +1405,18 @@ function disableAnimation() {
       //     对称收缩会把起点推到 sw/2，实测导致右偏 8px）。包含块宽=innerWidth-sw 与主页一致，
       //     mx-auto 居中结果自然重合。
       // 两步都做才对齐：只做 2) 宽度仍被 max-w 截断；只做 1) 位置仍偏 sw/2。
+      // 单一计算路径（无缓存）：2026-09-09 实测（视口1528/滚动条15）：主页 92vw 实际解析为
+      // 0.92 × clientWidth(1513) = 1391.95，并非旧注释假设的 0.92 × innerWidth(1528) = 1405.76。
+      // 旧注释的"vw 含滚动条"假设在该浏览器/缩放组合下不成立，且 sessionStorage 缓存两次被
+      // 过渡态污染（值 1440），故整体删除缓存机制，公式直接按主页实测规律复算：
+      // 目标宽 = min(--page-width, (innerWidth − 滚动条宽) × 0.92)，实测与主页逐位吻合（差 0.01px 不可见）。
       var _pw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')) || 0;
       var _pwPx = _pw > 0 && _pw < 200 ? _pw * 16 : _pw; // rem→px（配置为 rem 值时换算）
       var homeClient = window.innerWidth - scrollbarWidth;
-      // 优先读主页缓存的精确宽度（浏览器按主页 vw 路径渲染的实测值），逐位复刻，
-      // 消除 JS 现算 0.01px 浮点差导致的居中后亚像素位移；无缓存（直接进编辑器）时回退现算。
-      var _cachedExact = parseFloat(sessionStorage.getItem('navbar-width-exact') || '');
-      var _usedCache = (_cachedExact > 0);
-      // 公式必须与主页 CSS 一致：92vw = innerWidth * 0.92（不是 (innerWidth - sw) * 0.92）。
-      // 主页 CSS 的 92vw 基于含滚动条的视口宽度，编辑器 JS 也必须用 window.innerWidth，
-      // 否则在非 100% 缩放下会差 sw * 0.92 ≈ 15.6px。
-      var homeMax = _usedCache ? _cachedExact : Math.min(_pwPx || Infinity, window.innerWidth * 0.92);
-      // 1px 奇偶补偿仅在"无缓存、JS 现算宽度"时启用：修正"编辑器被 max-width 截断 vs 主页走 92vw"的舍入路径差，
-      // 恢复 memory 验证过的稳定对齐；有精确缓存时宽度已与主页逐位一致，无需补偿。
-      var rightInset = _usedCache ? scrollbarWidth : (scrollbarWidth + ((homeClient - Math.round(homeMax)) % 2 !== 0 ? 1 : 0));
+      var homeMax = Math.min(_pwPx || Infinity, homeClient * 0.92);
+      // 不做 1px 奇偶补偿：新公式（0.92×客户区宽）已与主页渲染规律吻合，
+      // 补偿实测反而引入 0.4px 偏移（主页 left 60.42 vs 补偿后 60.02；不补偿 60.52，仅差 0.1px 不可见）
+      var rightInset = scrollbarWidth;
       var navbarCss = 'body.editor-page.sticky-navbar #top-row { max-width: ' + homeMax + 'px !important; left: 0px !important; right: ' + rightInset + 'px !important; transition: none !important; }';
       document.body.classList.add('editor-page');
       document.documentElement.classList.add('editor-page');
@@ -1502,12 +1500,10 @@ function disableAnimation() {
         _resizeRaf = requestAnimationFrame(function() {
           _resizeRaf = null;
           var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
-          // 拖窗时按新视口在"主页坐标系"下实时复算宽度上限与右界收缩量（公式与进入时一致）。
+          // 拖窗时按新视口实时复算（公式与进入时一致：0.92 × 客户区宽，见 applyEditorModeLayout 注释）
           var homeClient2 = window.innerWidth - sw2;
-          // 公式与主页 CSS 一致：92vw = innerWidth * 0.92
-          var homeMax2 = Math.min(_pwPx || Infinity, window.innerWidth * 0.92);
-          // resize 时缓存为旧视口不可用，恒定走 memory 方案：JS 现算 + 1px 奇偶补偿
-          var rightInset2 = sw2 + ((homeClient2 - Math.round(homeMax2)) % 2 !== 0 ? 1 : 0);
+          var homeMax2 = Math.min(_pwPx || Infinity, homeClient2 * 0.92);
+          var rightInset2 = sw2;
           var r = document.getElementById('top-row');
           if (r) {
             r.style.width = '';
@@ -2103,29 +2099,8 @@ function disableAnimation() {
     requestAnimationFrame(initImageLoadFadeIn);
   });
 
-  // [Editor] 测量导航栏实际像素宽度并缓存，供编辑器页面使用
-  function cacheNavbarWidth() {
-    var topRow = document.getElementById('top-row');
-    if (topRow && !document.body.classList.contains('editor-page')) {
-      var rect = topRow.getBoundingClientRect();
-      if (rect.width > 0) {
-        sessionStorage.setItem('navbar-width', String(Math.round(rect.width)));
-        // 缓存不取整的精确宽度：主页 top-row 由浏览器按 vw 路径渲染（如 1391.9500…），
-        // 编辑器 JS 现算 1513*0.92=1391.96 有 0.01px 浮点差，逐位复刻此实测值可消除居中后的亚像素位移。
-        sessionStorage.setItem('navbar-width-exact', String(rect.width));
-        // 缓存主页真实滚动条宽度（仅在主页时机测，100% 准确），供编辑器推算同款左界
-        var sb = window.innerWidth - document.documentElement.clientWidth;
-        sessionStorage.setItem('navbar-sb', String(Math.round(sb)));
-      }
-    }
-  }
-  cacheNavbarWidth();
-  document.addEventListener('astro:page-load', cacheNavbarWidth);
-  document.addEventListener('swup:contentReplaced', () => requestAnimationFrame(cacheNavbarWidth));
-  // 缩放/resize 时重新缓存
-  var _cacheTimer: ReturnType<typeof setTimeout> | null = null;
-  window.addEventListener('resize', () => {
-    if (_cacheTimer) clearTimeout(_cacheTimer);
-    _cacheTimer = setTimeout(cacheNavbarWidth, 100);
-  });
+  // [已删除] cacheNavbarWidth / navbar-width-exact sessionStorage 缓存机制（2026-09-09）：
+  // 该缓存两次被过渡态污染（主页→编辑器跳转中途把错误布局宽度写入，值 1440），
+  // 导致编辑器导航栏偏左。编辑器侧已改为单一计算路径（0.92 × 客户区宽，见
+  // applyEditorModeLayout 注释），实测与主页渲染逐位吻合（差 0.01px，不可见），不再需要缓存。
 </script>
