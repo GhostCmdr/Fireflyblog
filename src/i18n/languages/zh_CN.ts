@@ -253,6 +253,9 @@ export const zh_CN: Translation = {
 	// 加密
 	[Key.postEncrypted]: "本文已加密",
 
+	// 编辑此文
+	[Key.editThisPost]: "编辑此文",
+
 	// 壁纸模式
 	[Key.wallpaperMode]: "壁纸模式",
 	[Key.wallpaperBannerMode]: "横幅壁纸",
@@ -386,4 +389,15 @@ export const zh_CN: Translation = {
 	[Key.videoPrev]: "上一个视频",
 	[Key.videoNext]: "下一个视频",
 	[Key.videoLoadError]: "视频加载失败",
+
+	// 云端草稿
+	[Key.cloudDrafts]: "云端草稿",
+	[Key.cloudDraftOpen]: "打开",
+	[Key.cloudDraftDelete]: "删除",
+	[Key.cloudDraftNeedToken]: "请先在 GitHub 设置中填写 Token",
+	[Key.cloudDraftEmpty]: "暂无云端草稿",
+	[Key.cloudDraftLastFetched]: "最后读取于",
+	[Key.cloudDraftRefresh]: "刷新云端",
+	[Key.cloudDraftLoading]: "加载中...",
+	[Key.cloudDraftDeleteConfirm]: "确定删除该云端草稿文件吗？此操作不可恢复。",
 };

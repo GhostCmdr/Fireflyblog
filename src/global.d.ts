@@ -63,6 +63,9 @@ declare global {
 			playTrackByIndex: (index: number) => void;
 			loadTrack: (index: number, autoPlay: boolean) => void;
 		};
+		// 编辑器大量用 window.__editor* 存运行时状态(inline 脚本)，统一声明为任意类型，避免逐个 ts2339
+		// biome-ignore lint/suspicious/noExplicitAny: 编辑器内联脚本约定的全局槽
+		[editorGlobal: `__editor${string}`]: any;
 	}
 
 	interface MediaQueryList {

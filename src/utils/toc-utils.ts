@@ -239,12 +239,15 @@ export class TOCManager {
 		if (headings.length === 0) return [];
 		const scrollTop = window.scrollY;
 		let closestId: string | null = null;
-		let minDist = Infinity;
+		let minDist = Number.POSITIVE_INFINITY;
 		headings.forEach((h) => {
 			if (!h.id) return;
 			const absTop = this.getAbsoluteOffsetTop(h);
 			const dist = Math.abs(absTop - scrollTop - this.scrollOffset);
-			if (dist < minDist) { minDist = dist; closestId = h.id; }
+			if (dist < minDist) {
+				minDist = dist;
+				closestId = h.id;
+			}
 		});
 		return closestId ? [closestId] : [];
 	}

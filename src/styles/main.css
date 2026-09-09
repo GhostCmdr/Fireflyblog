@@ -476,6 +476,14 @@ html {
     transform: translateY(-50%);
 }
 
+/* [Editor] 「编辑此文」按钮默认隐藏，仅本机存有 GitHub Token（body.editor-enabled）时显示 */
+.edit-this-post-btn {
+    display: none;
+}
+body.editor-enabled .edit-this-post-btn {
+    display: inline-flex;
+}
+
 
 /*剧透效果*/
 .custom-md spoiler {

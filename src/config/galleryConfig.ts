@@ -23,7 +23,7 @@ export const galleryConfig: GalleryConfig = {
 			date: "2026-07-21",
 			tags: ["异次元", "测试", "相册"],
 		},
-			{
+		{
 			id: "封面上传相册测试",
 			cover: "/gallery/封面上传相册测试/cover.jpg",
 			name: "封面上传相册测试",
@@ -32,7 +32,7 @@ export const galleryConfig: GalleryConfig = {
 			date: "2026-07-23",
 			tags: ["测试", "封面", "时间", "设置"],
 		},
-			{
+		{
 			id: "封面上传相册测试222",
 			cover: "/gallery/封面上传相册测试222/cover.png",
 			name: "封面上传相册测试222",

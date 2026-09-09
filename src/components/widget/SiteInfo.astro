@@ -93,7 +93,7 @@ const licenseName = licenseConfig.enable ? licenseConfig.name : "None";
 // ---- 组装展示数据 ----
 // 始终显示的项目（列表）
 const mainItems = [
-  //站点域名
+	//站点域名
 	{
 		icon: "material-symbols:language",
 		label: i18n(I18nKey.siteInfoDomain),
@@ -107,9 +107,6 @@ const mainItems = [
 		value: `Firefly v${blogVersion}`,
 		href: "https://github.com/CuteLeaf/Firefly",
 	},
-
-
-
 ];
 
 // 可折叠的项目（格子布局）
@@ -120,13 +117,12 @@ const detailItems: {
 	value: string;
 	fullWidth?: boolean;
 }[] = [
-
-  //构建平台
-  {
+	//构建平台
+	{
 		icon: "material-symbols:cloud-outline",
 		label: i18n(I18nKey.siteInfoBuildPlatform),
 		value: buildPlatform,
-    fullWidth: true,
+		fullWidth: true,
 	},
 
 	{
@@ -149,7 +145,7 @@ const detailItems: {
 		label: i18n(I18nKey.siteInfoPnpmVersion),
 		value: pnpmVersion,
 	},
-  //系统信息
+	//系统信息
 	{
 		icon: "material-symbols:computer-outline",
 		label: i18n(I18nKey.siteInfoSystem),
@@ -157,14 +153,14 @@ const detailItems: {
 		fullWidth: true,
 	},
 
-  //文章许可
+	//文章许可
 	{
 		icon: "material-symbols:copyright-outline",
 		label: i18n(I18nKey.siteInfoLicense),
 		value: licenseName,
-    fullWidth: true,
+		fullWidth: true,
 	},
-  //构建时间
+	//构建时间
 	{
 		icon: "material-symbols:build-outline",
 		label: i18n(I18nKey.siteInfoBuildTime),

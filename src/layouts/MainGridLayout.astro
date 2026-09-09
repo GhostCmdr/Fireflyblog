@@ -63,7 +63,8 @@ interface Props {
 const backgroundImages = getBackgroundImages();
 
 // [Editor] 检测编辑器页面，用于导航栏偏移补偿（解决 overflow:hidden 导致滚动条消失→页面变宽→导航栏右移的问题）
-const isEditorPage = Astro.url.pathname === '/editor/' || Astro.url.pathname === '/editor';
+const isEditorPage =
+	Astro.url.pathname === "/editor/" || Astro.url.pathname === "/editor";
 
 const {
 	title,
@@ -917,6 +918,22 @@ const hasMultipleImages =
 
 <FloatingControls headings={headings} />
 
+<!-- [Editor] 若本机存有 GitHub Token（gh-token），则显示「编辑此文」等站长专属入口 -->
+<script is:inline>
+  (function syncEditorEnabled() {
+    function apply() {
+      try {
+        var hasToken = !!localStorage.getItem('gh-token');
+        document.body.classList.toggle('editor-enabled', hasToken);
+      } catch (e) {}
+    }
+    apply();
+    document.addEventListener('swup:page:view', apply);
+    if (window.swup) {
+      window.swup.hooks?.on('page:view', apply);
+    }
+  })();
+</script>
 
 </Layout>
 

@@ -260,6 +260,8 @@ export const ko: Translation = {
 	// Encrypted
 	[Key.postEncrypted]: "이 게시글은 암호화되어 있습니다",
 
+	[Key.editThisPost]: "이 게시글 편집",
+
 	// Wallpaper Mode
 	[Key.wallpaperMode]: "배경화면 모드",
 	[Key.wallpaperBannerMode]: "배너 배경화면",
@@ -395,4 +397,17 @@ export const ko: Translation = {
 	[Key.videoPrev]: "이전 영상",
 	[Key.videoNext]: "다음 영상",
 	[Key.videoLoadError]: "영상을 불러오지 못했습니다",
+
+	// 클라우드 초안
+	[Key.cloudDrafts]: "클라우드 초안",
+	[Key.cloudDraftOpen]: "열기",
+	[Key.cloudDraftDelete]: "삭제",
+	[Key.cloudDraftNeedToken]:
+		"GitHub 설정에서 GitHub Token을 먼저 입력해 주세요",
+	[Key.cloudDraftEmpty]: "클라우드 초안 없음",
+	[Key.cloudDraftLastFetched]: "마지막 불러옴",
+	[Key.cloudDraftRefresh]: "클라우드 새로고침",
+	[Key.cloudDraftLoading]: "불러오는 중...",
+	[Key.cloudDraftDeleteConfirm]:
+		"이 클라우드 초안 파일을 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
 };

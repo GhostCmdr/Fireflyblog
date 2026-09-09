@@ -222,7 +222,11 @@ function resetHue() {
 function resetWallpaperMode() {
 	// 编辑器内重置：若默认是横幅/全屏则回退到全屏透明（编辑器仅支持 overlay/none）
 	if (isEditor) {
-		const target = (defaultWallpaperMode === WALLPAPER_BANNER || defaultWallpaperMode === WALLPAPER_FULLSCREEN) ? WALLPAPER_OVERLAY : defaultWallpaperMode;
+		const target =
+			defaultWallpaperMode === WALLPAPER_BANNER ||
+			defaultWallpaperMode === WALLPAPER_FULLSCREEN
+				? WALLPAPER_OVERLAY
+				: defaultWallpaperMode;
 		wallpaperMode = target;
 		setWallpaperMode(target);
 		return;
@@ -324,7 +328,11 @@ function toggleSakuraEnabled() {
 
 function switchWallpaperMode(newMode: WALLPAPER_MODE) {
 	// 编辑器内禁止切换到横幅/全屏（避免破坏编辑器布局，仅允许全屏透明/纯色）
-	if (isEditor && (newMode === WALLPAPER_BANNER || newMode === WALLPAPER_FULLSCREEN)) return;
+	if (
+		isEditor &&
+		(newMode === WALLPAPER_BANNER || newMode === WALLPAPER_FULLSCREEN)
+	)
+		return;
 	wallpaperMode = newMode;
 	setWallpaperMode(newMode);
 	window.scrollTo({ top: 0 });

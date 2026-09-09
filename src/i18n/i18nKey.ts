@@ -251,6 +251,9 @@ enum I18nKey {
 	// 加密
 	postEncrypted = "postEncrypted",
 
+	// 编辑此文（站长专属入口）
+	editThisPost = "editThisPost",
+
 	// 壁纸模式
 	wallpaperMode = "wallpaperMode",
 	wallpaperBannerMode = "wallpaperBannerMode",
@@ -382,6 +385,17 @@ enum I18nKey {
 	videoPrev = "videoPrev",
 	videoNext = "videoNext",
 	videoLoadError = "videoLoadError",
+
+	// 云端草稿
+	cloudDrafts = "cloudDrafts",
+	cloudDraftOpen = "cloudDraftOpen",
+	cloudDraftDelete = "cloudDraftDelete",
+	cloudDraftNeedToken = "cloudDraftNeedToken",
+	cloudDraftEmpty = "cloudDraftEmpty",
+	cloudDraftLastFetched = "cloudDraftLastFetched",
+	cloudDraftRefresh = "cloudDraftRefresh",
+	cloudDraftLoading = "cloudDraftLoading",
+	cloudDraftDeleteConfirm = "cloudDraftDeleteConfirm",
 }
 
 export default I18nKey;

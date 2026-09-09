@@ -57,7 +57,7 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			// 是否在文章详情页显示
 			showOnPostPage: false,
 		},
-		
+
 		{
 			// 组件类型：分类组件
 			type: "categories",
@@ -115,7 +115,7 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			// 是否在文章详情页显示
 			showOnPostPage: true,
 		},
-		
+
 		{
 			// 组件类型：日历组件
 			type: "calendar",

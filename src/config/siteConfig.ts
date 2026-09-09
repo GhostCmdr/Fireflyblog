@@ -15,16 +15,10 @@ export const siteConfig: SiteConfig = {
 	site_url: "https://xiaomaisos.me",
 
 	// 站点描述
-	description:
-		"本站致力于研究生活中的埋学事件",
+	description: "本站致力于研究生活中的埋学事件",
 
 	// 站点关键词
-	keywords: [
-		"SOS团长",
-    	"地球Online资深玩家",
-    	"独狼玩家",
-    	"埋学生活",
-	],
+	keywords: ["SOS团长", "地球Online资深玩家", "独狼玩家", "埋学生活"],
 
 	// 主题色
 	themeColor: {

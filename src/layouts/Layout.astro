@@ -550,6 +550,37 @@ const siteLang = lang.replace("_", "-");
 
     <!-- Font Setup (Astro Font API) -->
     <FontSetup />
+    <!-- [Editor] 进入加速：body.editor-page 前置静态样式放 head(is:inline 同步生效，先于 body)，配合 body 顶部极早加 editor-page，
+         让首帧即隐藏两侧栏/分类栏/页脚并铺满，消除刷新/进入编辑器"带侧栏→铺满"一闪。仅 body.editor-page 命中，非编辑器页无影响。 -->
+    <style is:inline>
+      body.editor-page #left-sidebar-wrapper,
+      body.editor-page #left-sidebar-dynamic,
+      body.editor-page #right-sidebar-static,
+      body.editor-page #right-sidebar-dynamic,
+      body.editor-page #category-bar-wrapper,
+      body.editor-page .footer,
+      body.editor-page #sidebar-sticky,
+      body.editor-page .sidebar-container { display: none !important; }
+      body.editor-page #main-grid { display: flex !important; flex-direction: column !important; grid-template-columns: none !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #swup-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; flex: 1 !important; }
+      body.editor-page #main-grid > div:first-child { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #main-grid ~ div,
+      body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #main-grid > div { max-width: 100% !important; }
+      html.editor-page { overflow: hidden !important; }
+      body.editor-page { overflow: hidden !important; }
+      /* 隐藏 html/body 滚动条：让首帧即无滚动条，避免 applyEditorModeLayout 后才隐藏造成"滚动条消失动作" */
+      html.editor-page { scrollbar-width: none; -ms-overflow-style: none; }
+      html.editor-page::-webkit-scrollbar { display: none; }
+      body.editor-page { scrollbar-width: none; -ms-overflow-style: none; }
+      body.editor-page::-webkit-scrollbar { display: none; }
+      /* [Editor] 编辑/preview 各自原生滚动条提前到首帧隐藏(不再等 JS editorStyleEl 晚注入)，
+         避免"先露原生+外挂自定义"两套滚动条叠加；scroll-behavior:auto 防止 html 的 smooth 被继承造成滚动割裂/跳动 */
+      body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: auto !important; }
+      body.editor-page #markdown-input::-webkit-scrollbar { display: none; }
+      body.editor-page #preview-content { scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: auto !important; }
+      body.editor-page #preview-content::-webkit-scrollbar { display: none; }
+    </style>
   </head>
   <body
     class="min-h-screen"
@@ -564,6 +595,15 @@ const siteLang = lang.replace("_", "-");
       },
     ]}
   >
+
+    <!-- [Editor] 进入加速：body 解析一开始就给 /editor 加 editor-page；head 已内联 body.editor-page 静态样式(先于 body)，
+         因此首帧即编辑态(无两侧栏/分类栏/滚动条)。非编辑器页不加类。 -->
+    <script is:inline>
+      if (location.pathname === '/editor' || location.pathname === '/editor/') {
+        document.documentElement.classList.add('editor-page');
+        document.body.classList.add('editor-page');
+      }
+    </script>
 
     <div id="progress-bar"></div>
 
@@ -1263,6 +1303,7 @@ function disableAnimation() {
       ww.dataset.frozenImgSrc = img.src;
       // 等图片加载完再计算
       function apply(iw: number, ih: number) {
+        if (!ww) return;
         if (!iw) return;
         // 和主页 object-fit: cover 相同的缩放算法，基于主页可见宽度（内边距一致）
         var coverScale = Math.max(homeVW / iw, homeVH / ih);
@@ -1433,16 +1474,6 @@ function disableAnimation() {
         'body.editor-page #panel-inner { display: flex !important; flex-direction: column !important; height: 100% !important; }',
         'body.editor-page #panel-content { overflow-y: auto !important; overflow-x: hidden !important; }',
         'body.editor-page #right-icon-bar { overflow-y: auto !important; }',
-        'body.editor-page #draft-list::-webkit-scrollbar { width: 4px !important; }',
-        'body.editor-page #draft-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }',
-        'body.editor-page #draft-list:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }',
-        'body.editor-page #draft-list { scrollbar-width: thin !important; }',
-        'body.editor-page #draft-list { scrollbar-gutter: stable !important; }',
-        'body.editor-page .syntax-scroll { scrollbar-gutter: stable !important; }',
-        'body.editor-page .syntax-scroll { scrollbar-width: thin !important; }',
-        'body.editor-page .syntax-scroll::-webkit-scrollbar { width: 4px !important; }',
-        'body.editor-page .syntax-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }',
-        'body.editor-page .syntax-scroll:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }',
         navbarCss
       ].join('\n');
       document.head.appendChild(editorStyleEl);
@@ -1461,12 +1492,15 @@ function disableAnimation() {
       if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
         freezeWallpaperForEditor(scrollbarWidth);
       }
-      // resize 监听
-      var _resizeDebounce: ReturnType<typeof setTimeout> | null = null;
+      // resize 监听：用 rAF 帧节流替代 100ms 防抖。
+      // 原因：编辑器导航栏宽度由 JS 锁定（主页坐标补正），若滞后 100ms 才更新，
+      // 放大窗口时会出现"窗口已宽、导航栏还窄"的挤压 → 内容挤在中间后瞬间放宽（用户实测为编辑器独有）。
+      // 帧节流使 max-width 随窗口实时更新（≈主页 CSS 实时流行为），计算公式不变 → 最终对齐不变。
+      var _resizeRaf: number | null = null;
       editorResizeHandler = function() {
-        if (_resizeDebounce) clearTimeout(_resizeDebounce);
-        _resizeDebounce = setTimeout(function() {
-          _resizeDebounce = null;
+        if (_resizeRaf) return; // 已有待执行帧则合并，避免堆积
+        _resizeRaf = requestAnimationFrame(function() {
+          _resizeRaf = null;
           var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
           // 拖窗时按新视口在"主页坐标系"下实时复算宽度上限与右界收缩量（公式与进入时一致）。
           var homeClient2 = window.innerWidth - sw2;
@@ -1492,7 +1526,7 @@ function disableAnimation() {
           if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
             freezeWallpaperForEditor(sw2);
           }
-        }, 100);
+        });
       };
       window.addEventListener('resize', editorResizeHandler);
     }
@@ -1531,11 +1565,6 @@ function disableAnimation() {
       unfreezeWallpaper();
       if (editorStyleEl) { editorStyleEl.remove(); editorStyleEl = null; }
       if (editorResizeHandler) { window.removeEventListener('resize', editorResizeHandler); editorResizeHandler = null; }
-      // 清除自动保存定时器
-      if (window.__editorAutosaveTimer) {
-        clearInterval(window.__editorAutosaveTimer);
-        window.__editorAutosaveTimer = null;
-      }
       // 移除 ESC 全局监听器
       if (window.__editorKeydownEsc) {
         document.removeEventListener('keydown', window.__editorKeydownEsc);
@@ -1564,7 +1593,7 @@ function disableAnimation() {
         row.style.removeProperty('right');
         // 下一帧恢复过渡动画
         requestAnimationFrame(function() {
-          row.style.transition = '';
+          if (row) row.style.transition = '';
         });
       }
     }

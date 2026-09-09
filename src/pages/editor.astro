@@ -1,13 +1,30 @@
 ---
+import I18nKey from "@/i18n/i18nKey";
+import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+// 云端草稿文案：服务端按当前语言预渲染，注入全局供 inline 脚本使用（编辑器脚本为 is:inline，无法 import）
+const editorCloudI18n = {
+	cloudDrafts: i18n(I18nKey.cloudDrafts),
+	cloudDraftOpen: i18n(I18nKey.cloudDraftOpen),
+	cloudDraftDelete: i18n(I18nKey.cloudDraftDelete),
+	cloudDraftNeedToken: i18n(I18nKey.cloudDraftNeedToken),
+	cloudDraftEmpty: i18n(I18nKey.cloudDraftEmpty),
+	cloudDraftRefresh: i18n(I18nKey.cloudDraftRefresh),
+	cloudDraftLoading: i18n(I18nKey.cloudDraftLoading),
+	cloudDraftDeleteConfirm: i18n(I18nKey.cloudDraftDeleteConfirm),
+};
+const editorCloudI18nJson = JSON.stringify(editorCloudI18n);
 ---
 
 <MainGridLayout title="写文章" description="在线 Markdown 编辑器">
 
 <!-- 编辑器页面管理：class、CSS注入、Swup hooks -->
-<script is:inline>
+<script is:inline define:vars={{ editorCloudI18nJson }}>
 (function() {
   window.__editorImageMap = {};
+  // 云端草稿多语言文案（服务端预渲染注入，define:vars 传入 JSON 字符串）
+  window.editorCloudI18n = JSON.parse(editorCloudI18nJson);
 
   // ─── IndexedDB 工具（替代 localStorage 存储草稿图片，容量无上限） ───
   var _idb = null;
@@ -118,23 +135,78 @@ import MainGridLayout from "@/layouts/MainGridLayout.astro";
 </script>
 
 <style>
-.toolbar-btn { padding: 5px 7px; border-radius: 6px; color: color-mix(in srgb, currentColor 55%, transparent); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease; position: relative; }
+/* [Editor] 焦点黑边统一方案：鼠标/程序化聚焦不显示 outline，仅键盘 Tab 导航(:focus-visible)显示。
+   实测确认：点击按钮、ESC 关弹窗后焦点回归均命中 :focus-visible 且 is focus:true，
+   故用全局 focus-visible:none 可根治黑边，同时保留键盘可达性。替代原先分散的 JS blur。 */
+button:focus { outline: none; }
+button:focus-visible { outline: none; }
+select:focus { outline: none; }
+/* [Editor] 发布弹窗「设为草稿」滑块 Switch：轨道开(草稿)=琥珀、关(公开)=中性灰，滑块左右滑动过渡 */
+.gh-switch-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.gh-switch-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 2.25rem;   /* 36px @14.4 */
+  height: 1.25rem;  /* 20px @14.4 */
+  border-radius: 9999px;
+  background: #e5e7eb;                /* 亮色：灰轨道(off) */
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.gh-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1rem;   /* 16px */
+  height: 1rem;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  transition: transform 0.2s ease;
+}
+/* hover 用轨道自身(0,2,0)，低于琥珀开启规则(0,3,0)：开态 hover 琥珀不被覆盖，关态 hover 提亮。
+   不要用 #lbl-gh-draft:hover（含 id 特异性高于琥珀，会把开态覆盖成灰）。 */
+.gh-switch-track:hover { background: #d1d5db; }
+/* 关态暗色：半透明白灰轨道（放琥珀开启规则前，避免同特异性后者覆盖） */
+:root.dark .gh-switch-track { background: rgba(255,255,255,0.18); }
+:root.dark .gh-switch-track:hover { background: rgba(255,255,255,0.28); }
+/* 开启(草稿)：琥珀轨道 + 滑块右滑（放暗色灰轨道后，后声明优先保证开态恒琥珀）。
+   位移 = 36-16(滑块)-4(左右边距) = 16px = 1rem */
+.gh-switch-input:checked + .gh-switch-track { background: #f59e0b; } /* amber-500 草稿语义色 */
+.gh-switch-input:checked + .gh-switch-track .gh-switch-thumb { transform: translateX(1rem); }
+/* 滑块 focus 可见环（可访问性，仅键盘） */
+.gh-switch-input:focus-visible + .gh-switch-track { box-shadow: 0 0 0 2px var(--primary); }
+.toolbar-btn { padding: 5px 7px; border-radius: 6px; color: color-mix(in srgb, currentColor 55%, transparent); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease; position: relative; }
 .toolbar-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
 .toolbar-btn:hover { background: color-mix(in srgb, currentColor 8%, transparent); color: color-mix(in srgb, currentColor 100%, transparent); }
 .toolbar-btn:active { transform: scale(0.92); }
 .toolbar-btn.active { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
 .toolbar-btn.active:hover { background: color-mix(in srgb, var(--primary) 18%, transparent); }
-.toggle-btn { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 0.5rem; border: 1px solid var(--line-divider); font-size: 0.8rem; color: color-mix(in srgb, currentColor 50%, transparent); cursor: pointer; transition: all 0.15s; white-space: nowrap; user-select: none; background: transparent; }
+.toggle-btn { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 0.5rem; border: 1px solid var(--line-divider); font-size: 0.8rem; color: color-mix(in srgb, currentColor 50%, transparent); cursor: pointer; transition: background-color 0.15s, border-color 0.15s, color 0.15s; white-space: nowrap; user-select: none; background: transparent; }
 .toggle-btn:hover { border-color: color-mix(in srgb, var(--primary) 40%, transparent); color: color-mix(in srgb, var(--primary) 70%, transparent); }
 .toggle-btn.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
 #markdown-input:focus { box-shadow: inset 0 0 0 2px var(--primary); }
 #markdown-input.drag-over { box-shadow: inset 0 0 0 3px var(--primary), inset 0 0 30px color-mix(in srgb, var(--primary) 10%, transparent); background: color-mix(in srgb, var(--primary) 3%, transparent); }
-.icon-bar-btn { width: 36px; height: 36px; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; color: color-mix(in srgb, currentColor 50%, transparent); cursor: pointer; transition: all 0.15s; pointer-events: auto; }
+.icon-bar-btn { width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; color: color-mix(in srgb, currentColor 50%, transparent); cursor: pointer; transition: background-color 0.15s, color 0.15s; pointer-events: auto; }
+.icon-bar-btn svg { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
 .icon-bar-btn:hover { background: color-mix(in srgb, currentColor 5%, transparent); color: color-mix(in srgb, currentColor 80%, transparent); }
-.icon-bar-btn.active { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
+.icon-bar-btn.active { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
 .icon-bar-btn:focus { outline: none; }
 .icon-bar-btn:focus-visible { outline: none; box-shadow: none; }
-@media (max-width: 768px) { #right-icon-bar { display: none; } }
+/* 移动端：图标栏不隐藏，保持侧边但缩小（w-10 + 更小按钮/图标），保证 5 面板入口可用 */
+@media (max-width: 768px) {
+  #right-icon-bar { width: 2.5rem; }
+  #right-icon-bar .icon-bar-btn { width: 2rem; height: 2rem; }
+  #right-icon-bar .icon-bar-btn svg { width: 1rem; height: 1rem; }
+}
 /* 壁纸模式下图标栏和滑出面板跟随主题（半透明，无 blur） */
 body.wallpaper-transparent #slide-panel,
 body.wallpaper-transparent #right-icon-bar {
@@ -173,7 +245,43 @@ body.wallpaper-transparent #right-icon-bar {
 }
 </style>
 
-<div class="flex flex-col w-full overflow-hidden" style="height: calc(100vh - var(--navbar-height, 72px)); box-sizing: border-box;">
+<!-- 草稿箱/语法内层滚动条：与单层面板 gutter 逻辑统一收归本文件。
+     这些元素由 JS innerHTML 动态生成，必须 is:global，否则 Astro 构建期摇树整段删除。 -->
+<style is:global>
+  body.editor-page #draft-list::-webkit-scrollbar,
+  body.editor-page #draft-cloud-list::-webkit-scrollbar,
+  body.editor-page .draft-ctrl-row::-webkit-scrollbar,
+  body.editor-page .syntax-tag-row::-webkit-scrollbar { width: 4px !important; }
+  body.editor-page #draft-list::-webkit-scrollbar-button,
+  body.editor-page #draft-cloud-list::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
+  body.editor-page #draft-list::-webkit-scrollbar-thumb,
+  body.editor-page #draft-cloud-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+  body.editor-page #draft-list:hover::-webkit-scrollbar-thumb,
+  body.editor-page #draft-cloud-list:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }
+  body.editor-page #draft-list,
+  body.editor-page #draft-cloud-list,
+  body.editor-page .draft-ctrl-row,
+  body.editor-page .syntax-tag-row { scrollbar-width: thin !important; }
+  body.editor-page #draft-list,
+  body.editor-page #draft-cloud-list,
+  body.editor-page .draft-ctrl-row,
+  body.editor-page .syntax-tag-row { scrollbar-gutter: stable !important; }
+  body.editor-page .draft-ctrl-row,
+  body.editor-page .syntax-tag-row { overflow-y: auto !important; }
+  body.editor-page .syntax-scroll { scrollbar-gutter: stable !important; }
+  body.editor-page .syntax-scroll { scrollbar-width: thin !important; }
+  body.editor-page .syntax-scroll::-webkit-scrollbar { width: 4px !important; }
+  body.editor-page .syntax-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+  body.editor-page .syntax-scroll:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }
+  /* TOC/语法项 hover：纯 CSS（原 JS 事件委托注入改为静态，消除运行时事件开销与闪烁）。
+     动态元素由 JS 生成，必须 is:global，否则 Astro 摇树整段删除。效果与原 JS 注入一致。 */
+  body.editor-page .toc-item:hover { background: color-mix(in srgb, var(--primary) 15%, transparent) !important; }
+  body.editor-page .syntax-item:hover { border-color: var(--primary) !important; background: color-mix(in srgb, var(--primary) 5%, transparent) !important; }
+</style>
+
+<!-- 高度 = 100vh - 父级 Main content 的 top:5.5rem（= 79.2px @14.4），使容器底部恰好贴视口底。
+     原用 calc(100vh - 72px) 与父级 5.5rem 不一致，导致底部被挤出视口 ~7px（底部栏贴底/被切）。 -->
+<div class="flex flex-col w-full overflow-hidden" style="height: calc(100vh - 5.5rem); box-sizing: border-box;">
 
 
 <!-- 编辑器主体（导航栏下方） -->
@@ -181,7 +289,7 @@ body.wallpaper-transparent #right-icon-bar {
   <!-- 中间编辑区 -->
   <div class="flex-1 flex flex-col overflow-hidden">
     <!-- 标题输入 -->
-    <div class="px-6 py-3 border-b border-[var(--line-divider)]">
+    <div class="px-6 py-2 border-b border-[var(--line-divider)]">
       <input id="post-title" type="text" placeholder="输入文章标题..."
         class="w-full text-2xl font-bold bg-transparent text-black/90 dark:text-white/90 focus:outline-none placeholder:text-black/20 dark:placeholder:text-white/20" />
     </div>
@@ -223,7 +331,7 @@ body.wallpaper-transparent #right-icon-bar {
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-8-2h4v-2h-4v2zm-6-6h2v2H6v-2zm0 4h2v2H6v-2zm0 4h12v2H6v-2z"/></svg>
       </button>
       <div class="w-px h-4 bg-[var(--line-divider)] mx-0.5"></div>
-      <button data-action="link" title="链接 (Ctrl+K)" class="toolbar-btn">
+      <button data-action="link" title="链接" class="toolbar-btn">
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
       </button>
       <button data-action="image" title="图片" class="toolbar-btn">
@@ -284,8 +392,8 @@ body.wallpaper-transparent #right-icon-bar {
       </div>
     </div>
 
-    <!-- 底部状态栏 -->
-    <div class="flex items-center justify-between px-4 py-2 border-t border-[var(--line-divider)] text-xs text-black/50 dark:text-white/50">
+    <!-- 底部状态栏：py-1(0.25rem) 上下内距与草稿项间距一致 -->
+    <div class="flex items-center justify-between px-4 py-1 border-t border-[var(--line-divider)] text-xs text-black/50 dark:text-white/50">
       <div class="flex items-center gap-4">
         <span id="word-count">0 词</span>
         <span id="char-count">0 字符</span>
@@ -294,7 +402,7 @@ body.wallpaper-transparent #right-icon-bar {
       <div class="flex items-center gap-2">
         <button id="btn-quick-save" title="保存草稿" class="px-3 py-1.5 rounded-lg bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20 transition cursor-pointer text-xs font-medium">保存草稿</button>
         <button data-panel="drafts" title="草稿箱" class="px-3 py-1.5 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer text-xs">草稿箱</button>
-        <button data-panel="publish" title="发布" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 hover:opacity-90 transition cursor-pointer text-xs font-medium">发布文章</button>
+        <button id="btn-publish" title="发布" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 hover:opacity-90 transition cursor-pointer text-xs font-medium">发布文章</button>
       </div>
     </div>
   </div>
@@ -306,10 +414,15 @@ body.wallpaper-transparent #right-icon-bar {
     <input id="post-tags" type="text" />
     <input id="post-cover" type="text" />
     <input id="post-slug" type="text" />
+    <input id="post-url-slug" type="text" />
+    <input id="post-published" type="text" />
+    <input id="post-updated" type="text" />
+    <input id="post-draft" type="text" />
     <input id="post-password" type="text" />
     <input id="post-password-hint" type="text" />
     <input id="chk-pinned" type="checkbox" />
     <input id="chk-comment" type="checkbox" checked />
+    <input id="chk-draft" type="checkbox" />
   </div>
 
   <!-- 右侧面板区（图标栏 + 滑出面板） -->
@@ -329,24 +442,25 @@ body.wallpaper-transparent #right-icon-bar {
 
     <!-- 图标栏 -->
     <aside id="right-icon-bar" class="w-12 bg-[var(--card-bg)] border-l border-[var(--line-divider)] flex flex-col items-center py-3 gap-1 shrink-0">
+      <!-- 图标尺寸由 CSS .icon-bar-btn svg 统一控制（桌面 1.25rem / 移动端 1rem），SVG 不写死 width/height px -->
       <button data-panel="meta" class="icon-bar-btn" title="文章信息">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       </button>
       <button data-panel="drafts" class="icon-bar-btn" title="草稿箱">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5.5A2.5 2.5 0 017.5 3H18a2 2 0 012 2v14a2 2 0 01-2 2H7.5A2.5 2.5 0 015 18.5v-13z"/><path d="M9 3v2h6V3"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5.5A2.5 2.5 0 017.5 3H18a2 2 0 012 2v14a2 2 0 01-2 2H7.5A2.5 2.5 0 015 18.5v-13z"/><path d="M9 3v2h6V3"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
       </button>
       <button id="btn-toc" data-panel="toc" class="icon-bar-btn" title="目录">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
       </button>
       <button id="btn-syntax" data-panel="syntax" class="icon-bar-btn" title="语法参考">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="10 12 8 14 10 16"/><polyline points="14 12 16 14 14 16"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="10 12 8 14 10 16"/><polyline points="14 12 16 14 14 16"/></svg>
       </button>
       <button data-panel="github" class="icon-bar-btn" title="GitHub 设置">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
       </button>
       <div class="flex-1"></div>
       <button id="btn-export-md" class="icon-bar-btn" title="导出 MD">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
     </aside>
   </div>
@@ -355,16 +469,53 @@ body.wallpaper-transparent #right-icon-bar {
 </div> <!-- 关闭外层 flex-col 容器 -->
 
 <!-- GitHub 发布弹窗 -->
-<div id="github-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+<div id="github-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 hidden">
   <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
-    <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4">发布到 GitHub</h3>
+    <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4 flex items-center gap-2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-black/80 dark:text-white/80"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      发布到 GitHub
+    </h3>
     <div class="space-y-3">
+      <!-- [Editor] 二次草稿设置：开关置于状态背景框内部右侧（文字区 #gh-hint-text 动态重建，
+           开关 #lbl-gh-draft 为静态子元素不被重建，保住 change 绑定）。与 meta 面板「设置成草稿」双向同步。 -->
+      <div id="gh-publish-hint" class="hidden items-center gap-2 rounded-lg px-3 py-2.5">
+        <div id="gh-hint-text" class="flex-1 flex items-start gap-2 min-w-0"></div>
+        <!-- 二次草稿设置：滑块 Switch。文字「设为草稿」+ 隐藏 checkbox + 轨道滑块。
+             滑块轨道色随状态框语义：开(草稿)=琥珀、关(公开)=灰。checkbox 视觉隐藏但保留状态与 change。 -->
+        <label id="lbl-gh-draft" class="shrink-0 flex items-center gap-1.5 text-xs cursor-pointer select-none text-black/70 dark:text-white/70">
+          <span>设为草稿</span>
+          <input type="checkbox" id="gh-draft-toggle" class="gh-switch-input" />
+          <span class="gh-switch-track"><span class="gh-switch-thumb"></span></span>
+        </label>
+      </div>
       <div id="gh-status" class="text-sm hidden"></div>
-      <p class="text-xs text-black/40 dark:text-white/40">Token、仓库、分支在右侧 🔑 图标中设置</p>
+      <p class="text-[11px] leading-relaxed text-black/35 dark:text-white/35">发布前请检查是否填入正确 Token、仓库和分支</p>
     </div>
-    <div class="flex justify-end gap-2 mt-5">
-      <button id="gh-cancel" class="px-4 py-2 rounded-lg text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer">取消</button>
-      <button id="gh-confirm" class="px-5 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer">确认发布</button>
+    <div class="flex justify-end gap-2.5 mt-6">
+      <button id="gh-cancel" class="px-4 py-2 rounded-lg text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer">
+        取消
+      </button>
+      <button id="gh-confirm" class="px-5 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer shadow-sm shadow-[var(--primary)]/20">
+        确认发布
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用确认弹窗（替代浏览器原生 confirm，样式与 GitHub 发布弹窗一致）
+     注意：遮罩不加 backdrop-blur —— 编辑器页 fixed inset-0 遮罩加模糊会与固定导航栏
+     在层叠边界产生渲染伪影（见记忆：backdrop-blur 与固定导航栏伪影） -->
+<div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 hidden">
+  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
+    <h3 id="confirm-modal-title" class="text-base font-bold text-black/90 dark:text-white/90 mb-4">确认操作</h3>
+    <p id="confirm-modal-message" class="text-sm text-black/70 dark:text-white/70 leading-relaxed break-words"></p>
+    <div class="flex justify-end gap-2.5 mt-6">
+      <button id="confirm-modal-cancel" class="px-4 py-2 rounded-lg text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer">
+        取消
+      </button>
+      <button id="confirm-modal-ok" class="px-5 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:opacity-90 transition cursor-pointer shadow-sm">
+        确认删除
+      </button>
     </div>
   </div>
 </div>
@@ -382,7 +533,7 @@ body.wallpaper-transparent #right-icon-bar {
     <div id="img-panel-local" class="space-y-3">
       <div class="flex gap-2">
         <input id="img-url-input" type="text" placeholder="粘贴图片 URL（单张）"
-          class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
+          class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" />
         <label class="px-3 py-2 rounded-lg border border-[var(--line-divider)] text-sm text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 hover:text-[var(--primary)]/70 transition cursor-pointer flex items-center gap-1 whitespace-nowrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           本地上传
@@ -410,7 +561,7 @@ body.wallpaper-transparent #right-icon-bar {
       </div>
       <!-- 相簿选择下拉 -->
       <div id="cloud-album-selector" class="mb-3">
-        <select id="cloud-album-select" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 cursor-pointer">
+        <select id="cloud-album-select" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50 cursor-pointer">
           <option value="">选择相簿...</option>
         </select>
       </div>
@@ -433,7 +584,7 @@ body.wallpaper-transparent #right-icon-bar {
     <div>
       <div class="mt-3">
         <input id="img-alt-input" type="text" placeholder="图片描述（可选，显示在图片下方）"
-          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
+          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" />
       </div>
     </div>
     <div class="flex justify-end gap-2 mt-3">
@@ -451,12 +602,12 @@ body.wallpaper-transparent #right-icon-bar {
       <div>
         <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">链接文字</label>
         <input id="link-text-input" type="text" placeholder="显示的文字"
-          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
+          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" />
       </div>
       <div>
         <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">链接地址</label>
         <input id="link-url-input" type="text" placeholder="https://"
-          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
+          class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" />
       </div>
     </div>
     <div class="flex justify-end gap-2 mt-5">
@@ -499,16 +650,175 @@ body.wallpaper-transparent #right-icon-bar {
     if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
     const s = document.createElement('script');
     s.src = src;
- s.onload = resolve;
+    s.onload = resolve;
     s.onerror = resolve;
     document.head.appendChild(s);
   });
-}).then(() => initEditor());
+}).then(() => initEditor())
+  .catch(function(err) {
+    // [Fix #4] 依赖(marked/highlight CDN)加载失败：不静默停摆——给提示并仍初始化编辑器(UI 可用，预览可能不可用)
+    console.error('[editor] 依赖加载失败', err);
+    try { if (window.__editorShowToast) window.__editorShowToast('⚠️ 编辑器依赖加载失败，部分功能可能不可用'); } catch (e) {}
+    if (typeof initEditor === 'function') initEditor();
+  });
 
 function initEditor() {
   const textarea = document.getElementById('markdown-input');
   const preview = document.getElementById('preview-content');
   const fullscreenContent = document.getElementById('fullscreen-content');
+  // [Editor 乙] 单行图(data-single)：加载完成瞬间切成自然宽(加载中用满宽灰底占位)；用 capture 捕获 load(不冒泡)且每图只切一次
+  if (!window.__editorSingleLoadRegistered) {
+    window.__editorSingleLoadRegistered = true;
+    document.addEventListener('load', function(e) {
+      var t = e.target;
+      if (t && t.tagName === 'IMG' && t.dataset && t.dataset.single && !t.__singleDone) {
+        t.__singleDone = true;
+        try { t.style.cssText = 'display:block;width:auto;height:auto;max-width:100%;margin:0 auto;border-radius:8px;background:none;'; } catch (ex) {}
+      }
+    }, true);
+  }
+  // [Fix] 补 Ctrl+B/Ctrl+I 加粗/斜体键盘(对齐按钮 title；Ctrl+Z/Y 走浏览器原生 textarea 撤销/重做，不再重复拦截)
+  if (textarea) {
+    textarea.addEventListener('keydown', function(e) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      var _k = (e.key || '').toLowerCase();
+      var _act = _k === 'b' ? 'bold' : (_k === 'i' ? 'italic' : '');
+      if (!_act) return;
+      var _btn = document.querySelector('#toolbar [data-action="' + _act + '"]');
+      if (!_btn) return;
+      e.preventDefault();
+      _btn.click();
+    });
+  }
+  // [Editor] 编辑已有文章：从 ?slug 读取并载入正文（含 frontmatter 反向解析）
+  // 在 initEditor 开头执行，填充后再让后续预览/面板逻辑生效
+  (function loadFromSlug() {
+    var slug = new URLSearchParams(location.search).get('slug');
+    if (!slug) return;
+    window.__editorLoadingPost = true;
+    // 主用 query；dev 下 trailingSlash 可能吞 query，故同时带 x-editor-slug header 兜底
+    // [Fix N2] 改走 GitHub API 读仓库文章(替代本地 SSR /api/editor/load)：使全站可纯静态构建并在 GitHub Pages 可用
+    var _cfgRepo = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
+    var _cfgBranch = localStorage.getItem('gh-branch') || 'main';
+    var _cfgToken = localStorage.getItem('gh-token') || '';
+    var _fileSlug = slug;
+    if (!/\.(md|mdx|markdown)$/i.test(_fileSlug)) _fileSlug += '.md';
+    var _encPath = _fileSlug.split('/').map(function(seg) { return encodeURIComponent(seg); }).join('/');
+    fetch('https://api.github.com/repos/' + _cfgRepo + '/contents/src/content/posts/' + _encPath + '?ref=' + encodeURIComponent(_cfgBranch), {
+      headers: _cfgToken ? { 'Authorization': 'token ' + _cfgToken, 'Accept': 'application/vnd.github.v3+json' } : { 'Accept': 'application/vnd.github.v3+json' },
+    })
+      .then(function(r) { if (!r.ok) return { success: false }; return r.json(); })
+      .then(function(data) {
+        if (!data || !data.content) return { success: false };
+        var content = '';
+        try { content = decodeURIComponent(escape(atob(String(data.content).replace(/\s/g, '')))); } catch (e) { content = atob(String(data.content).replace(/\s/g, '')); }
+        return { success: true, content: content, slug: slug };
+      })
+      .then(function(d) {
+        if (!d || !d.success || !d.content) {
+          window.__editorLoadingPost = false;
+          return;
+        }
+        var raw = d.content;
+        var fm = {};
+        var body = raw;
+        var m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+        if (m) {
+          body = raw.slice(m[0].length);
+          var lines = m[1].split(/\r?\n/);
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+            if (!kv) continue;
+            var key = kv[1];
+            var val = kv[2].trim();
+            if (val === '') { fm[key] = ''; continue; }
+            // 去掉首尾引号
+            if ((val[0] === '"' && val[val.length - 1] === '"') ||
+                (val[0] === "'" && val[val.length - 1] === "'")) {
+              val = val.slice(1, -1);
+            } else if (val[0] === '[' && val[val.length - 1] === ']') {
+              // 数组：[a, b] 或 ["a", "b"]
+              var inner = val.slice(1, -1);
+              val = inner.split(',').map(function(s) {
+                s = s.trim();
+                if ((s[0] === '"' && s[s.length - 1] === '"') ||
+                    (s[0] === "'" && s[s.length - 1] === "'")) s = s.slice(1, -1);
+                return s;
+              }).filter(Boolean).join(', ');
+            }
+            fm[key] = val;
+          }
+        }
+        var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+        var setChecked = function(id, v) { var el = document.getElementById(id); if (el) el.checked = !!v; };
+        setVal('post-title', fm.title);
+        setVal('post-desc', fm.description);
+        setVal('post-category', fm.category);
+        setVal('post-tags', fm.tags);
+        setVal('post-cover', fm.image);
+        setVal('post-slug', slug);
+        setVal('post-url-slug', fm.slug);
+        setVal('post-published', fm.published);
+        setVal('post-updated', fm.updated);
+        setVal('post-password', fm.password);
+        setVal('post-password-hint', fm.passwordHint);
+        setChecked('chk-pinned', fm.pinned === 'true' || fm.pinned === true);
+        setChecked('chk-comment', !(fm.comment === 'false' || fm.comment === false));
+        setChecked('chk-draft', fm.draft === 'true' || fm.draft === true);
+        // 同步 checkbox 追踪变量（面板关闭后 DOM 不存在，发布时从其读取）
+        if (window.__editorMetaCheckbox) {
+          window.__editorMetaCheckbox.pinned = fm.pinned === 'true' || fm.pinned === true;
+          window.__editorMetaCheckbox.comment = !(fm.comment === 'false' || fm.comment === false);
+          window.__editorMetaCheckbox.draft = fm.draft === 'true' || fm.draft === true;
+        }
+        // 封面图统一处理：mdDir 由 API 返回的 slug 推导（支持文章位于 posts 子目录的情况），
+        // 相对路径据此拼 raw 地址预览；写入 frontmatter 的仍是原始相对路径
+        window.__editorCoverValue = fm.image || '';
+        window.__editorCoverDataUrl = '';
+        window.__editorCoverFilename = '';
+        if (fm.image && !fm.image.startsWith('data:')) {
+          var cf = fm.image.split('/').pop();
+          if (cf) window.__editorCoverFilename = cf;
+        }
+        var importMdDir = 'src/content/posts';
+        if (d.slug) {
+          // ⚠️ 原写法 replace(/\/[^/]*$/, '') 对【不含斜杠】的字符串不匹配，会原样返回，
+          //    导致顶层文章 slug='my-post.md' 时被推成目录 'src/content/posts/my-post'
+          //    → 封面 raw 地址拼错 → 明明存在的图显示"图片不可用"。
+          //    改用 lastIndexOf：只有真正含子目录时才追加。
+          var slugPath = String(d.slug).replace(/\.md$/i, '');
+          var lastSlash = slugPath.lastIndexOf('/');
+          if (lastSlash > -1) {
+            var slugDir = slugPath.substring(0, lastSlash);
+            if (slugDir) importMdDir = 'src/content/posts/' + slugDir;
+          }
+        }
+        window.__editorCoverMdDir = importMdDir;
+        // [方案3] 记录本文载入时正文已有的云端相对图文件名，预览对这些相对图拼 GitHub raw 显示（新写的相对图仍灰框）
+        window.__editorCloudBodyImages = {};
+        var _cbiRe = /!\[[^\]]*\]\(\.\/images\/([^)]+)\)/g, _cbiM;
+        while ((_cbiM = _cbiRe.exec(body)) !== null) window.__editorCloudBodyImages[_cbiM[1]] = true;
+        if (typeof window.applyCover === 'function') {
+          window.applyCover(fm.image || '', { mdDir: importMdDir });
+        }
+        if (textarea) textarea.value = body;
+        // 立即渲染预览：编辑区与预览同时出现——渲染最早发起，别让下面图预读的同步循环占用主线程推后预览
+        if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
+        // [方案A] 渲染之后再后台预读正文云端相对图尺寸，供后续(打字重建等)渲染占位用 aspect-ratio
+        var _ratioMap = window.__editorImageRatios = window.__editorImageRatios || {};
+        var _repoL = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
+        var _branchL = localStorage.getItem('gh-branch') || 'main';
+        Object.keys(window.__editorCloudBodyImages || {}).forEach(function(fn) {
+          var _im = new Image();
+          _im.onload = function() { try { if (_im.naturalWidth && _im.naturalHeight) _ratioMap[fn] = { w: _im.naturalWidth, h: _im.naturalHeight }; } catch(e) {} };
+          _im.onerror = function() {};
+          _im.src = 'https://raw.githubusercontent.com/' + _repoL + '/' + _branchL + '/' + importMdDir + '/images/' + encodeURIComponent(fn);
+        });
+        window.__editorLoadingPost = false;
+      })
+      .catch(function() { window.__editorLoadingPost = false; });
+  })();
 
   // marked 配置
   if (typeof marked !== 'undefined') {
@@ -538,7 +848,7 @@ function initEditor() {
       const cls = lang ? ' class="hljs language-' + lang + '"' : ' class="hljs"';
       return '<pre><code' + cls + '>' + highlighted + '</code></pre>';
     };
-    marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
+    marked.setOptions({ breaks: false, gfm: true, renderer: renderer }); // [Fix #2] 与 marked-worker 的 breaks:false 一致，避免降级/worker 单换行结果不同
   }
 
   // 实时预览（100ms 防抖 + RAF 保证每帧最多渲染一次）
@@ -546,30 +856,156 @@ function initEditor() {
   let _previewTimer = null;
   // Web Worker：在后台线程执行 marked.parse()，不阻塞主线程
   var _mdWorker = null;
-  var _workerReady = false;
+
+  // [方案3-C] 预览 DOM 节点复用：img 的 src 未变则复用旧节点(已解码图不重建、不闪)，src 变了才用新节点加载
+  function applyPreviewContent(container, newHtml) {
+    if (!container) return;
+    var tmp = document.createElement('div');
+    tmp.innerHTML = newHtml || '';
+    // 收集旧 img(按 src)
+    var oldPool = [];
+    var used = {};
+    container.querySelectorAll('img').forEach(function(im) {
+      var s = im.getAttribute('src');
+      if (s) oldPool.push({ s: s, n: im });
+    });
+    // 新 img：src 与某个旧 img 相同 → 用旧节点替换新节点(复用)
+    tmp.querySelectorAll('img').forEach(function(nImg) {
+      var s = nImg.getAttribute('src');
+      if (!s) return;
+      for (var i = 0; i < oldPool.length; i++) {
+        if (!used[i] && oldPool[i].s === s) {
+          used[i] = true;
+          try { nImg.parentNode.replaceChild(oldPool[i].n, nImg); } catch (e) {}
+          return;
+        }
+      }
+    });
+    // 用临时内容替换容器(旧 img 中未被复用者随之移除)
+    container.textContent = '';
+    while (tmp.firstChild) container.appendChild(tmp.firstChild);
+    // [方案3] 网络图加载失败 → 替换成"图片不可用"灰框(不显示 broken 图标)；dataURL/已成功图不会触发
+    container.querySelectorAll('img').forEach(function(im) {
+      if (im.__editorErrHooked) return;
+      im.__editorErrHooked = true;
+      im.addEventListener('error', function() {
+        var alt = im.getAttribute('alt') || '';
+        var box = document.createElement('div');
+        box.style.cssText = 'min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;';
+        box.textContent = '图片不可用';
+        if (im.parentNode) im.parentNode.replaceChild(box, im);
+      });
+    });
+  }
+    // [方案1 Step2] 块级增量：每个顶层块包一个 display:contents 的定位 div(不破坏布局)，只更新变化的块
+  function _ensureBlockCss() {
+    if (document.getElementById('editor-block-css')) return;
+    var s = document.createElement('style');
+    s.id = 'editor-block-css';
+    s.textContent = '#preview-content>[data-block]:first-child>:first-child,' +
+      '#preview-content>[data-block]:last-child>:last-child,' +
+      '#fullscreen-content>[data-block]:first-child>:first-child,' +
+      '#fullscreen-content>[data-block]:last-child>:last-child{margin-top:0!important;margin-bottom:0!important;}';
+    document.head.appendChild(s);
+  }
+  function _highlightBlockEls(scope) {
+    if (!scope || typeof hljs === 'undefined') return;
+    scope.querySelectorAll('pre code').forEach(function(block) {
+      if (!block.classList.contains('hljs')) { try { hljs.highlightElement(block); } catch (ex) {} }
+    });
+  }
+  function _hookBlockImgError(scope) {
+    if (!scope) return;
+    scope.querySelectorAll('img').forEach(function(im) {
+      if (im.__editorErrHooked) return;
+      im.__editorErrHooked = true;
+      im.addEventListener('error', function() {
+        var box = document.createElement('div');
+        box.style.cssText = 'min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;';
+        box.textContent = '图片不可用';
+        if (im.parentNode) im.parentNode.replaceChild(box, im);
+      });
+    });
+  }
+  function renderBlocksInto(container, blocks) {
+    if (!container) return;
+    _ensureBlockCss();
+    // [C] 不再整容器 textContent='' 清空重挂(那会使透明预览整区重排、牵动底下无合成层的模糊壁纸整幅重绘→"背景闪")，
+    // 改为逐块就地更新：未变块原地保留(不重建不移动)，变化块才在该位置改写，只增删差异块。
+    // 先清掉容器里非 data-block 的残留(空白文本/占位)，保证后续按块序对齐
+    var items = [];
+    var cur = container.firstChild;
+    while (cur) {
+      var next = cur.nextSibling;
+      if (cur.nodeType === 1 && cur.getAttribute && cur.getAttribute('data-block') !== null && cur.getAttribute('data-block') !== '') {
+        items.push(cur);
+      } else {
+        container.removeChild(cur);
+      }
+      cur = next;
+    }
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      var el = items[i];
+      if (!el) {
+        el = document.createElement('div');
+        el.style.cssText = 'display:contents';
+        items.push(el);
+        container.appendChild(el);
+      }
+      if (el.__raw === b.raw) { el.setAttribute('data-block', String(i)); continue; } // 未变 → 原位复用，不重建
+      el.__raw = b.raw;
+      el.setAttribute('data-block', String(i));
+      el.innerHTML = b.html || '';
+      _highlightBlockEls(el);
+      _hookBlockImgError(el);
+    }
+    // 块数变少时移除末尾多余的旧块
+    for (var k = blocks.length; k < items.length; k++) {
+      if (items[k] && items[k].parentNode) items[k].parentNode.removeChild(items[k]);
+    }
+  }
+var _workerReady = false;
   try {
     _mdWorker = new Worker('/marked-worker.js');
+    window.__editorMdWorker = _mdWorker; // [Fix #1] 挂到 window 供 Layout 离开编辑器时 terminate，避免每次进入泄漏一个 worker
     _mdWorker.onmessage = function(e) {
-      var html = e.data;
+      var html = '';
+      var data = e.data;
+      // [方案1 Step1] worker 现用 lexer 分块返回 {ok, blocks, joined}；joined=逐块拼接(≈整篇 parse)，
+      // blocks 供后续块级增量(Step2)做"只更新变化块"。
+      if (data && data.ok) {
+        html = data.joined || '';
+        window.__editorLastBlocks = data.blocks || null;
+      } else if (typeof data === 'string') {
+        html = data;
+      } else if (data && data.html) {
+        html = data.html;
+      }
       // 保存 textarea 滚动位置，防止 preview innerHTML 更新触发 reflow 时被重置
       var savedScrollTop = textarea.scrollTop;
       var savedSelStart = textarea.selectionStart;
       var savedSelEnd = textarea.selectionEnd;
       // 保存预览区滚动位置，避免 innerHTML 重写后高度变化导致预览页跳动/下滑
       var savedPreviewScroll = preview.scrollTop;
-      // 主线程补处理：Worker 只做基础 markdown→HTML，代码高亮和列表样式在主线程完成
-      if (html && typeof hljs !== 'undefined') {
-        var tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        tmp.querySelectorAll('pre code').forEach(function(block) {
-          if (!block.classList.contains('hljs')) {
-            try { hljs.highlightElement(block); } catch(ex) {}
-          }
-        });
-        html = tmp.innerHTML;
+      if (data && data.ok && (data.blocks || []).length) {
+        // [方案1 Step2] 块级增量：只更新变化块(display:contents 定位)，未变块 DOM 原样保留
+        renderBlocksInto(preview, data.blocks);
+        if (fullscreenContent) renderBlocksInto(fullscreenContent, data.blocks);
+      } else {
+        // 回退/整段：worker 返回整 html 或异常(含高亮)
+        if (html && typeof hljs !== 'undefined') {
+          var tmp = document.createElement('div');
+          tmp.innerHTML = html;
+          tmp.querySelectorAll('pre code').forEach(function(block) {
+            if (!block.classList.contains('hljs')) { try { hljs.highlightElement(block); } catch(ex) {} }
+          });
+          html = tmp.innerHTML;
+        }
+        var _ph = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
+        applyPreviewContent(preview, _ph);
+        if (fullscreenContent) applyPreviewContent(fullscreenContent, _ph);
       }
-      preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
-      if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
       // 恢复预览区滚动位置：innerHTML 重写后浏览器尚未完成 layout，
       // 立即赋值 scrollTop 会因新高度未生效而失效/被 clamp，故延迟到下一帧恢复。
       // 关键：html 全局 scroll-behavior:smooth 会继承到 preview-content，
@@ -597,6 +1033,29 @@ function initEditor() {
   function _renderPreview() {
     var md = textarea.value;
     var imageMap = window.__editorImageMap || {};
+    // [方案3] 拼 GitHub raw URL：供"载入本文时正文里已有的云端相对图 ./images/x"预览显示
+    // [B] 简版预览：admonition/GitHub 卡片识别成卡片(不裸语法)；PlantUML 保留代码块显示
+    function _admonBlock(type, text) {
+      var colorMap = { note: '#3b82f6', info: '#3b82f6', tip: '#22c55e', important: '#f59e0b', warning: '#f59e0b', caution: '#ef4444', danger: '#ef4444' };
+      var color = colorMap[(type || '').toLowerCase()] || '#888';
+      var label = (type || 'note').charAt(0).toUpperCase() + (type || 'note').slice(1);
+      var esc = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<div style="border-left:4px solid ' + color + ';background:var(--line-divider, rgba(128,128,128,0.12));border-radius:6px;padding:10px 14px;margin:12px 0;">' +
+        '<div style="font-weight:700;color:' + color + ';font-size:13px;margin-bottom:4px;">' + label + '</div>' +
+        '<div style="white-space:pre-wrap;font-size:14px;">' + esc + '</div></div>';
+    }
+    function _githubCard(repo) {
+      var esc = String(repo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<div style="border:1px solid var(--line-divider, rgba(128,128,128,0.2));border-radius:8px;padding:10px 14px;margin:12px 0;">' +
+        '<span style="font-weight:700;">GitHub 卡片</span> <code>' + esc + '</code>' +
+        '<span style="float:right;font-size:12px;opacity:0.5;">线上渲染</span></div>';
+    }
+    function _cloudRaw(fn) {
+      var _repo = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
+      var _branch = localStorage.getItem('gh-branch') || 'main';
+      var _mdDir = window.__editorCoverMdDir || 'src/content/posts';
+      return 'https://raw.githubusercontent.com/' + _repo + '/' + _branch + '/' + _mdDir + '/images/' + encodeURIComponent(fn);
+    }
     md = md.replace(/!\[([^\]]*)\]\(\.\/images\/([^)]+)\)/g, function(match, alt, filename) {
       return imageMap[filename] ? '![' + alt + '](' + imageMap[filename] + ')' : match;
     });
@@ -612,11 +1071,22 @@ function initEditor() {
       var html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;margin:16px 0;">';
       images.forEach(function(img) {
         var isResolvable = imageMap[img.src] || /^https?:\/\//.test(img.src) || img.src.indexOf('data:') === 0;
+        if (!isResolvable) {
+          // [方案3] grid 并排图内相对 ./images/x 且属于载入本文的云端图 → 拼 raw 显示
+          var rg = String(img.src).match(/^\.\/images\/([^)]+)$/);
+          if (rg && window.__editorCloudBodyImages && window.__editorCloudBodyImages[rg[1]]) {
+            var _raw = _cloudRaw(rg[1]);
+            if (_raw) { img.src = _raw; isResolvable = true; img.cloudFn = rg[1]; }
+          }
+        }
         html += '<div style="text-align:center;">';
         if (!isResolvable) {
           html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;opacity:0.6;font-size:12px;text-align:center;">图片不可用</div>';
         } else {
-          html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));object-fit:cover;" />';
+          // [方案A] grid 云端相对图命中预读尺寸 → aspect-ratio 锁真实比例占位(去 min-height)；未命中回退 min-height:200px
+          var _gRatio = img.cloudFn ? (window.__editorImageRatios || {})[img.cloudFn] : null;
+          var _gRatioStyle = (_gRatio && _gRatio.w > 0 && _gRatio.h > 0) ? 'aspect-ratio:' + _gRatio.w + ' / ' + _gRatio.h + ';min-height:0;' : 'min-height:200px;';
+          html += '<img src="' + img.src + '" alt="' + img.alt + '" style="width:100%;height:auto;border-radius:8px;' + _gRatioStyle + 'background:var(--line-divider, rgba(128,128,128,0.15));object-fit:cover;" />';
         }
         if (img.alt) html += '<p style="font-size:12px;color:#999;margin:4px 0 0;">' + img.alt + '</p>';
         html += '</div>';
@@ -630,23 +1100,67 @@ function initEditor() {
     md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(match, alt, src) {
       var isResolvable = imageMap[src] || /^https?:\/\//.test(src) || src.indexOf('data:') === 0;
       if (!isResolvable) {
-        return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;">图片不可用：' + (alt || src) + '</div>';
+        // [方案3] 相对 ./images/x 且属于"本文载入时已有的云端图" → 拼 raw 显示
+        var rel = src.match(/^\.\/images\/([^)]+)$/);
+        if (rel && window.__editorCloudBodyImages && window.__editorCloudBodyImages[rel[1]]) {
+          var _raw = _cloudRaw(rel[1]);
+          if (_raw) { src = _raw; isResolvable = true; }
+        }
       }
-      var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;border-radius:8px;min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));object-fit:cover;" />';
+      if (!isResolvable) {
+        return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;">图片不可用</div>';
+      }
+      // [Editor 乙] 单行图：加载中 = 满宽灰底占位(不透明)；加载完成后由全局 load 捕获(仅 data-single、每图一次)切成自然宽：
+      // 大图靠 max-width:100% 压到容器、窄图按真实宽并居中。代价=加载完成瞬间有一次从满宽到真实尺寸的校正。
+      var imgHtml = '<img src="' + src + '" alt="' + alt + '" data-single="1" style="display:block;width:100%;height:auto;max-width:100%;min-height:200px;margin:0 auto;border-radius:8px;object-fit:cover;background:var(--line-divider, rgba(128,128,128,0.15));" />';
       if (alt) imgHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
       return imgHtml;
+    });
+    // [B] 编辑器预览简版识别 admonition / ::github（不裸语法）；PlantUML 保留代码块显示
+    md = md.replace(/^> \[!(\w+)\]\s*\n((?:^>.*\n?)+)/gm, function(m, type, body) {
+      var text = String(body).split('\n').map(function(l) { return l.replace(/^>\s?/, ''); }).join('\n');
+      // [Fix] 护栏：内容异常长(>600)说明可能吞进了本不该并入提示框的多段引用 → 不转换保留原样
+      if (text.length > 600) return m;
+      return _admonBlock(type, text);
+    });
+    md = md.replace(/:::\s*(\w+)[^\n]*\n([\s\S]*?)\s*:::\s*(?:\n|$)/g, function(m, type, body) {
+      // [Fix] 护栏：body 异常长(>2000)多半是孤立/错配 ::: 非贪婪吞到远处 → 不转换
+      if (String(body).length > 2000) return m;
+      return _admonBlock(type, body);
+    });
+    md = md.replace(/::github\s*\{\s*repo\s*=\s*"([^"]+)"\s*\}/g, function(m, repo) {
+      return _githubCard(repo);
     });
     // 用 Web Worker 解析 markdown（后台线程，不阻塞主线程）
     if (_workerReady && _mdWorker) {
       _mdWorker.postMessage(md);
     } else {
-      // 降级：worker 不可用时用主线程解析
-      var html = '';
-      try { html = (typeof marked !== 'undefined') ? marked.parse(md) : md.replace(/\n/g, '<br>'); }
-      catch(e) { html = '<p style="color:red">渲染错误: ' + e.message + '</p>'; }
+      // 降级：worker 不可用时主线程解析(同样分块，保持块级增量一致)；marked 不可用则回退整段
       var savedPreviewScrollFallback = preview.scrollTop;
-      preview.innerHTML = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
-      if (fullscreenContent) fullscreenContent.innerHTML = preview.innerHTML;
+      var blks = null;
+      try {
+        if (typeof marked !== 'undefined') {
+          var toks = marked.lexer(md);
+          blks = [];
+          for (var bi = 0; bi < toks.length; bi++) {
+            var bhtml = '';
+            try { bhtml = marked.parser([toks[bi]]); }
+            catch (berr) { bhtml = '<p style="color:red">块渲染错误: ' + berr.message + '</p>'; }
+            blks.push({ raw: toks[bi].raw || '', html: bhtml });
+          }
+        }
+      } catch(e) { blks = null; }
+      if (blks && blks.length) {
+        renderBlocksInto(preview, blks);
+        if (fullscreenContent) renderBlocksInto(fullscreenContent, blks);
+      } else {
+        var html = '';
+        try { html = (typeof marked !== 'undefined') ? marked.parse(md) : md.replace(/\n/g, '<br>'); }
+        catch(e) { html = '<p style="color:red">渲染错误: ' + e.message + '</p>'; }
+        var _ph = html || '<div class="text-black/30 dark:text-white/30 text-sm italic">预览区域</div>';
+        applyPreviewContent(preview, _ph);
+        if (fullscreenContent) applyPreviewContent(fullscreenContent, _ph);
+      }
       // 临时关闭 smooth，避免 scrollTop 恢复变成平滑动画（跳动观感）
       var fbBehavior = preview.style.scrollBehavior;
       preview.style.scrollBehavior = 'auto';
@@ -689,27 +1203,6 @@ function initEditor() {
     if (typewriterEnabled) scrollCursorToCenter();
   });
 
-  // 自动保存
-  const AUTOSAVE_KEY = 'editor-autosave-draft';
-  function saveDraft() {
-    const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-    const data = {
-      content: textarea.value,
-      title: getVal('post-title'),
-      desc: getVal('post-desc'),
-      category: getVal('post-category'),
-      tags: getVal('post-tags'),
-      cover: window.__editorCoverValue || getVal('post-cover'),
-      slug: getVal('post-slug'),
-      password: getVal('post-password'),
-      passwordHint: getVal('post-password-hint'),
-      pinned: window.__editorMetaCheckbox ? window.__editorMetaCheckbox.pinned : false,
-      comment: window.__editorMetaCheckbox ? window.__editorMetaCheckbox.comment : true,
-      savedAt: new Date().toISOString(),
-    };
-    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch(e) {}
-  }
-  window.__editorAutosaveTimer = setInterval(saveDraft, 30000);
 
   // 工具栏按钮
   const toolbarConfig = {
@@ -791,6 +1284,7 @@ function initEditor() {
   // Enter 键自动延续列表（有序/无序/任务/引用）
   textarea.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229) return; // [Fix #7] IME 组合输入的回车(选字/确认)不触发列表延续/截断
     const start = textarea.selectionStart;
     const val = textarea.value;
     const lineStart = val.lastIndexOf('\n', start - 1) + 1;
@@ -1140,9 +1634,38 @@ function initEditor() {
 
   if (!slidePanel) { console.error('slide-panel not found'); return; }
 
+  // [Editor] 草稿箱间距样式：必须运行时注入。
+  // 原因：#draft-list / #draft-toolbar 的 class 是 JS 动态生成的，
+  // Astro 构建时会对 <style> 做摇树优化，认为这些选择器永不匹配而整段删除。
+  if (!document.getElementById('draft-spacing-style')) {
+    var dsStyle = document.createElement('style');
+    dsStyle.id = 'draft-spacing-style';
+    dsStyle.textContent = [
+      /* toolbar 显示时：输入框 → 全选行 = 0.25rem(3.6px @14.4)，本地/云端同源 */
+      '#draft-toolbar, #draft-toolbar-cloud { padding: 0.25rem 0 0 0 !important; }',
+      /* toolbar 隐藏时：输入框底部 → 草稿项边框 = 0.5rem(7.2px @14.4)。
+         margin-top 而非 padding-top：滚动裁剪边界 = 容器 padding box 顶边；
+         margin 在容器外、不参与滚动，使裁剪线 = 首项初始顶边（滚动时项在首项位置被切），
+         且不留会被内容填满的隐形留白。本地/云端列表同源（云端列表也带 tb-off/tb-on 类）。 */
+      '#draft-list.tb-off, #draft-cloud-list.tb-off { margin-top: 0.5rem !important; padding-top: 0 !important; }',
+      /* toolbar 显示时：全选行 → 草稿项边框 = 0.25rem(3.6px @14.4)，同 margin 机制，本地/云端同源 */
+      '#draft-list.tb-on, #draft-cloud-list.tb-on { margin-top: 0.25rem !important; padding-top: 0 !important; }',
+      /* 云端控件高度锁定，使云端控件区 = 本地控件区（机制同源，任意缩放恒等）：
+         本地：tab留白 0.5rem + 输入框(行高 1.25rem + py 1rem + 真实 border 1px×2)
+         云端：tab留白 0.5rem + 状态行 1rem + 刷新按钮(行高 1.25rem + 真实 border 1px×2，同色 var(--primary) 无视觉变化)
+         → 状态行(1rem) + 按钮 = 1rem + 1.25rem + border×2 = 输入框公式，等式恒成立
+         → 按钮不再用 calc 凭空加 2px（那会缺 border 亚像素缩水），改用真实 border，与输入框吃同款渲染
+         → 实测修复后：按钮 = 18 + 1.6 = 19.6px，云端控件区 = 14.4 + 19.6 = 34.0px = 输入框 34.0px，首项顶部对齐
+         状态行空内容时也固定占 1rem，避免有无文字时控件区高度跳动。 */
+      '#draft-cloud-status { padding: 0 !important; height: 1rem !important; line-height: 1rem !important; }',
+      '#btn-refresh-cloud { padding: 0 !important; line-height: 1.25rem !important; border: 1px solid var(--primary) !important; }'
+    ].join('\n');
+    document.head.appendChild(dsStyle);
+  }
+
   // [Editor] 追踪文章信息 checkbox 状态（面板关闭后 DOM 元素消失，用变量保存）
-  // 挂到 window 上供其他 IIFE（自动保存等）访问
-  if (!window.__editorMetaCheckbox) window.__editorMetaCheckbox = { pinned: false, comment: true };
+  // 挂到 window 上供其他 IIFE（草稿保存/发布等）访问
+  if (!window.__editorMetaCheckbox) window.__editorMetaCheckbox = { pinned: false, comment: true, draft: false };
   var metaCheckboxState = window.__editorMetaCheckbox;
 
   // [Editor] 追踪封面图 URL（面板关闭后 DOM 元素消失，用变量保存）
@@ -1153,10 +1676,223 @@ function initEditor() {
   if (!window.__editorCoverFilename) window.__editorCoverFilename = '';
   // 封面图数据不持久化到 localStorage（刷新后需重新上传），草稿加载时从 editor-draft-cover-{savedAt} 恢复
 
+  // ─── 封面图统一处理（2026-08-29 重构）───
+  // 背景：原先"填输入框 + 显示预览"的逻辑重复散在 6 处（本地草稿/云端草稿/文章页导入/
+  //       openPanel/手动输入/上传封面），各自判断标准不同 → 同一相对路径在不同入口表现不一致。
+  // 现在收敛成以下 2 个函数，所有入口统一调用，判断规则只有一份。
+  //
+  // ⚠️ 铁律：本组函数只操作"显示层"（DOM），绝不写 __editorCoverValue /
+  //    __editorCoverDataUrl / __editorCoverFilename —— 那三个是发布链路的数据源，
+  //    一旦被预览地址污染，frontmatter 会写入完整 URL 而非 ./images/xxx.png。
+
+  // 路径规范化：把 (基准目录 + 相对路径) 合并成干净路径，处理 ./ 与 ../
+  function _normalizeCoverPath(baseDir, relPath) {
+    var parts = String(baseDir || '').split('/').concat(String(relPath || '').split('/'));
+    var out = [];
+    parts.forEach(function(p) {
+      if (!p || p === '.') return;
+      if (p === '..') out.pop();
+      else out.push(p);
+    });
+    return out.join('/');
+  }
+
+  // 把 frontmatter 里的封面值解析成"浏览器能加载的预览地址"
+  function _resolveCoverPreviewUrl(coverValue, mdDir) {
+    var v = String(coverValue || '').trim();
+    if (!v) return '';
+    // 已能直接显示的：内存图 / 远程图 / 站点根路径（public 下）
+    if (v.indexOf('data:') === 0 || /^https?:\/\//i.test(v) || v.indexOf('/') === 0) return v;
+    // 相对路径 → 拼 GitHub raw 地址（对应发布时上传位置 src/content/posts/images/）
+    var cfg = (typeof getCloudGithubConfig === 'function') ? getCloudGithubConfig() : { repo: '', branch: '' };
+    if (!cfg.repo || !cfg.branch) return '';
+    var full = _normalizeCoverPath(mdDir || 'src/content/posts', v);
+    return 'https://raw.githubusercontent.com/' + cfg.repo + '/' + cfg.branch + '/' + full;
+  }
+
+  // 封面预览加载状态（防抖 + 结果缓存 + 超时兜底）
+  var _coverLoadTimer = null;   // 防抖定时器
+  var _coverResult = {};        // 地址 → 'ok' | 'error'，记住加载结果，避免重复请求
+  var _coverLoadSeq = 0;        // 递增序号：让已过期的旧请求回调失效
+  var _coverLoading = false;    // 是否有请求正在飞行中（供「刷新」按钮防重复点击）
+
+  // 取消"尚未执行的封面加载"，并让"已发出的旧请求回调"失效。
+  // 供 applyCover 与「删除」按钮共用（删除按钮原先漏了这两步：
+  //   输入慢速 URL 后立刻点删除 → 500ms 防抖到期仍会加载 → 预览又冒出来）。
+  function cancelCoverLoad() {
+    if (_coverLoadTimer) { clearTimeout(_coverLoadTimer); _coverLoadTimer = null; }
+    _coverLoadSeq++;
+    _coverLoading = false;
+  }
+
+  // 结果缓存读写：dataURL 是本地数据、瞬间加载，缓存它毫无意义，
+  // 却会让整张图的 base64（几百 KB～几 MB）作为 key 常驻内存直到刷新，故跳过。
+  function _coverCacheGet(url) {
+    if (!url || url.indexOf('data:') === 0) return '';
+    return _coverResult[url] || '';
+  }
+  function _coverCacheSet(url, result) {
+    if (!url || url.indexOf('data:') === 0) return;
+    _coverResult[url] = result;
+  }
+  // 清除某个地址的缓存结果（供「刷新」按钮强制重试）
+  function _coverCacheDel(url) {
+    if (!url) return;
+    delete _coverResult[url];
+  }
+
+  // 统一入口：填输入框 + 解析预览地址 + 显示/隐藏预览
+  // coverValue: frontmatter 里的原始值（如 ./images/1.png）
+  // opts.mdDir: md 所在目录（云端草稿从 path 提取；其它默认 src/content/posts）
+  // opts.force: true 时忽略结果缓存、强制重新加载（供「刷新」按钮重试用）
+  function applyCover(coverValue, opts) {
+    opts = opts || {};
+    var val = String(coverValue || '');
+    var mdDir = opts.mdDir || 'src/content/posts';
+    var force = !!opts.force;
+
+    // ① 填输入框：常驻隐藏框 + 面板框（面板未打开时后者不存在，跳过即可）
+    var hiddenInput = document.getElementById('post-cover');
+    if (hiddenInput) hiddenInput.value = val;
+    var panelInput = panelContent ? panelContent.querySelector('#post-cover') : null;
+    if (panelInput) panelInput.value = val;
+
+    // ② 解析预览地址：刚上传的图（内存 dataURL）优先，其次按路径解析
+    var previewUrl = window.__editorCoverDataUrl || _resolveCoverPreviewUrl(val, mdDir);
+
+    // ③④ 单框显示：加载中（灰底 + 文字）→ 成功显示背景图 / 失败显示"图片不可用"
+    //    设计说明：不用「<img> + 占位框」两个元素，改为单个 div 用 background-image 显示图片。
+    //    只有一个元素、只切 class，从根本上杜绝"两个框同时显示"以及
+    //    "内联 style 压过 hidden 类"这类问题。
+    var box = document.getElementById('cover-preview') ||
+              (panelContent ? panelContent.querySelector('#cover-preview') : null);
+    var frame = document.getElementById('cover-preview-img') ||
+                (panelContent ? panelContent.querySelector('#cover-preview-img') : null);
+    if (!box || !frame) return;
+
+    // 取消上一次尚未执行的加载（防抖），并让已发出的旧请求回调失效
+    // （用户输入新地址后，旧请求的 onload/onerror 不得再改画面）
+    cancelCoverLoad();
+
+    if (!previewUrl) {
+      // 无封面：清掉背景图与状态，整个预览区隐藏
+      frame.style.backgroundImage = '';
+      frame.classList.remove('cover-loading', 'cover-error');
+      box.classList.add('hidden');
+      return;
+    }
+
+    box.classList.remove('hidden');
+
+    // 结果缓存：同一地址此前加载过（成功或失败都记），直接套用上次结果，不再发请求。
+    // 这同时解决两个问题：
+    //   ① 关闭面板再打开时 innerHTML 重建，frame 是新元素（背景图丢失），
+    //      若重新走加载流程会先闪一下灰色"加载中"，直接套用缓存则不闪。
+    //   ② 无效地址（如输入 "8"）请求长时间挂起时，重开面板不会再次卡在"加载中"。
+    // opts.force 为 true 时跳过缓存并丢弃旧结果，强制重新加载（「刷新」按钮走这条）
+    if (force) _coverCacheDel(previewUrl);
+    var cachedResult = force ? '' : _coverCacheGet(previewUrl);
+    if (cachedResult === 'ok') {
+      frame.style.backgroundImage = 'url("' + String(previewUrl).replace(/"/g, '\\"') + '")';
+      frame.classList.remove('cover-loading', 'cover-error');
+      return;
+    }
+    if (cachedResult === 'error') {
+      frame.style.backgroundImage = '';
+      frame.classList.remove('cover-loading');
+      frame.classList.add('cover-error');
+      frame.setAttribute('data-ph-text', '图片不可用');
+      return;
+    }
+
+    var doLoad = function() {
+      var seq = ++_coverLoadSeq;
+      _coverLoading = true;
+      // 进入"加载中"：清掉旧背景图，灰底 + 文字（文字由 CSS ::after 读 data-ph-text 显示）
+      frame.style.backgroundImage = '';
+      frame.classList.remove('cover-error');
+      frame.classList.add('cover-loading');
+      frame.setAttribute('data-ph-text', '加载中...');
+
+      var settled = false;   // 是否已经出结果（成功或失败）
+      var timeoutTimer = null;
+      var escapedUrl = String(previewUrl).replace(/"/g, '\\"');
+
+      var finishOk = function() {
+        settled = true;
+        _coverLoading = false;
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (seq !== _coverLoadSeq) return;   // 已被更新的请求取代
+        _coverCacheSet(previewUrl, 'ok');
+        frame.style.backgroundImage = 'url("' + escapedUrl + '")';
+        frame.classList.remove('cover-loading', 'cover-error');
+      };
+      var finishErr = function() {
+        // 先清标志：早于 settled 检查，确保任何失败路径都能复位。
+        // （若 finishOk 已执行过，它已置 false，这里重复赋值无害）
+        _coverLoading = false;
+        if (settled) return;
+        settled = true;
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (seq !== _coverLoadSeq) return;
+        _coverCacheSet(previewUrl, 'error');
+        frame.style.backgroundImage = '';
+        frame.classList.remove('cover-loading');
+        frame.classList.add('cover-error');
+        frame.setAttribute('data-ph-text', '图片不可用');
+      };
+
+      // 预加载：只有真正加载成功才把图片设为背景，避免加载过程露出半张图/裂图
+      var preloader = new Image();
+      preloader.onload = finishOk;
+      preloader.onerror = finishErr;
+      // 超时兜底：GitHub raw 在国内常长时间挂起，onerror 迟迟不触发 → 会永远卡在"加载中"。
+      // 若超时后图片才加载完成，onload 仍会执行并把图片显示出来（finishOk 不检查 settled）。
+      timeoutTimer = setTimeout(finishErr, 8000);
+      preloader.src = previewUrl;
+    };
+
+    // dataURL（刚上传的本地图）立即加载，无网络延迟；
+    // force（点「刷新」按钮）也立即加载，避免无谓的半秒等待；
+    // 其它网络地址/相对路径则防抖 500ms —— 输入框绑在 input 事件上，
+    // 不加防抖会每敲一个字符发一次请求，且 URL 输到一半必然 404 → 疯狂闪"图片不可用"
+    if (force || previewUrl.indexOf('data:') === 0) {
+      doLoad();
+    } else {
+      _coverLoadTimer = setTimeout(doLoad, 500);
+    }
+  }
+  // 挂到 window：文章页导入逻辑位于页面第 1 个 is:inline script（各 script 作用域独立），
+  // 需通过 window 才能调用本函数
+  window.applyCover = applyCover;
+  window.__editorResolveCoverPreviewUrl = _resolveCoverPreviewUrl;
+
+  // 封面单框预览的"文字层"样式：必须运行时注入。
+  // 原因：#cover-preview-img 是 JS 动态生成、cover-loading 类是运行时加的，
+  // 写在 <style> 里的选择器会被 Astro 构建期摇树整段删除（同 draft-spacing-style 的坑）。
+  // 用 ::after + attr(data-ph-text) 显示文字，内容由 JS 动态设置，无需写死在 CSS 里。
+  if (!document.getElementById('cover-preview-style')) {
+    var cpStyle = document.createElement('style');
+    cpStyle.id = 'cover-preview-style';
+    cpStyle.textContent = [
+      '#cover-preview-img.cover-loading::after,',
+      '#cover-preview-img.cover-error::after {',
+      '  content: attr(data-ph-text);',
+      '  position: absolute; inset: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  color: var(--font-color, #999); opacity: 0.6; font-size: 12px; text-align: center;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(cpStyle);
+  }
+
   // [Editor] YAML frontmatter 构建工具
   function _yamlEscape(str) {
     if (!str) return str;
-    if (/[":\[\]{}&*?|>!%@`#]/.test(str)) {
+    // 含特殊字符、或会被 YAML 解析成非字符串的值都强制加引号：纯/前导数字、布尔/空/null/开关词等
+    if (/[":\[\]{}&*?|>!%@`#]/.test(str) ||
+        /^\d/.test(str) ||
+        /^(true|false|null|~|yes|no|on|off)$/i.test(str)) {
       return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
     }
     return str;
@@ -1164,8 +1900,20 @@ function initEditor() {
   function buildFrontmatter(opts) {
     var fm = '---\n';
     fm += 'title: ' + _yamlEscape(opts.title) + '\n';
-    fm += 'published: ' + new Date().toISOString().split('T')[0] + '\n';
-    fm += 'draft: false\n';
+    // [Editor] 自定义 URL（slug）字段：有值则写回，影响文章页路由
+    if (opts.slug) fm += 'slug: ' + opts.slug + '\n';
+    // 编辑已有文章时保留原 published；新建草稿用今天
+    var publishedVal = opts.published && /^\d{4}-\d{2}-\d{2}/.test(opts.published)
+      ? opts.published.split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    fm += 'published: ' + publishedVal + '\n';
+    // [DateFields] updated 仅当显式传入(undefined 不写，如导出)才输出：有 YYYY-MM-DD 用手动值；空/其它 → 今天(策略 C)
+    if (opts.updated !== undefined) {
+      var updatedVal = opts.updated && /^\d{4}-\d{2}-\d{2}/.test(opts.updated)
+        ? opts.updated.split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      fm += 'updated: ' + updatedVal + '\n';
+    }
     if (opts.desc) fm += 'description: ' + _yamlEscape(opts.desc) + '\n';
     if (opts.category) fm += 'category: ' + _yamlEscape(opts.category) + '\n';
     if (opts.tags) {
@@ -1175,16 +1923,52 @@ function initEditor() {
     if (opts.cover && opts.cover.indexOf('data:') !== 0) fm += 'image: ' + _yamlEscape(opts.cover) + '\n';
     if (opts.password) fm += 'password: ' + _yamlEscape(opts.password) + '\n';
     if (opts.passwordHint) fm += 'passwordHint: ' + _yamlEscape(opts.passwordHint) + '\n';
-    if (opts.pinned) fm += 'pinned: true\n';
-    if (opts.comment === false) fm += 'comment: false\n';
+    // [Editor] 三个布尔字段(pinned/comment/draft)统一恒显式输出 true/false，与真实文章(edit-test.md)格式一致。
+    // 原 pinned 仅 true 时写、comment 仅 false 时写，导致下载/发布的 md 缺字段（用户实测 pinned:false 或 comment:true 都不显示）。
+    fm += 'pinned: ' + (opts.pinned ? 'true' : 'false') + '\n';
+    fm += 'comment: ' + (opts.comment === false ? 'false' : 'true') + '\n';
+    fm += 'draft: ' + (opts.draft ? 'true' : 'false') + '\n';
     fm += '---\n\n';
     return fm;
   }
 
   var templates = {
-    meta: { title: '文章信息', html: '<div class="space-y-3"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标题 <span class="text-red-500">*</span></label><div class="flex gap-2"><input id="post-title-input" type="text" placeholder="请输入文章标题" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-pinned"> 置顶 <input type="checkbox" id="chk-pinned-panel" class="hidden" /> </label> <label class="px-2 py-1.5 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-comment"> 评论 <input type="checkbox" id="chk-comment-panel" class="hidden" checked /> </label></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">描述</label><textarea id="post-desc" rows="2" placeholder="一句话描述文章内容" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 resize-none"></textarea></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">分类</label><input id="post-category" type="text" placeholder="如：技术笔记" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签 <span class="text-xs text-black/40 dark:text-white/40">（自定义用,隔开）</span></label><div class="flex gap-2"><input id="post-tag-1" type="text" placeholder="标签1" class="w-1/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-tag-3" type="text" placeholder="自定义标签" class="w-3/4 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图</label><div class="flex gap-2 flex-nowrap"><input id="post-cover" type="text" placeholder="图片 URL" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><label class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 cursor-pointer whitespace-nowrap shrink-0">上传<input id="cover-upload" type="file" accept="image/*" class="hidden" /></label><button id="btn-remove-cover" type="button" class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-red-400 hover:text-red-600 hover:border-red-400 cursor-pointer whitespace-nowrap shrink-0">删除</button></div><div id="cover-preview" class="mt-2 hidden"><img id="cover-preview-img" class="w-full h-24 object-cover rounded-lg" /></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">密码</label><div class="flex gap-2"><input id="post-password-hint" type="text" placeholder="密码提示" class="w-1/3 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><input id="post-password" type="text" placeholder="输入密码（留空不加密）" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div></div>' },
-    github: { title: 'GitHub 设置', html: '<div class="space-y-4"><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">GitHub Token</label><div class="flex gap-2" style="min-width:0;"><input id="gh-token-panel" type="password" placeholder="ghp_xxxxx" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /><button id="btn-save-token" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-xs font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap shrink-0">保存</button><button id="btn-clear-gh" class="px-3 py-2 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer whitespace-nowrap shrink-0">清空</button></div><p class="text-xs text-black/40 dark:text-white/40 mt-1">🔒 仅保存在本浏览器，刷新不丢失</p></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">仓库</label><input id="gh-repo-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1.5">分支</label><input id="gh-branch-panel" type="text" class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" /></div></div>' },
-    drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;"><div class="space-y-1" style="flex-shrink:0;padding-right:11px;"><div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div><div id="draft-toolbar" class="flex items-center justify-between" style="padding:4px 0;"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none" style="opacity:0;pointer-events:none;"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer" style="opacity:0;pointer-events:none;">删除选中</button></div></div><div id="draft-list" class="text-sm text-black/40 dark:text-white/40" style="flex:1;overflow-y:auto;"></div></div>' }
+    meta: { title: '文章信息', html: '<div class="space-y-2"><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">标题 <span class="text-red-500">*</span></label><div class="flex gap-2"><input id="post-title-input" type="text" placeholder="请输入文章标题" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><label class="px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-pinned"> 置顶 <input type="checkbox" id="chk-pinned-panel" class="hidden" /> </label> <label class="px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-comment"> 评论 <input type="checkbox" id="chk-comment-panel" class="hidden" checked /> </label></div></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">描述</label><textarea id="post-desc" rows="3" placeholder="一句话描述文章内容" class="block w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50 resize-none"></textarea></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">自定义 URL <span class="text-xs text-black/40 dark:text-white/40">（Slug）</span></label><input id="post-url-slug" type="text" placeholder="留空，仅可使用字母、数字和连字符" class="block w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">分类</label><input id="post-category" type="text" placeholder="如：技术笔记" class="block w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">标签 <span class="text-xs text-black/40 dark:text-white/40">（自定义用,隔开）</span></label><div class="flex gap-2"><input id="post-tag-1" type="text" placeholder="标签1" class="w-1/3 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><input id="post-tag-3" type="text" placeholder="自定义标签" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div></div><div class="flex gap-2"><div class="flex-1 min-w-0"><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">发布时间</label><input id="post-published-panel" type="date" class="block w-full min-w-0 px-2 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div><div class="flex-1 min-w-0"><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">更新时间</label><input id="post-updated-panel" type="date" class="block w-full min-w-0 px-2 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">封面图</label><div class="flex gap-2 flex-nowrap"><input id="post-cover" type="text" placeholder="图片 URL" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><label class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 cursor-pointer whitespace-nowrap shrink-0">上传<input id="cover-upload" type="file" accept="image/*" class="hidden" /></label><button id="btn-remove-cover" type="button" class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-red-400 hover:text-red-600 hover:border-red-400 cursor-pointer whitespace-nowrap shrink-0">删除</button><button id="btn-refresh-cover" type="button" title="重新加载封面预览（网络不稳定导致加载失败时，点此重试）" class="flex items-center px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs text-black/60 dark:text-white/60 hover:border-[var(--primary)]/40 cursor-pointer whitespace-nowrap shrink-0">刷新</button></div><div id="cover-preview" class="mt-2 hidden"><div id="cover-preview-img" class="w-full h-24 rounded-lg" style="position:relative;background-color:var(--line-divider, rgba(128,128,128,0.15));background-size:cover;background-position:center;"></div></div></div><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">密码</label><div class="flex gap-2"><input id="post-password-hint" type="text" placeholder="密码提示" class="w-1/3 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><input id="post-password" type="text" placeholder="输入密码（留空不加密）" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div></div><div class="h-3"></div><div class="flex justify-center"><label class="px-2 py-2 rounded-lg border border-[var(--line-divider)] text-xs cursor-pointer select-none inline-flex items-center gap-1 hover:border-[var(--primary)]/40 transition" id="lbl-draft"> 设置成草稿 <input type="checkbox" id="chk-draft-panel" class="hidden" /> </label></div><p class="text-xs text-black/40 dark:text-white/40 mt-1 text-center">勾选后发布为草稿，线上不公开显示，仅仓库可见</p></div>' },
+    github: { title: 'GitHub 设置', html: '<div class="space-y-2"><div><label class="block text-xs leading-none font-medium text-black/60 dark:text-white/60 mb-2">GitHub Token</label><div class="flex gap-2" style="min-width:0;"><input id="gh-token-panel" type="password" placeholder="ghp_xxxxx" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><button id="btn-save-token" class="px-2 py-2 rounded-lg bg-[var(--primary)] text-white dark:text-black/80 text-xs font-medium hover:opacity-90 transition cursor-pointer whitespace-nowrap shrink-0">保存</button><button id="btn-clear-gh" class="px-2 py-2 rounded-lg border border-[var(--line-divider)] text-black/60 dark:text-white/60 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer whitespace-nowrap shrink-0">清空</button></div></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 leading-none mb-2">仓库</label><input id="gh-repo-panel" type="text" class="block w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div><div><label class="block text-xs font-medium text-black/60 dark:text-white/60 leading-none mb-2">分支</label><input id="gh-branch-panel" type="text" class="block w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /></div></div>' },
+    drafts: { title: '草稿箱', html: '<div style="display:flex;flex-direction:column;height:100%;">' +
+        // 本地/云端 tab 切换（事件委托在 panelContent，不单独绑定）
+        '<div class="flex gap-2 draft-ctrl-row" style="flex-shrink:0;padding:0 0 0.5rem 0;">' +
+          '<button data-tab="local" class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border border-[var(--line-divider)] cursor-pointer transition" style="color:var(--primary);border-color:var(--primary);">本地草稿</button>' +
+          '<button data-tab="cloud" class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border border-[var(--line-divider)] text-black/60 dark:text-white/60 cursor-pointer transition">云端草稿</button>' +
+        '</div>' +
+        // 本地草稿区（默认显示）
+        '<div id="draft-local-area" style="flex-direction:column;flex:1;min-height:0;">' +
+          // padding-right 只给顶部控件区，避免整个列表项一起内缩
+          '<div class="space-y-0 draft-ctrl-row" style="flex-shrink:0;padding-right:0;">' +
+            // ring-inset：草稿名称输入框在 .draft-ctrl-row(overflow-y:auto) 内，外侧 ring 会被容器裁剪，
+            // 改用内侧光环（focus:ring-inset）完整显示且不占布局空间（与 meta 输入框外侧 ring 视觉略不同，属结构妥协）
+            '<div class="flex gap-2"><input id="draft-name-input" type="text" placeholder="草稿名称" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--primary)]/50" /><button id="btn-save-draft" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm cursor-pointer">保存</button></div>' +
+            '<div id="draft-toolbar" class="hidden flex items-center justify-between"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none"><input type="checkbox" id="draft-select-all" class="rounded" /> 全选</label><button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer">删除选中</button></div>' +
+          '</div>' +
+          // 列表容器 tb-off/tb-on 类控制顶部留白（由 #draft-spacing-style 注入，margin-top 机制：裁剪线=首项顶边）：toolbar 隐藏时 0.5rem(7.2px @14.4)，显示时 0.25rem(3.6px @14.4)
+          '<div id="draft-list" class="tb-off text-sm text-black/40 dark:text-white/40" style="flex:1;width:100%;min-height:0;overflow-y:auto;"></div>' +
+        '</div>' +
+        // 云端草稿区（默认隐藏，由 _draftTab 控制）—— 结构与本地草稿区【逐行完全一致】，仅数据源不同
+        '<div id="draft-cloud-area" class="hidden" style="flex-direction:column;flex:1;min-height:0;">' +
+          // 顶部控件区：status 状态行 + 刷新按钮（占满整行）；占位输入框已移除；space-y-0 + 收紧 padding 使云端首个草稿项顶部对齐本地
+          '<div class="space-y-0 draft-ctrl-row" style="flex-shrink:0;padding-right:0;">' +
+            // text-align:center：状态行文字在控件区内居中；注意控件区右 padding 已为 0，按钮右缘靠 draft-ctrl-row 的滚动条槽（与 #draft-list 同款 10px）与草稿项对齐，故左右不再对称（左16/右靠槽），状态文字会略偏右。若要严格居中需同步改 wrapper 左 padding，按需处理。
+            '<div id="draft-cloud-status" class="text-xs text-black/40 dark:text-white/40" style="padding:0;text-align:center;"></div>' +
+            // block：button 默认 inline-block，在 block 容器中会产生约 3px 基线间隙，使云端控件区比本地高 3px；改块级后消除
+            '<button id="btn-refresh-cloud" class="block w-full px-3 py-1 rounded-lg bg-[var(--primary)] text-white text-xs cursor-pointer">' + (window.editorCloudI18n ? window.editorCloudI18n.cloudDraftRefresh : '刷新云端') + '</button>' +
+            // toolbar 间距由注入 CSS #draft-toolbar-cloud 控制（与本地 #draft-toolbar 同源，0.25rem 顶距）；不带内联 padding（旧 4px 是 px 硬写，已弃）
+            '<div id="draft-toolbar-cloud" class="hidden flex items-center justify-between"><label class="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 cursor-pointer select-none"><input type="checkbox" id="draft-cloud-select-all" class="rounded" /> 全选</label><button id="btn-delete-cloud-selected" class="text-xs text-red-400 hover:text-red-600 cursor-pointer">删除选中</button></div>' +
+          '</div>' +
+          // 列表项与本地草稿区完全一致；容器同本地：overflow-y:auto（项足够多才出现滚动条），细滚动条/槽位由 Layout.astro 全局规则统一控制
+          // tb-off 类：云端列表顶部留白与本地同机制（勾选时 change 事件切 tb-on，margin 0.5rem→0.25rem）
+          '<div id="draft-cloud-list" class="tb-off text-sm text-black/40 dark:text-white/40" style="flex:1;width:100%;min-height:0;overflow-y:auto;"></div>' +
+        '</div>' +
+      '</div>' }
   };
 
   var currentPanel = '';
@@ -1202,13 +1986,21 @@ function initEditor() {
     panelContent.classList.remove('overflow-hidden');
     if (name === 'drafts' || name === 'syntax') {
       // 草稿箱和语法面板：panel-content 不滚动，由内部元素独立处理滚动
+      // Layout.astro 用 !important 把 #panel-content 钉成 overflow-y:auto，必须用 setProperty(...,'important') 覆盖
       panelContent.classList.remove('overflow-y-auto');
       panelContent.classList.add('overflow-hidden');
+      panelContent.style.setProperty('overflow-y', 'hidden', 'important');
+      panelContent.style.setProperty('overflow-x', 'hidden', 'important');
+      // 关键：清空 gutter，否则 overflow:hidden 仍会被当滚动容器、常驻预留 4px 把右边距挤宽（之前踩的坑）
+      panelContent.style.scrollbarGutter = '';
     } else {
+      // 目录/文章信息/GitHub：单层面板，scrollbar-gutter:stable 仅作用于这些面板，常驻预留 4px 轨道，滚动条有无都不跳变
       panelContent.classList.add('overflow-y-auto', 'overflow-x-hidden');
+      panelContent.style.setProperty('overflow-y', 'auto', 'important');
+      panelContent.style.setProperty('overflow-x', 'hidden', 'important');
+      panelContent.style.scrollbarGutter = 'stable';
     }
     panelContent.style.padding = '';
-    panelContent.style.scrollbarGutter = name === 'toc' ? 'stable' : '';
     if (name === 'toc') {
       panelTitle.textContent = '目录';
       renderTocContent();
@@ -1220,35 +2012,24 @@ function initEditor() {
       if (!t) return;
       panelTitle.textContent = t.title;
       var wrapperStyle = name === 'drafts'
-        ? 'padding:10px 5px 0 16px;display:flex;flex-direction:column;height:100%;'
-        : 'padding:10px 16px;';
+        ? 'padding:0.5rem 5px 0 16px;display:flex;flex-direction:column;height:100%;'
+        // 0.5rem：T=7.2px @14.4，与面板 G 节奏同档；底部 0.5rem 防止说明文字贴死底边；跟随全站 90% 基准（勿改回 px）
+        : 'padding:0.5rem 5px 0.5rem 16px;';
       panelContent.innerHTML = '<div style="' + wrapperStyle + '">' + t.html + '</div>';
       if (name === 'meta') {
         var titleInput = document.getElementById('post-title-input');
         var mainTitle = document.getElementById('post-title');
         if (titleInput && mainTitle) titleInput.value = mainTitle.value;
-        var syncFields = ['post-desc', 'post-category', 'post-cover', 'post-password', 'post-password-hint'];
+        var syncFields = ['post-desc', 'post-category', 'post-cover', 'post-url-slug', 'post-password', 'post-password-hint'];
         syncFields.forEach(function(id) {
           var hidden = document.getElementById(id);
           var panel = panelContent.querySelector('#' + id);
           if (hidden && panel && hidden !== panel) panel.value = hidden.value;
         });
-        // 同步封面图：data URL 仅在当前会话中有效（不持久化），刷新后需重新上传
-        var coverDataUrl = window.__editorCoverDataUrl;
-        var coverPath = window.__editorCoverValue || (document.getElementById('post-cover') || {}).value || '';
-        var coverPanelInput = panelContent.querySelector('#post-cover');
-        if (coverPanelInput) coverPanelInput.value = coverPath;
-        var coverPreview = panelContent.querySelector('#cover-preview');
-        var coverImg = panelContent.querySelector('#cover-preview-img');
-        // 优先用 data URL 预览（本地可用），否则用绝对 URL；相对路径无法在浏览器中解析，不显示预览
-        var coverDisplayUrl = coverDataUrl || coverPath;
-        var isDisplayable = coverDisplayUrl && (coverDisplayUrl.startsWith('data:') || coverDisplayUrl.startsWith('http://') || coverDisplayUrl.startsWith('https://'));
-        if (isDisplayable) {
-          if (coverImg) coverImg.src = coverDisplayUrl;
-          if (coverPreview) coverPreview.classList.remove('hidden');
-        } else {
-          if (coverPreview) coverPreview.classList.add('hidden');
-        }
+        // 封面图统一处理（原逻辑：相对路径直接隐藏预览 → 与加载草稿时的设置打架）
+        applyCover(window.__editorCoverValue || (document.getElementById('post-cover') || {}).value || '', {
+          mdDir: window.__editorCoverMdDir || 'src/content/posts'
+        });
         var hiddenTags = document.getElementById('post-tags');
         if (hiddenTags) {
           var tagArr = hiddenTags.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
@@ -1257,14 +2038,48 @@ function initEditor() {
           if (tag1) tag1.value = tagArr[0] || '';
           if (tag3) tag3.value = tagArr.slice(1).join(', ');
         }
-        [['chk-pinned', 'chk-pinned-panel', 'pinned'], ['chk-comment', 'chk-comment-panel', 'comment']].forEach(function(pair) {
+        [['chk-pinned', 'chk-pinned-panel', 'pinned'], ['chk-comment', 'chk-comment-panel', 'comment'], ['chk-draft', 'chk-draft-panel', 'draft']].forEach(function(pair) {
           var hidden = document.getElementById(pair[0]);
           var panel = panelContent.querySelector('#' + pair[1]);
           if (hidden && panel) {
-            panel.checked = hidden.checked;
-            metaCheckboxState[pair[2]] = hidden.checked;
+            // [Editor] 以 metaCheckboxState 为唯一真相源恢复 UI（面板重建后隐藏框可能不同步）
+            var st = metaCheckboxState[pair[2]] !== undefined ? metaCheckboxState[pair[2]] : hidden.checked;
+            panel.checked = st;
+            hidden.checked = st;
+            metaCheckboxState[pair[2]] = st;
             syncCheckboxStyle(panel);
           }
+        });
+        // [DateFields] 日期回填 + change 写回隐藏源 + 「今天」按钮（面板每次打开重建 DOM，故在此处绑定）
+        var _dateOnly = function(v) {
+          var d = String(v || '').split('T')[0].split(' ')[0];
+          return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+        };
+        // [DateFields] ① 只有"从未被用户手动改过(touched=false)"且为空才默认今天；
+        // ② 手动清空/改过(touched=true) → 完全按用户留空，不再回填今天(真正清空)。
+        // ③ 空态用 CSS 把原生 yyyy/mm/日 占位文字透明成视觉留白(有值正常显示)，不显示系统占位。
+        if (!document.getElementById('editor-date-empty-css')) {
+          var _deStyle = document.createElement('style');
+          _deStyle.id = 'editor-date-empty-css';
+          _deStyle.textContent = '#post-published-panel[data-empty="true"]::-webkit-datetime-edit, #post-updated-panel[data-empty="true"]::-webkit-datetime-edit { color: transparent; -webkit-text-fill-color: transparent; }';
+          document.head.appendChild(_deStyle);
+        }
+        if (!window.__editorDateTouched) window.__editorDateTouched = { 'post-published': false, 'post-updated': false };
+        [['post-published', 'post-published-panel'], ['post-updated', 'post-updated-panel']].forEach(function(tri) {
+          var hiddenEl = document.getElementById(tri[0]);
+          var panelEl = panelContent.querySelector('#' + tri[1]);
+          if (!hiddenEl || !panelEl) return;
+          var todayVal = new Date().toISOString().split('T')[0];
+          var initVal = _dateOnly(hiddenEl.value);
+          if (!initVal && !window.__editorDateTouched[tri[0]]) { initVal = todayVal; hiddenEl.value = todayVal; }
+          panelEl.value = initVal;
+          var syncEmpty = function() { panelEl.setAttribute('data-empty', panelEl.value ? 'false' : 'true'); };
+          syncEmpty();
+          panelEl.addEventListener('change', function() {
+            window.__editorDateTouched[tri[0]] = true;
+            hiddenEl.value = panelEl.value || '';
+            syncEmpty();
+          });
         });
       }
       if (name === 'drafts') renderDraftList();
@@ -1278,6 +2093,8 @@ function initEditor() {
         if (ghBranchPanel) ghBranchPanel.value = localStorage.getItem('gh-branch') || '';
       }
     }
+    // 面板切换时重置滚动位置：panel-content 同一元素被复用，不重置会残留上个面板的滚动位置
+    panelContent.scrollTop = 0;
     slidePanel.style.width = '288px';
     panelInner.style.transform = 'translateX(0)';
     // 确保 panel-inner 是 flex 容器，让 panel-content 的 flex-1 生效
@@ -1297,10 +2114,7 @@ function initEditor() {
     document.querySelectorAll('[data-panel]').forEach(function(b) { b.classList.remove('active'); });
     panelContent.classList.remove('overflow-y-auto');
     panelContent.classList.add('overflow-hidden');
-    // 移除焦点，避免按钮残留 focus 样式
-    if (document.activeElement && document.activeElement !== document.body) {
-      document.activeElement.blur();
-    }
+    // 按钮焦点环已由全局 CSS（button:focus-visible { outline:none }）统一处理，无需 JS blur
   }
 
   // [Editor] 草稿缓存：避免每次操作都从 localStorage 读取+解析
@@ -1319,6 +2133,9 @@ function initEditor() {
   // [Editor] 统一 click 事件委托（合并 GitHub 保存/清空 + 面板按钮 + 移除封面）
   panelContent.addEventListener('click', function(e) {
     var target = e.target;
+
+    // 焦点黑边已由全局 CSS 统一处理（<style> 顶部 button:focus-visible { outline:none }），
+    // 不再需要点击后 JS blur。实测确认鼠标/ESC 回归均命中 :focus-visible 且可被 CSS 压制。
 
     // GitHub 设置保存
     if (target.id === 'btn-save-token' || target.closest('#btn-save-token')) {
@@ -1363,10 +2180,15 @@ function initEditor() {
         tags: getVal('post-tags'),
         cover: window.__editorCoverValue || getVal('post-cover'),
         slug: getVal('post-slug'),
+        urlSlug: getVal('post-url-slug'),
         password: getVal('post-password'),
         passwordHint: getVal('post-password-hint'),
         pinned: metaCheckboxState.pinned,
         comment: metaCheckboxState.comment,
+        draft: metaCheckboxState.draft,
+        published: getVal('post-published'),
+        updated: getVal('post-updated'),
+        dateTouched: window.__editorDateTouched ? { 'post-published': !!window.__editorDateTouched['post-published'], 'post-updated': !!window.__editorDateTouched['post-updated'] } : null,
         savedAt: savedAt
       });
       _saveDrafts(drafts);
@@ -1395,59 +2217,131 @@ function initEditor() {
       });
       return;
     }
-    // 删除草稿
+    // 删除草稿（本地 / 云端 同构项，靠 data-cloudpath 区分）
     if (target.classList.contains('draft-delete')) {
       e.stopPropagation();
       var delSid = target.dataset.savedat;
-      var drafts = _getDrafts();
-      idbDelPrefix('img-' + delSid + '-').catch(function() {});
-      idbDel('imgkeys-' + delSid).catch(function() {});
-      idbDel('cover-' + delSid).catch(function() {});
-      localStorage.removeItem('editor-draft-img-' + delSid);
-      localStorage.removeItem('editor-draft-imgkeys-' + delSid);
-      localStorage.removeItem('editor-draft-cover-' + delSid);
-      drafts = drafts.filter(function(d) { return d.savedAt !== delSid; });
-      _saveDrafts(drafts);
-      renderDraftList();
+      if (target.dataset.cloudpath) {
+        var delPath = target.dataset.cloudpath;
+        if (delPath) {
+          window.__editorConfirm({
+            title: '删除云端草稿',
+            message: getCloudI18n('cloudDraftDeleteConfirm', '确认删除云端草稿「' + delPath + '」？此操作不可恢复'),
+            okText: '确认删除'
+          }, function() { deleteCloudDraft(delPath); });
+        }
+        return;
+      }
+      // 本地草稿删除：加确认弹窗（与云端删除行为一致，防止误点直接删除且不可恢复）
+      var localDrafts = _getDrafts();
+      var delTarget = localDrafts.filter(function(d) { return d.savedAt === delSid; })[0];
+      var delName = (delTarget && delTarget.name) || '未命名草稿';
+      window.__editorConfirm({
+        title: '删除本地草稿',
+        message: '确认删除本地草稿「' + delName + '」？此操作不可恢复',
+        okText: '确认删除'
+      }, function() {
+        var drafts = _getDrafts();
+        idbDelPrefix('img-' + delSid + '-').catch(function() {});
+        idbDel('imgkeys-' + delSid).catch(function() {});
+        idbDel('cover-' + delSid).catch(function() {});
+        localStorage.removeItem('editor-draft-img-' + delSid);
+        localStorage.removeItem('editor-draft-imgkeys-' + delSid);
+        localStorage.removeItem('editor-draft-cover-' + delSid);
+        drafts = drafts.filter(function(d) { return d.savedAt !== delSid; });
+        _saveDrafts(drafts);
+        renderDraftList();
+      });
       return;
     }
-    // 全选/取消全选
+    // 全选/取消全选（本地：限定 #draft-list 作用域，避免误选云端 checkbox）
     if (target.id === 'draft-select-all') {
-      var checkboxes = panelContent.querySelectorAll('.draft-checkbox');
+      var checkboxes = panelContent.querySelectorAll('#draft-list .draft-checkbox');
       checkboxes.forEach(function(cb) { cb.checked = target.checked; });
       var toolbar = document.getElementById('draft-toolbar');
-      if (toolbar) {
-        var label = toolbar.querySelector('label');
-        var btn = toolbar.querySelector('button');
-        var show = target.checked;
-        if (label) { label.style.opacity = show ? '1' : '0'; label.style.pointerEvents = show ? 'auto' : 'none'; }
-        if (btn) { btn.style.opacity = show ? '1' : '0'; btn.style.pointerEvents = show ? 'auto' : 'none'; }
+      var listEl2 = document.getElementById('draft-list');
+      if (toolbar) toolbar.classList.toggle('hidden', !target.checked);
+      if (listEl2) {
+        listEl2.classList.toggle('tb-off', !target.checked);
+        listEl2.classList.toggle('tb-on', target.checked);
       }
       return;
     }
-    // 删除选中
-    if (target.id === 'btn-delete-selected' || target.closest('#btn-delete-selected')) {
-      var checkedBoxes = panelContent.querySelectorAll('.draft-checkbox:checked');
-      if (checkedBoxes.length === 0) return;
-      var sids = Array.from(checkedBoxes).map(function(cb) { return cb.dataset.savedat; });
-      var drafts = _getDrafts();
-      sids.forEach(function(sid) {
-        idbDelPrefix('img-' + sid + '-').catch(function() {});
-        idbDel('imgkeys-' + sid).catch(function() {});
-        idbDel('cover-' + sid).catch(function() {});
-        localStorage.removeItem('editor-draft-img-' + sid);
-        localStorage.removeItem('editor-draft-imgkeys-' + sid);
-        localStorage.removeItem('editor-draft-cover-' + sid);
-      });
-      drafts = drafts.filter(function(d) { return sids.indexOf(d.savedAt) === -1; });
-      _saveDrafts(drafts);
-      renderDraftList();
+    // 全选/取消全选（云端：限定 #draft-cloud-list，列表 tb-off/tb-on 与本地同机制）
+    if (target.id === 'draft-cloud-select-all') {
+      var cloudCheckboxes = panelContent.querySelectorAll('#draft-cloud-list .draft-checkbox');
+      cloudCheckboxes.forEach(function(cb) { cb.checked = target.checked; });
+      var cloudToolbarAll = document.getElementById('draft-toolbar-cloud');
+      var cloudListAll = document.getElementById('draft-cloud-list');
+      if (cloudToolbarAll) cloudToolbarAll.classList.toggle('hidden', !target.checked);
+      if (cloudListAll) {
+        cloudListAll.classList.toggle('tb-off', !target.checked);
+        cloudListAll.classList.toggle('tb-on', target.checked);
+      }
       return;
     }
-    // 加载草稿
+    // 删除选中（本地）
+    if (target.id === 'btn-delete-selected' || target.closest('#btn-delete-selected')) {
+      var checkedBoxes = panelContent.querySelectorAll('#draft-list .draft-checkbox:checked');
+      if (checkedBoxes.length === 0) return;
+      var sids = Array.from(checkedBoxes).map(function(cb) { return cb.dataset.savedat; });
+      // 批量删除：加确认弹窗（与单条删除/云端删除行为一致，防止误删多条不可恢复）
+      window.__editorConfirm({
+        title: '删除选中的本地草稿',
+        message: '确认删除选中的 ' + sids.length + ' 个本地草稿？此操作不可恢复',
+        okText: '确认删除'
+      }, function() {
+        var drafts = _getDrafts();
+        sids.forEach(function(sid) {
+          idbDelPrefix('img-' + sid + '-').catch(function() {});
+          idbDel('imgkeys-' + sid).catch(function() {});
+          idbDel('cover-' + sid).catch(function() {});
+          localStorage.removeItem('editor-draft-img-' + sid);
+          localStorage.removeItem('editor-draft-imgkeys-' + sid);
+          localStorage.removeItem('editor-draft-cover-' + sid);
+        });
+        drafts = drafts.filter(function(d) { return sids.indexOf(d.savedAt) === -1; });
+        _saveDrafts(drafts);
+        renderDraftList();
+      });
+      return;
+    }
+    // 删除选中（云端）：批量推送 GitHub 仓库删除（逐个串行调用 deleteCloudDraft，silent 模式最后统一提示）
+    if (target.id === 'btn-delete-cloud-selected' || target.closest('#btn-delete-cloud-selected')) {
+      var cloudChecked = panelContent.querySelectorAll('#draft-cloud-list .draft-checkbox:checked');
+      if (cloudChecked.length === 0) return;
+      var cloudPaths = Array.from(cloudChecked).map(function(cb) { return cb.dataset.cloudpath || cb.dataset.savedat; }).filter(Boolean);
+      if (cloudPaths.length === 0) return;
+      window.__editorConfirm({
+        title: '删除选中的云端草稿',
+        message: '确认删除选中的 ' + cloudPaths.length + ' 个云端草稿？此操作不可恢复',
+        okText: '确认删除'
+      }, function() {
+        var okCount = 0;
+        var chain = Promise.resolve();
+        cloudPaths.forEach(function(p) {
+          chain = chain.then(function() { return deleteCloudDraft(p, { silent: true }); })
+            .then(function(ok) { if (ok) okCount++; });
+        });
+        chain.then(function() {
+          window.__editorShowToast(okCount === cloudPaths.length
+            ? '✅ 已删除 ' + okCount + ' 个云端草稿'
+            : '⚠️ 部分删除失败（成功 ' + okCount + '/' + cloudPaths.length + '）');
+          renderCloudList();
+          var selectAll = document.getElementById('draft-cloud-select-all');
+          if (selectAll) selectAll.checked = false;
+        });
+      });
+      return;
+    }
+    // 加载草稿（本地 / 云端 同构项，靠 data-cloudpath 区分）
     if (target.classList.contains('draft-load') || target.closest('.draft-load')) {
       var item = target.classList.contains('draft-load') ? target : target.closest('.draft-load');
       var loadSid = item.dataset.savedat;
+      if (item.dataset.cloudpath) {
+        openCloudDraft(item.dataset.cloudpath, item.dataset.cloudsha);
+        return;
+      }
       var drafts = _getDrafts();
       var d = drafts.find(function(dr) { return dr.savedAt === loadSid; });
       if (d) {
@@ -1460,10 +2354,26 @@ function initEditor() {
         setVal('post-cover', d.cover);
         window.__editorCoverValue = d.cover || '';
         setVal('post-slug', d.slug);
+        setVal('post-url-slug', d.urlSlug || d.slug);
         setVal('post-password', d.password);
         setVal('post-password-hint', d.passwordHint);
+        setVal('post-published', d.published);
+        setVal('post-updated', d.updated);
         setChecked('chk-pinned', d.pinned);
         setChecked('chk-comment', d.comment);
+        setChecked('chk-draft', d.draft);
+        if (window.__editorMetaCheckbox) {
+          // [Fix] 本地草稿载入需把 pinned/comment 一并同步进发布真源 metaCheckboxState（原只同步 draft，导致载入后置顶/评论发布不生效）
+          window.__editorMetaCheckbox.pinned = !!d.pinned;
+          window.__editorMetaCheckbox.comment = d.comment === false ? false : true;
+          window.__editorMetaCheckbox.draft = !!d.draft;
+        }
+        // [DateFields] 草稿记住"日期是否被有意清空(touched)"：跨会话加载后空字段保持空白，不被"默认今天"覆盖
+        if (d.dateTouched) {
+          if (!window.__editorDateTouched) window.__editorDateTouched = { 'post-published': false, 'post-updated': false };
+          if (d.dateTouched['post-published'] !== undefined) window.__editorDateTouched['post-published'] = !!d.dateTouched['post-published'];
+          if (d.dateTouched['post-updated'] !== undefined) window.__editorDateTouched['post-updated'] = !!d.dateTouched['post-updated'];
+        }
         var mdInput = document.getElementById('markdown-input');
         mdInput.value = d.content || '';
         // 立即渲染预览，不等图片加载
@@ -1516,16 +2426,13 @@ function initEditor() {
             resolve();
           })
         );
+        // 图片恢复完成后统一处理封面（dataURL 已在上方恢复，函数内会自动优先使用）
         Promise.all(imgPromises).then(function() {
-          var coverPreviewUrl = window.__editorCoverDataUrl || d.cover || '';
-          if (coverPreviewUrl) {
-            var coverPreviewEl = document.getElementById('cover-preview');
-            var coverImgEl = document.getElementById('cover-preview-img');
-            if (coverImgEl) coverImgEl.src = coverPreviewUrl;
-            if (coverPreviewEl) coverPreviewEl.classList.remove('hidden');
-            var coverPanelInput = panelContent.querySelector('#post-cover');
-            if (coverPanelInput) coverPanelInput.value = d.cover || '';
-          }
+          // ⚠️ 本地草稿不属于仓库任何特定目录，必须用默认目录。
+          //    若沿用 window.__editorCoverMdDir，会残留上一次云端草稿/文章导入的子目录
+          //    （如 src/content/posts/sub）→ 封面路径拼错 → 显示"图片不可用"。
+          window.__editorCoverMdDir = 'src/content/posts';
+          applyCover(d.cover || '', { mdDir: 'src/content/posts' });
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
@@ -1543,12 +2450,50 @@ function initEditor() {
       window.__editorCoverValue = '';
       window.__editorCoverDataUrl = '';
       window.__editorCoverFilename = '';
+      // 关键：必须取消待执行的加载，否则刚输入的地址在 500ms 防抖到期后仍会触发加载 → 预览又冒出来；
+      // 同时递增序号让已发出的旧请求回调失效，避免它回头把预览重新显示。
+      cancelCoverLoad();
       var preview = document.getElementById('cover-preview');
       if (preview) preview.classList.add('hidden');
+      // 同步清掉预览框上的背景图与状态类（仅隐藏外层容器不够，重开面板会残留旧图）
+      var pFrame = document.getElementById('cover-preview-img');
+      if (pFrame) {
+        pFrame.style.backgroundImage = '';
+        pFrame.classList.remove('cover-loading', 'cover-error');
+      }
       var fileInput = document.getElementById('cover-upload');
       if (fileInput) fileInput.value = '';
       return;
     }
+    // 刷新封面预览：网络不稳定（raw.githubusercontent.com 时好时坏）导致加载失败时，
+    // 结果缓存会记住"失败"且不再重试，用户点此按钮强制重新加载一次。
+    if (target.id === 'btn-refresh-cover' || target.closest('#btn-refresh-cover')) {
+      var refreshVal = window.__editorCoverValue || '';
+      if (!refreshVal) return;
+      // 已有请求在飞行中 → 忽略本次点击，避免连点产生多个挂起请求
+      // （此时画面上正显示"加载中..."，用户有反馈，不会以为没反应）
+      if (_coverLoading) return;
+      // force: true → 丢弃该地址的缓存结果并重新发起请求（不走防抖，立即执行）
+      applyCover(refreshVal, { mdDir: window.__editorCoverMdDir || 'src/content/posts', force: true });
+      return;
+    }
+    // 草稿箱 tab 切换（本地/云端），事件委托挂在永生父节点，面板 innerHTML 重写后仍有效
+    var tabBtn = target.closest('[data-tab]');
+    if (tabBtn) {
+      var tabName = tabBtn.getAttribute('data-tab');
+      if (tabName === 'local' || tabName === 'cloud') {
+        _draftTab = tabName;
+        renderDraftList();
+      }
+      return;
+    }
+    // 刷新云端草稿
+    if (target.id === 'btn-refresh-cloud' || target.closest('#btn-refresh-cloud')) {
+      fetchCloudDrafts(true);
+      return;
+    }
+    // 注：云端项已与本地项同构（draft-load / draft-delete / draft-checkbox 同名类），
+    // 打开/删除逻辑统一在上方 draft-load / draft-delete 分支处理（靠 data-cloudpath 区分）。
   });
 
   // [Editor] 格式化时间为 YYYY-MM-DD HH:mm
@@ -1559,32 +2504,74 @@ function initEditor() {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  // 草稿列表渲染
+  // [Fix #11] HTML 转义：草稿/云端列表内展示的用户可控文本(name/title/path/fileName)，防 HTML 注入
+  function _escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // 草稿箱当前激活 tab：'local' | 'cloud'
+  var _draftTab = 'local';
+
+  // 草稿列表渲染（由 _draftTab 驱动本地/云端区显隐）
   function renderDraftList() {
+    var localArea = document.getElementById('draft-local-area');
+    var cloudArea = document.getElementById('draft-cloud-area');
+    if (!localArea || !cloudArea) return;
+    if (_draftTab === 'cloud') {
+      // 不用 classList.toggle('hidden')：两个区域都有内联 style.display:flex，会覆盖 tailwind hidden
+      localArea.style.display = 'none';
+      cloudArea.style.display = 'flex';
+      renderCloudList();
+    } else {
+      cloudArea.style.display = 'none';
+      localArea.style.display = 'flex';
+      renderLocalDraftList();
+    }
+    // 同步 tab 按钮高亮
+    var tabLocal = panelContent.querySelector('[data-tab="local"]');
+    var tabCloud = panelContent.querySelector('[data-tab="cloud"]');
+    function setTabStyle(btn, active) {
+      if (!btn) return;
+      // 选中态与其他面板按钮统一：边框 primary + 背景 primary 12% + 文字 primary（与 syncCheckboxStyle 同款）
+      btn.style.color = active ? 'var(--primary)' : '';
+      btn.style.borderColor = active ? 'var(--primary)' : '';
+      btn.style.background = active ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : '';
+      btn.classList.toggle('text-black/60', !active);
+      btn.classList.toggle('dark:text-white/60', !active);
+    }
+    setTabStyle(tabLocal, _draftTab === 'local');
+    setTabStyle(tabCloud, _draftTab === 'cloud');
+  }
+
+  function renderLocalDraftList() {
     var list = document.getElementById('draft-list');
     if (!list) return;
     var drafts = _getDrafts();
     drafts.sort(function(a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
     var toolbar = document.getElementById('draft-toolbar');
+    // 渲染列表时 toolbar 一律隐藏，容器回到 tb-off（隐藏态留白），仅勾选项时由 change 事件展开
+    if (toolbar) toolbar.classList.add('hidden');
+    list.classList.add('tb-off');
+    list.classList.remove('tb-on');
     if (drafts.length === 0) {
       list.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">暂无草稿</div>';
-      if (toolbar) toolbar.classList.add('hidden');
       return;
     }
-    if (toolbar) toolbar.classList.remove('hidden');
     list.innerHTML = drafts.map(function(d) {
       var sid = d.savedAt || '';
-      return '<div class="draft-item rounded-lg border border-[var(--line-divider)] hover:border-[var(--primary)]/30 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" data-savedat="' + sid + '" style="padding:4px 12px;margin:0 0 4px 0;">' +
+      return '<div class="draft-item rounded-lg border border-[var(--line-divider)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 transition-colors" data-savedat="' + sid + '" style="padding:0.25rem 0.75rem;margin:0 0 0.25rem 0;">' +
         '<div class="flex items-center gap-2">' +
           '<input type="checkbox" class="draft-checkbox shrink-0 rounded" data-savedat="' + sid + '" />' +
           '<div class="flex-1 min-w-0 cursor-pointer draft-load" data-savedat="' + sid + '">' +
             '<div class="flex items-center justify-between">' +
-              '<div class="text-xs font-bold text-black/80 dark:text-white/80 truncate">' + (d.name || '未命名草稿') + '</div>' +
+              '<div class="text-xs font-bold text-black/80 dark:text-white/80 truncate min-w-0">' + _escHtml(d.name || '未命名草稿') + '</div>' +
               '<button class="text-xs text-red-400 hover:text-red-600 shrink-0 draft-delete" data-savedat="' + sid + '">删除</button>' +
             '</div>' +
-            '<div class="text-xs text-black/50 dark:text-white/50 mt-1.5" style="background:color-mix(in srgb, currentColor 8%, transparent);padding:8px 12px;border-radius:6px;">' +
-              '<div>' + (d.title ? '标题：' + d.title : '无标题') + '</div>' +
-              '<div class="mt-1">' + formatDraftTime(d.savedAt) + '</div>' +
+            '<div class="text-xs text-black/50 dark:text-white/50 mt-1.5 min-w-0" style="background:color-mix(in srgb, currentColor 8%, transparent);padding:0.5rem 0.75rem;border-radius:0.5rem;">' +
+              '<div class="truncate">' + (d.title ? '标题：' + _escHtml(d.title) : '无标题') + '</div>' +
+              '<div class="mt-1 truncate">' + formatDraftTime(d.savedAt) + '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1592,13 +2579,355 @@ function initEditor() {
     }).join('');
   }
 
+  // 云端草稿缓存 key
+  var CLOUD_DRAFTS_CACHE_KEY = 'editor-cloud-drafts-cache';
+
+  // 读取 GitHub 配置（复用发布逻辑：面板优先 → localStorage → 默认）
+  function getCloudGithubConfig() {
+    var tokenEl = document.getElementById('gh-token-panel');
+    var repoEl = document.getElementById('gh-repo-panel');
+    var branchEl = document.getElementById('gh-branch-panel');
+    return {
+      token: (tokenEl ? tokenEl.value : '') || localStorage.getItem('gh-token') || '',
+      repo: (repoEl ? repoEl.value : '') || localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog',
+      branch: (branchEl ? branchEl.value : '') || localStorage.getItem('gh-branch') || 'main'
+    };
+  }
+
+  // 轻量 frontmatter 解析（title/draft/tags/category 等）
+  // 支持三种 YAML 写法：
+  //   1) key: value
+  //   2) key: [a, b, c]          内联数组 → 归一化成 "a, b, c"
+  //   3) key: 后跟多行 "- item"   块数组   → 归一化成 "a, b, c"
+  // 说明：原实现只处理第 1 种，遇到 tags: [编辑 测试, 功能验证] 会把方括号一并存下，
+  //       导致标签输入框显示成 "[编辑  测试, 功能验证]"（把 YAML 源码显示出来了）。
+  function parseCloudFrontmatter(content) {
+    var m = content.match(/^---\s*\n([\s\S]*?)\n---/);
+    var meta = {};
+    if (!m) return meta;
+    var curKey = null;
+    var arrBuf = null;
+    function flushArr() {
+      if (curKey && arrBuf && arrBuf.length) meta[curKey] = arrBuf.join(', ');
+      arrBuf = null;
+    }
+    function clean(s) { return s.trim().replace(/^["']|["']$/g, ''); }
+    m[1].split('\n').forEach(function(line) {
+      // 块数组项："- item"
+      var arr = line.match(/^\s*-\s+(.*)$/);
+      if (arr && curKey) {
+        if (!arrBuf) arrBuf = [];
+        var v = clean(arr[1]);
+        if (v) arrBuf.push(v);
+        return;
+      }
+      var kv = line.match(/^(\w+):\s*(.*)$/);
+      if (kv) {
+        flushArr();
+        curKey = kv[1];
+        var raw = kv[2].trim();
+        if (/^\[.*\]$/.test(raw)) {
+          // 内联数组 [a, b, c] → "a, b, c"
+          var inner = raw.slice(1, -1).trim();
+          meta[curKey] = inner
+            ? inner.split(',').map(clean).filter(Boolean).join(', ')
+            : '';
+        } else {
+          meta[curKey] = clean(raw);
+        }
+      }
+    });
+    flushArr();
+    return meta;
+  }
+
+  function getCloudI18n(key, fallback) {
+    return (window.editorCloudI18n && window.editorCloudI18n[key]) ? window.editorCloudI18n[key] : fallback;
+  }
+
+  // ─── 通用确认弹窗（替代浏览器原生 confirm，原生样式与编辑器风格不统一）───
+  // 用法：window.__editorConfirm({ title, message, okText }, function(){ /* 确认后执行 */ });
+  var _confirmCallback = null;
+  window.__editorConfirm = function(opts, onConfirm) {
+    var modal = document.getElementById('confirm-modal');
+    var titleEl = document.getElementById('confirm-modal-title');
+    var msgEl = document.getElementById('confirm-modal-message');
+    var okBtn = document.getElementById('confirm-modal-ok');
+    if (!modal || !msgEl) {
+      // 兜底：弹窗元素缺失时退回原生 confirm
+      if (onConfirm && window.confirm((opts && opts.message) || '')) onConfirm();
+      return;
+    }
+    if (titleEl) titleEl.textContent = (opts && opts.title) || '确认操作';
+    msgEl.textContent = (opts && opts.message) || '';
+    if (okBtn && opts && opts.okText) okBtn.textContent = opts.okText;
+    _confirmCallback = onConfirm || null;
+    modal.classList.remove('hidden');
+  };
+  window.__editorCloseConfirm = function() {
+    var modal = document.getElementById('confirm-modal');
+    if (modal) modal.classList.add('hidden');
+    // 按钮焦点环已由全局 CSS（button:focus-visible { outline:none }）统一处理，无需 JS blur
+    _confirmCallback = null;
+  };
+  // 按钮/遮罩事件一次性绑定（用 _confirmCallback 存回调，避免重复绑定累积）
+  (function() {
+    var cModal = document.getElementById('confirm-modal');
+    var cOk = document.getElementById('confirm-modal-ok');
+    var cCancel = document.getElementById('confirm-modal-cancel');
+    if (cCancel) cCancel.addEventListener('click', function() { window.__editorCloseConfirm(); });
+    if (cOk) cOk.addEventListener('click', function() {
+      var cb = _confirmCallback;
+      window.__editorCloseConfirm();
+      if (cb) cb();
+    });
+    // 点击遮罩空白处关闭
+    if (cModal) cModal.addEventListener('click', function(e) {
+      if (e.target === cModal) window.__editorCloseConfirm();
+    });
+  })();
+
+  // 渲染云端草稿列表（优先读缓存，无缓存触发拉取）
+  function renderCloudList() {
+    var listEl = document.getElementById('draft-cloud-list');
+    var statusEl = document.getElementById('draft-cloud-status');
+    if (!listEl) return;
+    var cache = null;
+    try { cache = JSON.parse(localStorage.getItem(CLOUD_DRAFTS_CACHE_KEY) || 'null'); } catch (e) { cache = null; }
+    if (cache && cache.list) {
+      if (statusEl) statusEl.textContent = getCloudI18n('cloudDraftLastFetched', '最后加载时间：') + formatDraftTime(cache.fetchedAt ? new Date(cache.fetchedAt).toISOString() : '');
+      renderCloudItems(cache.list);
+    } else {
+      // 无缓存：首次自动拉取一次
+      fetchCloudDrafts(false);
+    }
+  }
+
+  function renderCloudItems(list) {
+    var listEl = document.getElementById('draft-cloud-list');
+    if (!listEl) return;
+    if (!list || list.length === 0) {
+      listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">' + getCloudI18n('cloudDraftEmpty', '暂无云端草稿') + '</div>';
+      var cloudToolbar = document.getElementById('draft-toolbar-cloud');
+      if (cloudToolbar) cloudToolbar.classList.add('hidden');
+      return;
+    }
+    listEl.innerHTML = list.map(function(d) {
+      // 与本地 renderLocalDraftList 的 draft-item 模板【逐行完全一致】，仅 data 标识与文本来源不同
+      var sid = d.path || '';
+      var shaShort = (d.sha || '').slice(0, 8);
+      // 从 path 提取文件名（含扩展名），与下方信息框显示的路径末段保持一致
+      var fileName = (d.path || '').split('/').pop() || '';
+      return '<div class="draft-item rounded-lg border border-[var(--line-divider)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 transition-colors" data-savedat="' + sid + '" data-cloudpath="' + d.path + '" data-cloudsha="' + d.sha + '" style="padding:0.25rem 0.75rem;margin:0 0 0.25rem 0;">' +
+        // 与本地草稿项同构：勾选框 + 内容区（draft-load）。勾选框带 data-cloudpath 供批量删除定位
+        '<div class="flex items-center gap-2">' +
+          '<input type="checkbox" class="draft-checkbox shrink-0 rounded" data-savedat="' + sid + '" data-cloudpath="' + d.path + '" />' +
+          '<div class="flex-1 min-w-0 cursor-pointer draft-load" data-savedat="' + sid + '" data-cloudpath="' + d.path + '" data-cloudsha="' + d.sha + '">' +
+            '<div class="flex items-center justify-between">' +
+              '<div class="text-xs font-bold text-black/80 dark:text-white/80 truncate min-w-0">' + (fileName ? '文件名：' + _escHtml(fileName) : _escHtml(d.path)) + '</div>' +
+              '<button class="text-xs text-red-400 hover:text-red-600 shrink-0 draft-delete" data-savedat="' + sid + '" data-cloudpath="' + d.path + '">删除</button>' +
+            '</div>' +
+            '<div class="text-xs text-black/50 dark:text-white/50 mt-1.5 min-w-0" style="background:color-mix(in srgb, currentColor 8%, transparent);padding:0.5rem 0.75rem;border-radius:0.5rem;">' +
+              '<div class="truncate">' + (d.title ? '标题：' + _escHtml(d.title) : '无标题') + '</div>' +
+              '<div class="mt-1 truncate">' + _escHtml(d.path || '') + (shaShort ? ' · ' + _escHtml(shaShort) : '') + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    // 渲染后重置：toolbar 默认隐藏、列表回到 tb-off、全选勾选归位（勾选项由 change 事件控制显隐）
+    var cloudToolbar = document.getElementById('draft-toolbar-cloud');
+    if (cloudToolbar) cloudToolbar.classList.add('hidden');
+    var cloudListRes = document.getElementById('draft-cloud-list');
+    if (cloudListRes) {
+      cloudListRes.classList.add('tb-off');
+      cloudListRes.classList.remove('tb-on');
+    }
+    var cloudSelectAll = document.getElementById('draft-cloud-select-all');
+    if (cloudSelectAll) cloudSelectAll.checked = false;
+  }
+
+  // 拉取云端草稿（force=true 忽略缓存）
+  function fetchCloudDrafts(force) {
+    var listEl = document.getElementById('draft-cloud-list');
+    var statusEl = document.getElementById('draft-cloud-status');
+    if (!listEl) return;
+    if (!force) {
+      var cache = null;
+      try { cache = JSON.parse(localStorage.getItem(CLOUD_DRAFTS_CACHE_KEY) || 'null'); } catch (e) { cache = null; }
+      if (cache && cache.list) { renderCloudItems(cache.list); return; }
+    }
+    var cfg = getCloudGithubConfig();
+    if (!cfg.token) {
+      if (statusEl) statusEl.textContent = '';
+      listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">' + getCloudI18n('cloudDraftNeedToken', '请先在 GitHub 设置中填写 Token') + '</div>';
+      return;
+    }
+    if (statusEl) statusEl.textContent = getCloudI18n('cloudDraftLoading', '正在读取云端草稿...');
+    listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">' + getCloudI18n('cloudDraftLoading', '加载中...') + '</div>';
+
+    var apiUrl = 'https://api.github.com/repos/' + cfg.repo + '/contents/src/content/posts?ref=' + cfg.branch;
+    fetch(apiUrl, {
+      headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json' }
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || ('HTTP ' + r.status)); });
+      return r.json();
+    }).then(function(items) {
+      var mdFiles = (items || []).filter(function(it) { return it.type === 'file' && /\.(md|mdx)$/i.test(it.name); });
+      if (mdFiles.length === 0) {
+        if (statusEl) statusEl.textContent = '';
+        listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">' + getCloudI18n('cloudDraftEmpty', '暂无云端草稿') + '</div>';
+        return;
+      }
+      return Promise.all(mdFiles.map(function(it) {
+        return fetch(it.url, {
+          headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json' }
+        }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+          if (!data || !data.content) return null;
+          var content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+          var meta = parseCloudFrontmatter(content);
+          if (meta.draft === 'true' || meta.draft === true) {
+            return { path: it.path, sha: data.sha, title: meta.title || it.name.replace(/\.(md|mdx)$/i, '') };
+          }
+          return null;
+        }).catch(function() { return null; });
+      })).then(function(drafts) {
+        var cloudDrafts = drafts.filter(Boolean);
+        try {
+          localStorage.setItem(CLOUD_DRAFTS_CACHE_KEY, JSON.stringify({ list: cloudDrafts, fetchedAt: Date.now() }));
+        } catch (e) {}
+        if (statusEl) statusEl.textContent = getCloudI18n('cloudDraftLastFetched', '最后加载时间：') + formatDraftTime(new Date().toISOString());
+        renderCloudItems(cloudDrafts);
+      });
+    }).catch(function(err) {
+      if (statusEl) statusEl.textContent = '';
+      listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">❌ ' + (err.message || '读取失败') + '</div>';
+    });
+  }
+
+  // 打开云端草稿进编辑器（完整复用本地 draft-load 回填逻辑）
+  function openCloudDraft(path, sha) {
+    var cfg = getCloudGithubConfig();
+    if (!cfg.token) { window.__editorShowToast(getCloudI18n('cloudDraftNeedToken', '请先填写 GitHub Token')); return; }
+    var apiUrl = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + path + '?ref=' + cfg.branch;
+    fetch(apiUrl, {
+      headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json' }
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || ('HTTP ' + r.status)); });
+      return r.json();
+    }).then(function(data) {
+      var content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+      var sep = content.match(/^---\s*\n[\s\S]*?\n---\n?/);
+      var body = sep ? content.slice(sep[0].length) : content;
+      var meta = parseCloudFrontmatter(content);
+      // —— 以下完整复制本地 draft-load 回填段（1555–1641 行逻辑），仅数据来自云端文件 ——
+      var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
+      var setChecked = function(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; };
+      setVal('post-title', meta.title || '');
+      setVal('post-desc', meta.description);
+      setVal('post-category', meta.category);
+      setVal('post-tags', meta.tags);
+      // 封面字段名兼容：本编辑器发布时写的是 `image:`（见 1337 行 _buildFrontmatter），
+      // 但用户手写/其它工具生成的 frontmatter 可能用 `cover:`。两者都认，优先 cover。
+      var cloudCover = meta.cover || meta.image || '';
+      setVal('post-cover', cloudCover);
+      window.__editorCoverValue = cloudCover;
+      setVal('post-slug', '');            // 发布走新建，不动原文件
+      setVal('post-url-slug', '');
+      // [DateFields] 云端文件若带 published/updated 则回填（载入已发布文章/带日期的草稿时保留原日期）
+      setVal('post-published', meta.published);
+      setVal('post-updated', meta.updated);
+      setVal('post-password', meta.password);
+      setVal('post-password-hint', meta.passwordHint);
+      setChecked('chk-pinned', meta.pinned);
+      setChecked('chk-comment', meta.comment !== false);
+      setChecked('chk-draft', meta.draft === 'true' || meta.draft === true);
+      if (window.__editorMetaCheckbox) {
+        window.__editorMetaCheckbox.pinned = !!meta.pinned;
+        window.__editorMetaCheckbox.comment = meta.comment !== false;
+        window.__editorMetaCheckbox.draft = meta.draft === 'true' || meta.draft === true;
+      }
+      var mdInput = document.getElementById('markdown-input');
+      if (mdInput) mdInput.value = body;
+      window.__editorCoverDataUrl = '';
+      window.__editorCoverFilename = '';
+      if (cloudCover) {
+        window.__editorCoverValue = cloudCover;
+        var extractedFilename = cloudCover.split('/').pop();
+        if (extractedFilename) window.__editorCoverFilename = extractedFilename;
+      }
+      // 封面图统一处理：mdDir 取该草稿在仓库中的目录（如 src/content/posts），
+      // 相对路径会据此拼出 raw 地址用于预览；写入 frontmatter 的仍是原始相对路径
+      var cloudMdDir = path.replace(/\/[^/]*$/, '') || 'src/content/posts';
+      window.__editorCoverMdDir = cloudMdDir;
+      applyCover(cloudCover, { mdDir: cloudMdDir });
+      var titleInput = document.getElementById('post-title-input');
+      if (titleInput) titleInput.value = meta.title || '';
+      // 预览立即刷新（强制版，绕过防抖）
+      if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
+      if (mdInput) mdInput.dispatchEvent(new Event('input'));
+      closePanel();
+      window.__editorShowToast('已载入云端草稿：' + (meta.title || path));
+    }).catch(function(err) {
+      window.__editorShowToast('载入云端草稿失败：' + (err.message || '未知错误'));
+    });
+  }
+
+  // 删除云端草稿原文件
+  // 返回 Promise<boolean>；opts.silent=true 时静默删除（不逐条 toast / 不逐条重渲染），
+  // 供批量删除在全部完成后统一提示与刷新。单条删除调用（默认）行为不变：toast + renderCloudList。
+  function deleteCloudDraft(path, opts) {
+    opts = opts || {};
+    // 确认已由调用方（事件委托）通过 __editorConfirm 弹窗完成，此处不再重复确认
+    // （原实现在此处还有一次 confirm，导致点一次「删除」会连弹两次确认框）
+    var cfg = getCloudGithubConfig();
+    if (!cfg.token) {
+      if (!opts.silent) window.__editorShowToast(getCloudI18n('cloudDraftNeedToken', '请先填写 GitHub Token'));
+      return Promise.resolve(false);
+    }
+    var apiUrl = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + path + '?ref=' + cfg.branch;
+    return fetch(apiUrl, {
+      headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json' }
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || ('HTTP ' + r.status)); });
+      return r.json();
+    }).then(function(data) {
+      return fetch(apiUrl, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'delete cloud draft: ' + path, branch: cfg.branch, sha: data.sha })
+      }).then(function(r2) {
+        if (!r2.ok) return r2.json().then(function(e2) { throw new Error(e2.message || ('HTTP ' + r2.status)); });
+        return r2.json();
+      });
+    }).then(function() {
+      // 清缓存里该项
+      try {
+        var cache = JSON.parse(localStorage.getItem(CLOUD_DRAFTS_CACHE_KEY) || 'null');
+        if (cache && cache.list) {
+          cache.list = cache.list.filter(function(d) { return d.path !== path; });
+          localStorage.setItem(CLOUD_DRAFTS_CACHE_KEY, JSON.stringify(cache));
+        }
+      } catch (e) {}
+      if (!opts.silent) {
+        window.__editorShowToast('✅ 已删除云端草稿');
+        renderCloudList();
+      }
+      return true;
+    }).catch(function(err) {
+      if (!opts.silent) window.__editorShowToast('❌ 删除失败：' + (err.message || '未知错误'));
+      return false;
+    });
+  }
+
+
   // checkbox 切换样式 + 初始化
   function syncCheckboxStyle(chk) {
     var lbl = chk.closest('label');
     if (!lbl) return;
     if (chk.checked) {
       lbl.style.borderColor = 'var(--primary)';
-      lbl.style.background = 'color-mix(in srgb, var(--primary) 10%, transparent)';
+      lbl.style.background = 'color-mix(in srgb, var(--primary) 12%, transparent)';
       lbl.style.color = 'var(--primary)';
     } else {
       lbl.style.borderColor = '';
@@ -1609,23 +2938,37 @@ function initEditor() {
 
   // [Editor] 统一 change 事件委托（合并 checkbox 切换 + 封面图上传）
   panelContent.addEventListener('change', function(e) {
-    if (e.target.id === 'chk-pinned-panel' || e.target.id === 'chk-comment-panel') {
+    if (e.target.id === 'chk-pinned-panel' || e.target.id === 'chk-comment-panel' || e.target.id === 'chk-draft-panel') {
       syncCheckboxStyle(e.target);
-      var key = e.target.id === 'chk-pinned-panel' ? 'pinned' : 'comment';
+      var key = e.target.id === 'chk-pinned-panel' ? 'pinned' : (e.target.id === 'chk-draft-panel' ? 'draft' : 'comment');
       metaCheckboxState[key] = e.target.checked;
       var hiddenId = e.target.id.replace('-panel', '');
       var hidden = document.getElementById(hiddenId);
       if (hidden) hidden.checked = e.target.checked;
     }
     if (e.target.classList.contains('draft-checkbox')) {
-      var checkedCount = panelContent.querySelectorAll('.draft-checkbox:checked').length;
-      var toolbar = document.getElementById('draft-toolbar');
-      if (toolbar) {
-        var label = toolbar.querySelector('label');
-        var btn = toolbar.querySelector('button');
-        var show = checkedCount > 0;
-        if (label) { label.style.opacity = show ? '1' : '0'; label.style.pointerEvents = show ? 'auto' : 'none'; }
-        if (btn) { btn.style.opacity = show ? '1' : '0'; btn.style.pointerEvents = show ? 'auto' : 'none'; }
+      if (e.target.closest('#draft-cloud-list')) {
+        // 云端勾选：切换 toolbar 显隐 + 列表 tb-off/tb-on 留白（与本地同机制，勾选后首项下移一个 toolbar 行高）
+        var cloudCheckedCount = panelContent.querySelectorAll('#draft-cloud-list .draft-checkbox:checked').length;
+        var cloudToolbar = document.getElementById('draft-toolbar-cloud');
+        var cloudListEl = document.getElementById('draft-cloud-list');
+        var cloudShowing = cloudCheckedCount > 0;
+        if (cloudToolbar) cloudToolbar.classList.toggle('hidden', !cloudShowing);
+        if (cloudListEl) {
+          cloudListEl.classList.toggle('tb-off', !cloudShowing);
+          cloudListEl.classList.toggle('tb-on', cloudShowing);
+        }
+      } else {
+        // 本地勾选：切换 toolbar 显隐 + 列表 tb-off/tb-on 留白
+        var checkedCount = panelContent.querySelectorAll('#draft-list .draft-checkbox:checked').length;
+        var toolbar = document.getElementById('draft-toolbar');
+        var listEl3 = document.getElementById('draft-list');
+        var showing = checkedCount > 0;
+        if (toolbar) toolbar.classList.toggle('hidden', !showing);
+        if (listEl3) {
+          listEl3.classList.toggle('tb-off', !showing);
+          listEl3.classList.toggle('tb-on', showing);
+        }
       }
     }
     if (e.target.id === 'cover-upload') {
@@ -1636,24 +2979,24 @@ function initEditor() {
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorCoverDataUrl = dataUrl;
         var coverPath = './images/' + filename;
-        var coverInput = document.getElementById('post-cover');
-        if (coverInput) coverInput.value = coverPath;
         window.__editorCoverValue = coverPath;
         window.__editorCoverFilename = filename;
-        var preview = document.getElementById('cover-preview');
-        var previewImg = document.getElementById('cover-preview-img');
-        if (previewImg) previewImg.src = dataUrl;
-        if (preview) preview.classList.remove('hidden');
+        // 新上传的图必定传到 src/content/posts/images/，故把目录重置为默认值，
+        // 避免沿用之前云端草稿/文章导入残留的 __editorCoverMdDir（刷新后 dataURL 丢失会拼错地址）
+        window.__editorCoverMdDir = 'src/content/posts';
+        // 统一处理：常驻框 + 面板框同时写入路径（修复"上传后面板输入框不显示路径"），
+        // 预览自动优先用内存 dataURL
+        applyCover(coverPath, { mdDir: 'src/content/posts' });
         window.__editorShowToast('封面图已选择，发布时将上传');
       });
     }
   });
 
-  // [Editor] 统一 input 事件委托（合并 GitHub 自动保存 + 元信息同步 + 标签合并 + 标题同步 + 封面预览）
+  // [Editor] 统一 input 事件委托（合并 GitHub 设置即时写入 + 元信息同步 + 标签合并 + 标题同步 + 封面预览）
   panelContent.addEventListener('input', function(e) {
     if (e.target.id === 'gh-repo-panel') localStorage.setItem('gh-repo', e.target.value);
     if (e.target.id === 'gh-branch-panel') localStorage.setItem('gh-branch', e.target.value);
-    var metaFields = ['post-desc', 'post-category', 'post-cover', 'post-password', 'post-password-hint'];
+    var metaFields = ['post-desc', 'post-category', 'post-cover', 'post-url-slug', 'post-password', 'post-password-hint'];
     if (metaFields.indexOf(e.target.id) !== -1) {
       var hidden = document.getElementById(e.target.id);
       if (hidden && hidden !== e.target) hidden.value = e.target.value;
@@ -1680,20 +3023,16 @@ function initEditor() {
       window.__editorCoverValue = url;
       var hiddenCover = document.getElementById('post-cover');
       if (hiddenCover && hiddenCover !== e.target) hiddenCover.value = url;
-      if (url && !url.startsWith('data:')) {
+      // ⚠️ 原写法 `if (url && ...)` 在清空输入框时因 url 为空而短路，清理代码不执行，
+      //    导致"输入框空了但预览图还在显示"，且与「删除」按钮行为不一致。
+      //    更糟的是此时点发布会上传图片文件却不写 image 字段 → 仓库产生无引用的孤儿文件。
+      //    改为：只要不是 data: 开头就清理（包含清空输入框的情况）。
+      if (url.indexOf('data:') !== 0) {
         window.__editorCoverDataUrl = '';
         window.__editorCoverFilename = '';
       }
-      var preview = document.getElementById('cover-preview');
-      var img = document.getElementById('cover-preview-img');
-      var displayUrl = window.__editorCoverDataUrl || url;
-      var canDisplay = displayUrl && (displayUrl.startsWith('data:') || displayUrl.startsWith('http://') || displayUrl.startsWith('https://'));
-      if (canDisplay) {
-        if (img) img.src = displayUrl;
-        if (preview) preview.classList.remove('hidden');
-      } else {
-        if (preview) preview.classList.add('hidden');
-      }
+      // 统一处理（相对路径也会拼 raw 地址预览，与其它入口行为一致）
+      applyCover(url, { mdDir: window.__editorCoverMdDir || 'src/content/posts' });
     }
   });
 
@@ -1702,8 +3041,17 @@ function initEditor() {
   openPanel = function(name) {
     origOpenPanel(name);
     setTimeout(function() {
-      var chks = panelContent.querySelectorAll('#chk-pinned-panel, #chk-comment-panel');
+      var chks = panelContent.querySelectorAll('#chk-pinned-panel, #chk-comment-panel, #chk-draft-panel');
       chks.forEach(function(c) { syncCheckboxStyle(c); });
+      // [Editor] 自定义 URL 框：独立 input 监听，实时过滤非字母/数字/连字符（不进 panelContent 总委托，避免与其它监听耦合）
+      var slugInput = document.getElementById('post-url-slug');
+      if (slugInput && !slugInput.__slugFiltered) {
+        slugInput.__slugFiltered = true;
+        slugInput.addEventListener('input', function() {
+          var filtered = slugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+          if (filtered !== slugInput.value) slugInput.value = filtered;
+        });
+      }
     }, 0);
   };
 
@@ -1737,7 +3085,11 @@ function initEditor() {
     var passwordHint = getVal('post-password-hint');
     var pinned = (metaCheckboxState && metaCheckboxState.pinned) || false;
     var comment = (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true;
-    var fm = buildFrontmatter({ title: title, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment });
+    var draft = (metaCheckboxState && metaCheckboxState.draft) || false;
+    // [Editor] 修复：导出 MD 此前漏传 slug/draft，导致下载文件缺 slug、draft 恒 false（与发布一致需显式传）
+    var slug = getVal('post-url-slug').trim().toLowerCase()
+      .replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+    var fm = buildFrontmatter({ title: title, slug: slug, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment, draft: draft, published: getVal('post-published') });
     var textarea = document.getElementById('markdown-input');
     var blob = new Blob([fm + textarea.value], { type: 'text/markdown' });
     var a = document.createElement('a');
@@ -1766,10 +3118,16 @@ function initEditor() {
       tags: getVal('post-tags'),
       cover: window.__editorCoverValue || getVal('post-cover'),
       slug: getVal('post-slug'),
+      // [Editor] 补 urlSlug/draft：与草稿箱保存字段集对齐（原缺 draft 导致加载草稿后开关被重置 false、缺 urlSlug 致自定义 URL 丢失）
+      urlSlug: getVal('post-url-slug'),
       password: getVal('post-password'),
       passwordHint: getVal('post-password-hint'),
       pinned: (metaCheckboxState && metaCheckboxState.pinned) || false,
       comment: (metaCheckboxState && metaCheckboxState.comment !== undefined) ? metaCheckboxState.comment : true,
+      draft: (metaCheckboxState && metaCheckboxState.draft) || false,
+      published: getVal('post-published'),
+      updated: getVal('post-updated'),
+      dateTouched: window.__editorDateTouched ? { 'post-published': !!window.__editorDateTouched['post-published'], 'post-updated': !!window.__editorDateTouched['post-updated'] } : null,
       savedAt: savedAt
     });
     _saveDrafts(drafts);
@@ -1812,12 +3170,59 @@ function initEditor() {
   var showToast = window.__editorShowToast;
 
   // 底部发布按钮 → 直接打开 GitHub 弹窗
-  var publishBtn = document.querySelector('[data-panel="publish"]');
+  // [Editor] 弹窗内草稿状态提示：草稿=琥珀 / 公开=主色（复用函数，供打开与开关切换时刷新）
+  // 只重建 #gh-hint-text 文字区；外层 #gh-publish-hint 背景框与静态开关 #lbl-gh-draft 保留不重建
+  function updateGhHint() {
+    var hint = document.getElementById('gh-publish-hint');
+    var text = document.getElementById('gh-hint-text');
+    if (!hint || !text) return;
+    var isDraft = !!(metaCheckboxState && metaCheckboxState.draft);
+    // 背景框基础布局类（含开关所在行结构），每次切换仅换配色
+    var base = 'items-center gap-2 rounded-lg px-3 py-2.5 ';
+    if (isDraft) {
+      text.innerHTML = '<span class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800 dark:bg-amber-500/25 dark:text-amber-300">草稿</span><span class="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">发布为草稿，线上不公开显示，仅仓库可见。</span>';
+      hint.className = 'flex ' + base + 'bg-amber-50 border border-amber-100 dark:bg-amber-500/10 dark:border-amber-500/20';
+    } else {
+      text.innerHTML = '<span class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--primary)] text-white dark:text-black/80">公开</span><span class="text-xs text-[var(--primary)] dark:text-[var(--primary)]/90 leading-relaxed">发布为公开文章，线上正常显示。</span>';
+      hint.className = 'flex ' + base + 'bg-[var(--primary)]/8 border border-[var(--primary)]/20 dark:bg-[var(--primary)]/12 dark:border-[var(--primary)]/25';
+    }
+    hint.classList.remove('hidden');
+  }
+
+  var publishBtn = document.getElementById('btn-publish');
   if (publishBtn) {
-    publishBtn.removeAttribute('data-panel');
     publishBtn.addEventListener('click', function() {
       var modal = document.getElementById('github-modal');
-      if (modal) modal.classList.remove('hidden');
+      if (modal) {
+        // [Editor] 打开弹窗时：草稿开关初始化跟随 meta 面板状态（唯一真相源 metaCheckboxState.draft）
+        var ghToggle = document.getElementById('gh-draft-toggle');
+        if (ghToggle) {
+          ghToggle.checked = !!(metaCheckboxState && metaCheckboxState.draft);
+        }
+        updateGhHint();
+        modal.classList.remove('hidden');
+      }
+    });
+  }
+
+  // [Editor] 发布弹窗「设为草稿」开关：滑块变色由纯 CSS(:checked) 处理，无需 JS 设色。
+  // 双向同步 meta 面板状态（唯一真相源 metaCheckboxState.draft）
+  var ghDraftToggle = document.getElementById('gh-draft-toggle');
+  if (ghDraftToggle) {
+    ghDraftToggle.addEventListener('change', function() {
+      // 写回唯一真相源 → 发布(gh-confirm)读取它生成 frontmatter 的 draft 字段
+      metaCheckboxState.draft = ghDraftToggle.checked;
+      // 若 meta 面板当前打开（#chk-draft-panel 存在于 DOM），同步其勾选与样式
+      var panelDraft = document.getElementById('chk-draft-panel');
+      if (panelDraft) {
+        panelDraft.checked = ghDraftToggle.checked;
+        syncCheckboxStyle(panelDraft);
+      }
+      // 同步外层隐藏框 #chk-draft（UI 一致性）
+      var hiddenDraft = document.getElementById('chk-draft');
+      if (hiddenDraft) hiddenDraft.checked = ghDraftToggle.checked;
+      // 实时刷新弹窗状态提示（草稿/公开 tag）
+      updateGhHint();
     });
   }
 
@@ -1863,11 +3268,23 @@ function initEditor() {
     // [Editor] checkbox 从追踪变量读取（面板关闭后 DOM 元素不存在）
     var pinned = metaCheckboxState.pinned;
     var comment = metaCheckboxState.comment;
+    var draft = metaCheckboxState.draft;
 
     var slug = title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
-    var filename = 'src/content/posts/' + slug + '.md';
+    // [Editor] 编辑已有文章时用 post-slug（content collection 的 id，通常无扩展名）定位文件，避免生成新文件
+    var existingSlug = getVal('post-slug');
+    if (existingSlug && !/\.md$/i.test(existingSlug)) {
+      existingSlug += '.md';
+    }
+    var filename = existingSlug
+      ? 'src/content/posts/' + existingSlug
+      : 'src/content/posts/' + slug + '.md';
 
-    var fm = buildFrontmatter({ title: title, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment });
+    // [Editor] 自定义 URL（slug）字段：取用户输入并清洗为英文+连字符格式（剔除非法字符）
+    var customSlug = getVal('post-url-slug').trim().toLowerCase()
+      .replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+
+    var fm = buildFrontmatter({ title: title, slug: customSlug, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment, draft: draft, published: getVal('post-published'), updated: getVal('post-updated') });
 
     // [Editor] 上传文章内图片到 src/content/posts/images/
     function uploadDataUrlImages(text, token, repo, branch) {
@@ -2409,7 +3826,7 @@ function initEditor() {
       item.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-[var(--primary)]/50 transition group';
       item.setAttribute('data-insert-url', img.insertUrl);
       item.setAttribute('data-file-path', img.path);
-      item.innerHTML = '<div class="w-full h-20 bg-black/5 dark:bg-white/5 animate-pulse rounded-lg"></div>' +
+      item.innerHTML = '<div style="width:100%;height:80px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;"></div>' +
         '<div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition">' + img.name + '</div>';
       cloudFetchFileBase64(img.path).then(function(dataUrl) {
         var imgEl = document.createElement('img');
@@ -2427,7 +3844,7 @@ function initEditor() {
           window.__editorImageMap[filename] = dataUrl;
         }
       }).catch(function() {
-        item.innerHTML = '<div class="w-full h-20 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg"><span class="text-xs text-black/30 dark:text-white/30">加载失败</span></div>';
+        item.innerHTML = '<div style="width:100%;height:80px;display:flex;align-items:center;justify-content:center;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;"><span style="font-size:12px;color:var(--font-color,#999);opacity:0.6;">图片不可用</span></div>';
       });
       item.addEventListener('click', function() {
         var insertUrl = this.getAttribute('data-insert-url');
@@ -2497,7 +3914,7 @@ function initEditor() {
       { syntax: '### 三级标题', desc: '三级标题', select: '三级标题' },
       { syntax: '#### 四级标题', desc: '四级标题', select: '四级标题' },
     ],
-    '文本样式': [
+    '正文': [
       { syntax: '**加粗文本**', desc: '加粗', select: '加粗文本' },
       { syntax: '*斜体文本*', desc: '斜体', select: '斜体文本' },
       { syntax: '~~删除线~~', desc: '删除线', select: '删除线' },
@@ -2537,10 +3954,21 @@ function initEditor() {
     'Mermaid': [
       { syntax: '```mermaid\ngraph TD\n    A[开始] --> B[结束]\n```', desc: '流程图', select: 'A[开始]' },
     ],
+    '提醒框': [
+      { syntax: '> [!NOTE]\n> 提示内容', desc: '提示 Note', select: '提示内容' },
+      { syntax: '> [!TIP]\n> 建议内容', desc: '建议 Tip', select: '建议内容' },
+      { syntax: '> [!IMPORTANT]\n> 重要内容', desc: '重要 Important', select: '重要内容' },
+      { syntax: '> [!WARNING]\n> 警告内容', desc: '警告 Warning', select: '警告内容' },
+      { syntax: '> [!CAUTION]\n> 小心内容', desc: '小心 Caution', select: '小心内容' },
+      { syntax: ':::note\n内容\n:::', desc: '提示框(:::)', select: '内容' },
+    ],
+    '扩展': [
+      { syntax: '::github{repo="CuteLeaf/Firefly"}', desc: 'GitHub 仓库卡片', select: 'CuteLeaf/Firefly' },
+      { syntax: '```plantuml\n@startuml\nAlice -> Bob: 你好\n@enduml\n```', desc: 'PlantUML 图', select: 'Alice' },
+    ],
     '快捷键': [
       { syntax: '', desc: 'Ctrl+B 加粗', select: null },
       { syntax: '', desc: 'Ctrl+I 斜体', select: null },
-      { syntax: '', desc: 'Ctrl+K 链接', select: null },
       { syntax: '', desc: 'Ctrl+Z 撤销', select: null },
       { syntax: '', desc: '保存草稿（按钮）', select: null },
     ],
@@ -2549,25 +3977,8 @@ function initEditor() {
   // 缓存上次 TOC 数据，避免全量重建
   var _tocCache = '';
 
-  // [Editor] 事件委托：TOC 和语法面板（只绑定一次，渲染时不重复绑定）
-  panelContent.addEventListener('mouseenter', function(e) {
-    var tocItem = e.target.closest('.toc-item');
-    if (tocItem) { tocItem.style.background = 'color-mix(in srgb, var(--primary) 8%, transparent)'; return; }
-    var syntaxItem = e.target.closest('.syntax-item');
-    if (syntaxItem) {
-      syntaxItem.style.borderColor = 'var(--primary)';
-      syntaxItem.style.background = 'color-mix(in srgb, var(--primary) 5%, transparent)';
-    }
-  }, true);
-  panelContent.addEventListener('mouseleave', function(e) {
-    var tocItem = e.target.closest('.toc-item');
-    if (tocItem) { tocItem.style.background = ''; return; }
-    var syntaxItem = e.target.closest('.syntax-item');
-    if (syntaxItem) {
-      syntaxItem.style.borderColor = 'var(--line-divider)';
-      syntaxItem.style.background = '';
-    }
-  }, true);
+  // TOC/语法项 hover 已改为纯 CSS（is:global 注入，见顶部样式块），删除原 JS mouseover/mouseout 委托。
+  // 效果一致（TOC 主色12%、语法主色5%+主色边框），且零运行时事件开销、无跨子元素闪烁。
   panelContent.addEventListener('click', function(e) {
     // TOC 项点击 → 跳转到对应行
     var tocItem = e.target.closest('.toc-item');
@@ -2647,17 +4058,18 @@ function initEditor() {
       if (m) headings.push({ level: m[1].length, text: m[2], line: idx });
     });
     if (headings.length === 0) {
-      var emptyHtml = '<div style="padding:10px 5px 0 16px;"><div style="text-align:center;color:var(--font-color-light);font-size:13px;padding:24px 0;">暂无标题</div></div>';
+      var emptyHtml = '<div style="padding:0.5rem 5px 0 16px;"><div style="text-align:center;color:var(--font-color-light);font-size:0.875rem;padding:1.5rem 0;">暂无标题</div></div>';
       if (_tocCache !== emptyHtml) {
         panelContent.innerHTML = emptyHtml;
         _tocCache = emptyHtml;
       }
       return;
     }
-    var html = '<div style="padding:10px 5px 0 16px;">';
-    headings.forEach(function(h) {
-      var indent = (h.level - 1) * 12;
-      html += '<div class="toc-item" data-line="' + h.line + '" title="' + h.text + '" style="padding:6px 12px 6px ' + (12 + indent) + 'px;cursor:pointer;font-size:13px;color:var(--font-color);transition:background 0.12s;border-radius:6px;margin:1px 0;"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + h.text + '</span></div>';
+    var html = '<div style="padding:0.5rem 5px 0 16px;">';
+    headings.forEach(function(h, idx) {
+      // 缩进按 0.75rem/级（@14.4 = 10.8px），与其他面板 rem 节奏一致；首项 margin-top 归零由容器 padding-top(0.5rem) 负责
+      var indentRem = (h.level - 1) * 0.75;
+      html += '<div class="toc-item" data-line="' + h.line + '" title="' + h.text + '" style="padding:0.25rem 0.75rem 0.25rem ' + (0.75 + indentRem) + 'rem;cursor:pointer;font-size:0.875rem;color:var(--font-color);transition:background 0.12s;border-radius:0.5rem;margin:' + (idx === 0 ? '0' : '0.125rem') + ' 0;"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + h.text + '</span></div>';
     });
     html += '</div>';
     if (html === _tocCache) return;
@@ -2669,21 +4081,21 @@ function initEditor() {
   function renderSyntaxContent() {
     var items = syntaxData[currentSyntaxCat] || [];
     // 标签栏
-    var tagsHtml = '<div style="padding:10px 5px 0 16px;display:flex;flex-direction:column;height:100%;"><div style="flex-shrink:0;display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 12px 0;border-bottom:1px solid var(--line-divider);margin-bottom:8px;">';
+    var tagsHtml = '<div style="padding:0.5rem 5px 0 16px;display:flex;flex-direction:column;height:100%;"><div class="syntax-tag-row" style="flex-shrink:0;padding:0;"><div style="display:flex;flex-wrap:wrap;gap:0.5rem;padding:0 0 0.5rem 0;">';
     Object.keys(syntaxData).forEach(function(cat) {
       var active = cat === currentSyntaxCat;
       var style = active
         ? 'background:color-mix(in srgb, var(--primary) 12%, transparent);color:var(--primary);border-color:var(--primary);'
         : '';
-      tagsHtml += '<span class="syntax-tag" data-cat="' + cat + '" style="padding:3px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid var(--line-divider);color:var(--font-color-light);transition:all 0.15s;user-select:none;' + style + '">' + cat + '</span>';
+      tagsHtml += '<span class="syntax-tag" data-cat="' + cat + '" style="padding:0.1875rem 0.625rem;border-radius:0.75rem;font-size:0.75rem;cursor:pointer;border:1px solid var(--line-divider);color:var(--font-color-light);transition:background-color 0.15s, border-color 0.15s, color 0.15s;user-select:none;' + style + '">' + cat + '</span>';
     });
-    tagsHtml += '</div>';
+    tagsHtml += '</div><div style="border-bottom:1px solid var(--line-divider);margin-bottom:0.5rem;"></div></div>';
 
     // 快捷键分类只显示说明
     if (currentSyntaxCat === '快捷键') {
       var listHtml = '<div class="syntax-scroll" style="flex:1;overflow-y:auto;">';
       items.forEach(function(item) {
-        listHtml += '<div style="padding:8px 0;margin-right:5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid color-mix(in srgb, var(--font-color) 5%, transparent);"><span style="font-size:13px;color:var(--font-color);">' + item.desc + '</span></div>';
+        listHtml += '<div style="padding:0.5rem 0;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:0.8125rem;color:var(--font-color);">' + item.desc + '</span></div>';
       });
       listHtml += '</div>';
       panelContent.innerHTML = tagsHtml + listHtml + '</div>';
@@ -2693,7 +4105,7 @@ function initEditor() {
     var listHtml = '<div class="syntax-scroll" style="flex:1;overflow-y:auto;">';
     items.forEach(function(item, idx) {
       var codeDisplay = item.syntax ? item.syntax.replace(/</g, '&lt;').replace(/\n/g, '<br>') : '';
-      listHtml += '<div class="syntax-item" data-idx="' + idx + '" style="margin:4px 0;padding:4px 12px;cursor:pointer;transition:all 0.15s;border:1px solid var(--line-divider);border-radius:6px;"><div style="font-size:12px;font-weight:600;color:color-mix(in srgb, currentColor 80%, transparent);margin-bottom:3px;">' + item.desc + '</div><code style="font-size:11px;color:color-mix(in srgb, currentColor 55%, transparent);background:color-mix(in srgb, currentColor 8%, transparent);padding:4px 6px;border-radius:4px;white-space:pre-wrap;display:block;line-height:1.4;border:1px solid color-mix(in srgb, currentColor 8%, transparent);">' + codeDisplay + '</code></div>';
+      listHtml += '<div class="syntax-item" data-idx="' + idx + '" style="margin:0 0 0.25rem 0;padding:0.25rem 0.75rem;cursor:pointer;transition:background-color 0.15s, border-color 0.15s;border:1px solid var(--line-divider);border-radius:0.5rem;"><div style="font-size:0.75rem;font-weight:600;color:color-mix(in srgb, currentColor 80%, transparent);margin-bottom:0.1875rem;">' + item.desc + '</div><code style="font-size:0.75rem;color:color-mix(in srgb, currentColor 55%, transparent);background:color-mix(in srgb, currentColor 8%, transparent);padding:0.25rem 0.375rem;border-radius:0.25rem;white-space:pre-wrap;display:block;line-height:1.4;border:1px solid color-mix(in srgb, currentColor 8%, transparent);">' + codeDisplay + '</code></div>';
     });
     listHtml += '</div>';
     panelContent.innerHTML = tagsHtml + listHtml + '</div>';
@@ -2722,10 +4134,12 @@ function initEditor() {
         document.getElementById('fullscreen-preview'),
         document.getElementById('image-modal'),
         document.getElementById('github-modal'),
-        document.getElementById('draft-modal'),
-        document.getElementById('link-modal')
+        document.getElementById('link-modal'),
+        document.getElementById('confirm-modal')
       ];
-      // 优先关闭最上层的弹窗，每次只关闭一个
+      // 优先关闭最上层的弹窗，每次只关闭一个。
+      // 关闭后触发按钮的焦点环已由全局 CSS（button:focus-visible { outline:none }）压制，
+      // 无需再 JS blur（原 JS blur 逻辑已删除，统一走 CSS 方案）。
       for (var i = 0; i < modals.length; i++) {
         if (modals[i] && !modals[i].classList.contains('hidden')) {
           modals[i].classList.add('hidden');

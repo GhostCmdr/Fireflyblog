@@ -28,11 +28,11 @@ export const profileConfig: ProfileConfig = {
 			showName: false,
 		},
 		{
-        name: "Bilibili",
-        icon: "fa7-brands:bilibili",
-        url: "https://space.bilibili.com/114421126",  // 替换为你的 B 站个人空间链接
-        showName: false,
-    	},
+			name: "Bilibili",
+			icon: "fa7-brands:bilibili",
+			url: "https://space.bilibili.com/114421126", // 替换为你的 B 站个人空间链接
+			showName: false,
+		},
 		{
 			name: "GitHub",
 			icon: "fa7-brands:github",

@@ -261,6 +261,8 @@ export const en: Translation = {
 	// Encrypted
 	[Key.postEncrypted]: "This post is encrypted",
 
+	[Key.editThisPost]: "Edit this post",
+
 	// Wallpaper Mode
 	[Key.wallpaperMode]: "Wallpaper Mode",
 	[Key.wallpaperBannerMode]: "Banner Wallpaper",
@@ -397,4 +399,17 @@ export const en: Translation = {
 	[Key.videoPrev]: "Previous video",
 	[Key.videoNext]: "Next video",
 	[Key.videoLoadError]: "Video failed to load",
+
+	// Cloud drafts
+	[Key.cloudDrafts]: "Cloud Drafts",
+	[Key.cloudDraftOpen]: "Open",
+	[Key.cloudDraftDelete]: "Delete",
+	[Key.cloudDraftNeedToken]:
+		"Please fill in your GitHub Token in GitHub settings first",
+	[Key.cloudDraftEmpty]: "No cloud drafts",
+	[Key.cloudDraftLastFetched]: "Last fetched at",
+	[Key.cloudDraftRefresh]: "Refresh Cloud",
+	[Key.cloudDraftLoading]: "Loading...",
+	[Key.cloudDraftDeleteConfirm]:
+		"Delete this cloud draft file? This action cannot be undone.",
 };

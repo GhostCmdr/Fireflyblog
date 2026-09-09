@@ -222,6 +222,17 @@ const relatedPosts = await getRelatedPosts(entry, 5);
         >
           {entry.data.title}
         </div>
+        <!-- [Editor] 仅站长可见的「编辑此文」入口，点击跳转编辑器载入本文 -->
+        <a
+          href={`/editor/?slug=${encodeURIComponent(((entry.filePath || entry.id).split('/').pop() || ''))}`}
+          data-swup-ignore
+          class="edit-this-post-btn absolute right-0 top-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                 bg-(--primary) text-white dark:text-black/80 hover:opacity-90 active:scale-95 transition-all"
+          title="编辑"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <span>编辑</span>
+        </a>
       </div>
 
       <!-- metadata -->

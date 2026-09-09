@@ -26,7 +26,9 @@ export function scanAlbumPhotos(albumId: string): string[] {
 	if (!fs.existsSync(dir)) return [];
 	const files = fs
 		.readdirSync(dir)
-		.filter((f) => /\.(jpe?g|png|webp|avif|gif)$/i.test(f) && !/^cover\./i.test(f))
+		.filter(
+			(f) => /\.(jpe?g|png|webp|avif|gif)$/i.test(f) && !/^cover\./i.test(f),
+		)
 		.sort();
 	const localPhotos = files.map((f) => withBase(`/gallery/${albumId}/${f}`));
 
