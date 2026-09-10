@@ -456,7 +456,14 @@ body.wallpaper-transparent #right-icon-bar {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="10 12 8 14 10 16"/><polyline points="14 12 16 14 14 16"/></svg>
       </button>
       <button data-panel="github" class="icon-bar-btn" title="GitHub 设置">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <!-- 线条版钥匙（Lucide「key-round」，ISC 许可）：形状取自 GitHub 钥匙的轮廓（圆环头 + 台阶杆），
+             但本身是【线条设计】绘制，故与其余图标同为细线、不会出现实心糊条；坐标已水平镜像。
+             钥匙孔用【45° 斜线】表示（原版是 r=0.5 的实心小点，会引入 fill）——
+             整枚图标纯描边、无任何填充元素，且【无任何元素级样式覆盖】（粗细/颜色/填充全部继承父级）。
+             斜线：长 3 单位、宽继承 2 单位，中心 = (8, 8)；
+             仅改端点坐标，不引入任何样式覆盖。
+             父级属性与其余图标一致：viewBox 24 / fill:none / stroke:currentColor / stroke-width:2，尺寸由 CSS 统一控制 -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.414 17.414A2 2 0 0 1 22 18.828V21a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a1 1 0 0 0 -1 -1h-1a1 1 0 0 1 -1 -1v-1a1 1 0 0 0 -1 -1h-0.172a2 2 0 0 1 -1.414 -0.586l-0.814 -0.814a6.5 6.5 0 1 1 4 -4z"/><line x1="6.9393" y1="9.0607" x2="9.0607" y2="6.9393"/></svg>
       </button>
       <div class="flex-1"></div>
       <button id="btn-export-md" class="icon-bar-btn" title="导出 MD">
@@ -704,6 +711,31 @@ function initEditor() {
     var _fileSlug = slug;
     if (!/\.(md|mdx|markdown)$/i.test(_fileSlug)) _fileSlug += '.md';
     var _encPath = _fileSlug.split('/').map(function(seg) { return encodeURIComponent(seg); }).join('/');
+    // [Editor] 加载提示：文章正文/元信息经 GitHub API 拉取（有网络延迟），期间显示常驻提示，
+    // 消除"跳进来先空白 → 再出编辑区 → 再出预览"的无反馈感；加载完成/失败后替换为短提示。
+    // 提示创建延后到本轮同步流程结束（__editorShowToast 在 initEditor 后段才定义）。
+    var _loadingToastEl = null;
+    var _loadingToastDone = false;
+    // 延迟 250ms 才显示"加载中"：
+    // ①网络快(秒开)时不闪提示框，直接只出"已加载"，避免"加载中→已加载"闪现；
+    // ②网络慢时 250ms 后出现，覆盖"跳进来空白等待"的无反馈期。
+    var _loadingToastTimer = setTimeout(function() {
+      if (_loadingToastDone) return;
+      if (typeof window.__editorShowToast === 'function') _loadingToastEl = window.__editorShowToast('⏳ 正在加载文章…', 0);
+    }, 250);
+    var _endLoadingToast = function(doneMsg) {
+      _loadingToastDone = true;
+      clearTimeout(_loadingToastTimer);
+      if (_loadingToastEl) {
+        // 复用同一个提示框元素：原地改文字并转为自动消失。
+        // 不能"关旧框 + 建新框"——两者在底部同位置交叉淡入淡出，会看到重影/残影。
+        _loadingToastEl.textContent = doneMsg;
+        window.__editorToastAutoClose(_loadingToastEl, 1500);
+        _loadingToastEl = null;
+      } else if (doneMsg && typeof window.__editorShowToast === 'function') {
+        window.__editorShowToast(doneMsg);
+      }
+    };
     fetch('https://api.github.com/repos/' + _cfgRepo + '/contents/src/content/posts/' + _encPath + '?ref=' + encodeURIComponent(_cfgBranch), {
       headers: _cfgToken ? { 'Authorization': 'token ' + _cfgToken, 'Accept': 'application/vnd.github.v3+json' } : { 'Accept': 'application/vnd.github.v3+json' },
     })
@@ -717,6 +749,8 @@ function initEditor() {
       .then(function(d) {
         if (!d || !d.success || !d.content) {
           window.__editorLoadingPost = false;
+          // 拉取失败（404/Token 无效/网络异常）：结束"加载中"并给出可见反馈，避免静默空白
+          _endLoadingToast('⚠️ 文章加载失败：未找到该文章或无法访问仓库');
           return;
         }
         var raw = d.content;
@@ -816,8 +850,12 @@ function initEditor() {
           _im.src = 'https://raw.githubusercontent.com/' + _repoL + '/' + _branchL + '/' + importMdDir + '/images/' + encodeURIComponent(fn);
         });
         window.__editorLoadingPost = false;
+        _endLoadingToast('✅ 文章已加载');
       })
-      .catch(function() { window.__editorLoadingPost = false; });
+      .catch(function() {
+        window.__editorLoadingPost = false;
+        _endLoadingToast('⚠️ 文章加载失败，请检查网络连接');
+      });
   })();
 
   // marked 配置
@@ -2687,6 +2725,34 @@ var _workerReady = false;
     });
   })();
 
+  // [Editor] 把 GitHub API 的英文错误转成友好的中文提示（图标 + 标题 + 处理建议），
+  // 替代直接裸露 "Bad credentials" 这类原始报错
+  // 行内小图标：直接克隆图标栏「GitHub 设置」按钮里的 svg（当前为线条版钥匙），
+  // 供提示文字里指示"点这个图标"用。克隆而非复制 path → 与图标栏永远一致，无需维护第二份坐标。
+  function ghKeyIconHtml() {
+    var el = document.querySelector('#right-icon-bar [data-panel="github"] svg');
+    if (!el) return '🔑'; // 兜底：图标栏不在 DOM 时退回 emoji
+    return '<span style="display:inline-block;width:1.35em;height:1.35em;vertical-align:-0.28em;line-height:0;">' +
+      el.outerHTML.replace('<svg ', '<svg style="width:100%;height:100%;display:block;" ') + '</span>';
+  }
+
+  function friendlyGhError(raw) {
+    var m = String(raw || '');
+    if (/bad credentials|unauthorized|401/i.test(m)) {
+      return { icon: '🔑', title: 'Token 无效或已过期', hint: '请点击右侧 GitHub 设置图标 → ' + ghKeyIconHtml() + '，重新填写有效的 Personal Access Token' };
+    }
+    if (/not found|404/i.test(m)) {
+      return { icon: '📁', title: '未找到仓库或分支', hint: '请检查 GitHub 设置中的仓库名与分支名是否正确（格式：用户名/仓库名）' };
+    }
+    if (/rate limit|403/i.test(m)) {
+      return { icon: '⏳', title: 'GitHub 访问次数已达上限', hint: '请等待几分钟后再点击「刷新云端」重试' };
+    }
+    if (/failed to fetch|networkerror|load failed|network error/i.test(m)) {
+      return { icon: '📡', title: '网络连接失败', hint: '请检查网络后点击「刷新云端」重试' };
+    }
+    return { icon: '⚠️', title: '读取失败', hint: m || '请稍后重试' };
+  }
+
   // 渲染云端草稿列表（优先读缓存，无缓存触发拉取）
   function renderCloudList() {
     var listEl = document.getElementById('draft-cloud-list');
@@ -2801,7 +2867,14 @@ var _workerReady = false;
       });
     }).catch(function(err) {
       if (statusEl) statusEl.textContent = '';
-      listEl.innerHTML = '<div class="text-sm text-black/40 dark:text-white/40 text-center py-8">❌ ' + (err.message || '读取失败') + '</div>';
+      var fe = friendlyGhError(err && err.message);
+      // 友好错误卡片：图标 + 标题 + 处理建议（替代裸露的英文原始报错）
+      listEl.innerHTML =
+        '<div class="text-center py-8 px-3">' +
+          '<div style="font-size:1.75rem;line-height:1;margin-bottom:0.5rem;opacity:0.85;">' + fe.icon + '</div>' +
+          '<div class="text-sm" style="color:var(--font-color);">' + fe.title + '</div>' +
+          '<div class="text-xs mt-2" style="color:color-mix(in srgb, var(--font-color) 55%, transparent);line-height:1.6;">' + fe.hint + '</div>' +
+        '</div>';
     });
   }
 
@@ -2869,7 +2942,8 @@ var _workerReady = false;
       closePanel();
       window.__editorShowToast('已载入云端草稿：' + (meta.title || path));
     }).catch(function(err) {
-      window.__editorShowToast('载入云端草稿失败：' + (err.message || '未知错误'));
+      var fe2 = friendlyGhError(err && err.message);
+      window.__editorShowToast('载入云端草稿失败：' + fe2.title);
     });
   }
 
@@ -2915,7 +2989,8 @@ var _workerReady = false;
       }
       return true;
     }).catch(function(err) {
-      if (!opts.silent) window.__editorShowToast('❌ 删除失败：' + (err.message || '未知错误'));
+      var fe3 = friendlyGhError(err && err.message);
+      if (!opts.silent) window.__editorShowToast('❌ 删除失败：' + fe3.title);
       return false;
     });
   }
@@ -3159,13 +3234,26 @@ var _workerReady = false;
 
   // 轻提示
   // [Editor] showToast 挂到 window 上供其他 IIFE 使用
-  window.__editorShowToast = function(msg) {
+  // duration：毫秒；传 0 = 常驻（不自动消失），返回元素供 __editorCloseToast 手动关闭（用于"加载中"这类耗时提示）
+  window.__editorShowToast = function(msg, duration) {
     var toast = document.createElement('div');
     toast.textContent = msg;
     toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 20px;border-radius:8px;font-size:13px;z-index:9999;opacity:0;transition:opacity .3s;';
     document.body.appendChild(toast);
     requestAnimationFrame(function() { toast.style.opacity = '1'; });
-    setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 300); }, 1500);
+    var _dur = (duration === undefined) ? 1500 : duration;
+    if (_dur > 0) setTimeout(function() { window.__editorCloseToast(toast); }, _dur);
+    return toast;
+  };
+  window.__editorCloseToast = function(el) {
+    if (!el || !el.parentNode) return;
+    el.style.opacity = '0';
+    setTimeout(function() { el.remove(); }, 300);
+  };
+  // 给已存在的常驻提示框安排"延时自动关闭"（配合原地改文字复用同一元素）
+  window.__editorToastAutoClose = function(el, ms) {
+    if (!el) return;
+    setTimeout(function() { window.__editorCloseToast(el); }, (ms === undefined) ? 1500 : ms);
   };
   var showToast = window.__editorShowToast;
 
@@ -3407,7 +3495,10 @@ var _workerReady = false;
       status.textContent = '✅ 发布完成！';
       status.className = 'text-sm text-green-500';
     }).catch(function(e) {
-      status.textContent = '❌ ' + e.message;
+      // 友好报错：发布失败最常见原因是 Token 无效（GitHub 原文 "Bad credentials"），不直接裸露
+      var fe4 = friendlyGhError(e && e.message);
+      status.innerHTML = fe4.icon + ' ' + fe4.title +
+        '<br><span style="font-size:12px;opacity:.7;">' + fe4.hint + '</span>';
       status.className = 'text-sm text-red-500';
     });
   });
@@ -3723,8 +3814,9 @@ var _workerReady = false;
         opt.textContent = d.name;
         cloudAlbumSelect.appendChild(opt);
       });
-    }).catch(function() {
-      cloudAlbumSelect.innerHTML = '<option value="">加载失败</option>';
+    }).catch(function(e) {
+      var fe7 = friendlyGhError(e && e.message);
+      cloudAlbumSelect.innerHTML = '<option value="">' + fe7.icon + ' ' + fe7.title + '</option>';
     });
   }
 
@@ -3763,7 +3855,8 @@ var _workerReady = false;
     }).catch(function(e) {
       cloudImagesLoading.classList.add('hidden');
       cloudImagesEmpty.classList.remove('hidden');
-      cloudImagesEmpty.querySelector('span').textContent = '加载失败: ' + (e.message || e);
+      var fe5 = friendlyGhError(e && e.message);
+      cloudImagesEmpty.querySelector('span').textContent = fe5.icon + ' ' + fe5.title;
     });
   }
 
@@ -3788,7 +3881,8 @@ var _workerReady = false;
     }).catch(function(e) {
       cloudImagesLoading.classList.add('hidden');
       cloudImagesEmpty.classList.remove('hidden');
-      cloudImagesEmpty.querySelector('span').textContent = '加载失败: ' + (e.message || e);
+      var fe6 = friendlyGhError(e && e.message);
+      cloudImagesEmpty.querySelector('span').textContent = fe6.icon + ' ' + fe6.title;
     });
   }
 
