@@ -1,7 +1,8 @@
 // 音乐播放器配置
 export type MusicPlayerConfig = {
-	// 使用方式：'meting' 或 'local'
-	mode?: "meting" | "local"; // "meting" 使用 Meting API，"local" 使用本地音乐列表
+	// 使用方式：'meting'、'local' 或 'auto'
+	mode?: "meting" | "local" | "auto";
+	// "meting" 使用 Meting API，"local" 使用本地音乐列表，"auto" 自动扫描本地文件夹
 
 	// 默认音量 (0-1)
 	volume?: number;
@@ -34,6 +35,12 @@ export type MusicPlayerConfig = {
 
 		// 备用 API 配置（当主 API 失败时使用）
 		fallbackApis?: string[];
+	};
+
+	// Auto 模式配置（当 mode 为 'auto' 时使用）
+	auto?: {
+		// playlist.json 的路径（相对于 public 目录）
+		playlistPath?: string;
 	};
 
 	// 本地音乐配置（当 mode 为 'local' 时使用）

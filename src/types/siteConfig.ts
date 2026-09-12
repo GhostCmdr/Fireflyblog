@@ -32,7 +32,7 @@ export type SiteConfig = {
 	description?: string; // 网站描述，用于生成 <meta name="description">
 	keywords?: string[]; // 站点关键词，用于生成 <meta name="keywords">
 
-	lang: "en" | "zh_CN" | "zh_TW" | "ja" | "ru";
+	lang: "en" | "zh_CN" | "zh_TW" | "ja" | "ru" | "ko";
 
 	themeColor: {
 		hue: number;
@@ -97,9 +97,23 @@ export type SiteConfig = {
 	postListLayout: {
 		defaultMode: "list" | "grid"; // 默认布局模式：list=列表模式，grid=网格模式
 		mobileDefaultMode?: "list" | "grid"; // 移动端默认布局模式（视口宽度<780px时使用），不设置则跟随 defaultMode
-		showTags: boolean; // 是否在文章列表中显示标签
-		descriptionLines?: number; // 文章简介显示行数，设为 0 则不截断，默认 2
 		allowSwitch: boolean; // 是否允许用户切换布局
+		descriptionLines?: number; // 文章简介显示行数，设为 0 则不截断，默认 2
+		showStatsIcons?: boolean; // 文章卡片底部统计是否显示图标
+		tagsPosition?: "meta" | "bottom"; // 标签显示位置
+		meta?: {
+			showPublished?: boolean;
+			showCategory?: boolean;
+			showTags?: boolean;
+			tagCount?: number;
+			showWords?: boolean;
+			showReadingTime?: boolean;
+		};
+		stats?: {
+			showPublished?: boolean;
+			showWords?: boolean;
+			showReadingTime?: boolean;
+		};
 		grid: {
 			// 网格布局配置，仅在 defaultMode 为 "grid" 或允许切换布局时生效
 			// 是否开启瀑布流布局

@@ -255,6 +255,8 @@ export const zh_TW: Translation = {
 	// 加密
 	[Key.postEncrypted]: "本文已加密",
 
+	[Key.editThisPost]: "編輯此文",
+
 	// 壁紙模式
 	[Key.wallpaperMode]: "壁紙模式",
 	[Key.wallpaperBannerMode]: "橫幅壁紙",
@@ -388,4 +390,15 @@ export const zh_TW: Translation = {
 	[Key.videoPrev]: "上一個影片",
 	[Key.videoNext]: "下一個影片",
 	[Key.videoLoadError]: "影片載入失敗",
+
+	// 雲端草稿
+	[Key.cloudDrafts]: "雲端草稿",
+	[Key.cloudDraftOpen]: "打開",
+	[Key.cloudDraftDelete]: "刪除",
+	[Key.cloudDraftNeedToken]: "請先在 GitHub 設定中填寫 Token",
+	[Key.cloudDraftEmpty]: "暫無雲端草稿",
+	[Key.cloudDraftLastFetched]: "最後讀取於",
+	[Key.cloudDraftRefresh]: "重新整理雲端",
+	[Key.cloudDraftLoading]: "載入中...",
+	[Key.cloudDraftDeleteConfirm]: "確定刪除該雲端草稿檔案嗎？此操作不可復原。",
 };

@@ -30,6 +30,8 @@ yarn.lock
 .idea
 *.iml
 .claude
+CLAUDE.md
+.codebuddy/
 
 # docs
 Firefly-docs/
@@ -37,3 +39,6 @@ Firefly-docs/
 cache/
 package/
 .obsidian/
+
+# backups
+.backups/

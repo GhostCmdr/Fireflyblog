@@ -19,21 +19,17 @@ function withBase(assetPath: string): string {
 }
 
 /**
- * 扫描相册目录中的所有图片文件
+ * 扫描相册目录中的所有图片文件（排除 cover.* 文件）
  */
 export function scanAlbumPhotos(albumId: string): string[] {
 	const dir = path.join(process.cwd(), "public", "gallery", albumId);
 	if (!fs.existsSync(dir)) return [];
 	const files = fs
 		.readdirSync(dir)
-		.filter((f) => /\.(jpe?g|png|webp|avif|gif)$/i.test(f))
+		.filter(
+			(f) => /\.(jpe?g|png|webp|avif|gif)$/i.test(f) && !/^cover\./i.test(f),
+		)
 		.sort();
-	// 将 cover.* 排到第一位
-	const coverIdx = files.findIndex((f) => /^cover\./i.test(f));
-	if (coverIdx > 0) {
-		const [coverFile] = files.splice(coverIdx, 1);
-		files.unshift(coverFile);
-	}
 	const localPhotos = files.map((f) => withBase(`/gallery/${albumId}/${f}`));
 
 	// 读取 urls.txt 中的远程图片 URL

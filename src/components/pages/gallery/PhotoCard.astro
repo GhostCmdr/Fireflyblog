@@ -13,7 +13,7 @@ const { src, albumId, alt = "" } = Astro.props;
 const lqipProps = getLqipProps(src, undefined, true);
 ---
 
-<div class="gallery-photo-card break-inside-avoid mb-3">
+<div class="gallery-photo-card break-inside-avoid mb-3 relative">
   <div
     data-fancybox={`gallery-${albumId}`}
     data-src={src}
@@ -28,5 +28,13 @@ const lqipProps = getLqipProps(src, undefined, true);
       decoding="async"
       class="w-full h-auto object-cover opacity-0 transition-all duration-500 ease-out group-hover:scale-105"
     />
+    <!-- 勾选框（悬停显示，批量模式下始终显示） -->
+    <div
+      data-action="select-photo"
+      data-src={src}
+      class="photo-checkbox absolute top-2 left-2 z-10 w-6 h-6 rounded-md bg-white/90 dark:bg-black/70 border-2 border-neutral-300/80 dark:border-neutral-600/80 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+    >
+      <svg class="check-icon hidden w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
   </div>
 </div>

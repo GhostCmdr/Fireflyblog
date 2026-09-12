@@ -1,4 +1,23 @@
 /* Fancybox 自定义样式 */
+
+/* 防止 Fancybox 打开时滚动条隐藏导致页面右移 */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* 隐藏加载转圈 spinner */
+.f-spinner {
+  display: none !important;
+}
+
+/* 禁用 zoomEffect=false 后的 CSS 回退动画 */
+.fancybox__container .f-panzoom__content,
+.fancybox__container .f-html {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Fancybox 容器背景 */
 .fancybox__container {
   --fancybox-bg: rgba(0, 0, 0, 0.9);
   --fancybox-thumbs-width: 64px;

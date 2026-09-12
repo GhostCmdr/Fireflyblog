@@ -18,6 +18,7 @@ export type WidgetComponentConfig = {
 	position: "top" | "sticky"; // 组件位置：top=固定在顶部，sticky=粘性定位（可滚动）
 	showOnPostPage?: boolean; // 是否在文章详情页显示
 	hideOnNonPostPage?: boolean; // 是否在非文章详情页隐藏
+	homePageOnly?: boolean; // 是否仅在主页显示（true=只在主页显示，其他页面隐藏）
 	specificConfig?: WidgetSpecificConfig;
 	customProps?: Record<string, unknown>; // 自定义属性，用于扩展组件功能
 };
@@ -28,6 +29,7 @@ export type MobileBottomComponentConfig = {
 	showTitle?: boolean; // 是否显示该组件标题，默认true
 	showOnPostPage?: boolean; // 是否在文章详情页显示
 	hideOnNonPostPage?: boolean; // 是否在非文章详情页隐藏
+	homePageOnly?: boolean; // 是否仅在主页显示（true=只在主页显示，其他页面隐藏）
 	specificConfig?: WidgetSpecificConfig;
 	customProps?: Record<string, unknown>; // 自定义属性，用于扩展组件功能
 };

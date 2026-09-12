@@ -32,6 +32,7 @@ const managerConfigStr = JSON.stringify({
 	mode: config.mode,
 	meting: config.meting,
 	localPlaylist: localPlaylist,
+	autoPlaylistPath: config.auto?.playlistPath ?? "/assets/music/playlist.json",
 	volume: config.volume ?? 0.7,
 	playMode: config.playMode ?? "list",
 	showLyrics: config.showLyrics ?? true,
@@ -101,7 +102,7 @@ const managerConfigStr = JSON.stringify({
     document.body.appendChild(audio);
 
     // ── State ────────────────────────────────────────────────
-    var loadVersion = 0; // incremented on each loadTrack to discard stale play() results
+    var loadVersion = 0;
     var state = {
         playlist: [],
         currentIndex: 0,
@@ -168,6 +169,28 @@ const managerConfigStr = JSON.stringify({
         throw new Error('All Meting APIs failed');
     }
 
+    // ── Auto fetch (playlist.json) ───────────────────────────
+    async function fetchAutoPlaylist() {
+        var playlistPath = config.autoPlaylistPath || '/assets/music/playlist.json';
+        var res = await fetch(playlistPath);
+        if (!res.ok) throw new Error('Failed to fetch ' + playlistPath + ': HTTP ' + res.status);
+        var data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('playlist.json is empty or invalid');
+        }
+
+        state.playlist = data.map(function (item) {
+            return {
+                name: item.name || 'Unknown',
+                artist: item.artist || 'Unknown',
+                url: item.url,
+                pic: item.cover || item.pic || '',
+                lrc: item.lrc || ''
+            };
+        });
+    }
+
     // ── Lyrics ───────────────────────────────────────────────
     function loadLyrics(track) {
         state.lyrics = [];
@@ -215,12 +238,12 @@ const managerConfigStr = JSON.stringify({
 
         if (autoPlay) {
             audio.play().then(function () {
-                if (ver !== loadVersion) return; // stale, discard
+                if (ver !== loadVersion) return;
                 state.isPlaying = true;
                 emit('fm:play-state', { isPlaying: true });
             }).catch(function (e) {
-                if (ver !== loadVersion) return; // stale, discard
-                if (e.name === 'AbortError') return; // interrupted by new load
+                if (ver !== loadVersion) return;
+                if (e.name === 'AbortError') return;
                 console.warn('Autoplay blocked:', e);
             });
         } else {
@@ -357,12 +380,13 @@ const managerConfigStr = JSON.stringify({
         try {
             if (config.mode === 'meting' && config.meting) {
                 await fetchMetingData();
+            } else if (config.mode === 'auto') {
+                await fetchAutoPlaylist();
             } else if (config.mode === 'local') {
                 state.playlist = config.localPlaylist || [];
             }
 
             if (state.playlist.length > 0) {
-                // Apply volume
                 audio.volume = state.volume;
 
                 var startIndex = 0;

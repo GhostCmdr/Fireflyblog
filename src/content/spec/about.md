@@ -1,29 +1,37 @@
 # 关于我 / About Me
 
-你好！我是 **夏叶** ，一个在数字世界中默默无闻的一片叶子。
+你好！我是 **小埋** ，一个在地球Online里默默探索的资深独狼玩家。
 
-## 🛠️ 关于本站
+喜欢研究生活中的埋学事件，享受埋学生活的每一天。如果你也在这个世界里寻找属于自己的节奏，欢迎来我的小站坐坐。
 
-这个网站使用 **Astro** 框架构建，采用了 [Firefly](https://github.com/CuteLeaf/Firefly) 模板，Firefly 是基于 [Fuwari](https://github.com/saicaca/fuwari) 的二次开发。
+## 🔭 关于本站
 
-**Firefly** 是一款基于 Astro 框架和 Fuwari 模板开发的清新美观且现代化个人博客主题模板，专为技术爱好者和内容创作者设计。该主题融合了现代 Web 技术栈，提供了丰富的功能模块和高度可定制的界面，让您能够轻松打造出专业且美观的个人博客网站。
+**小埋小站** 是我的个人博客，记录着我的埋学研究、技术探索和生活碎片。
 
+- **站点地址：** [xiaomaisos.me](https://xiaomaisos.me)
+- **技术栈：** [Astro](https://astro.build/) + [Firefly](https://github.com/CuteLeaf/Firefly) 主题深度定制
+- **部署方式：** GitHub Pages + Cloudflare CDN
 
-**🖥️在线预览： [Firefly - Demo site](https://firefly.cuteleaf.cn/)**
+本站基于 [CuteLeaf/Firefly](https://github.com/CuteLeaf/Firefly) 主题进行深度自定义修改，新增了在线 Markdown 编辑器、音乐播放器自动扫描模式等功能。
 
-**🏠我的博客： [https://blog.cuteleaf.cn](https://blog.cuteleaf.cn/)**
+## 🎯 兴趣方向
 
-**📝Firefly使用文档： [https://docs-firefly.cuteleaf.cn](https://docs-firefly.cuteleaf.cn/)**
+- 埋学事件研究与记录
+- 前端技术探索（Astro / Svelte / Tailwind CSS）
+- 博客折腾与个性化定制
+- 地球Online独狼生存指南
 
-**⭐Firefly开源地址：[https://github.com/CuteLeaf/Firefly](https://github.com/CuteLeaf/Firefly)** 
+## 📬 联系方式
 
-**⭐Fuwari开源地址：[https://github.com/saicaca/fuwari](https://github.com/saicaca/fuwari)**
+- **GitHub：** [GhostCmdr](https://github.com/GhostCmdr)
+- **Gitee：** [ghostwebdata](https://gitee.com/ghostwebdata)
+- **CSDN：** [qq_49525131](https://blog.csdn.net/qq_49525131?type=blog)
 
-::github{repo="CuteLeaf/Firefly"}
+## 🙏 致谢
 
-::github{repo="saicaca/fuwari"}
+- 博客主题：[Firefly](https://github.com/CuteLeaf/Firefly) by [CuteLeaf](https://github.com/CuteLeaf)
+- 原始模板：[Fuwari](https://github.com/saicaca/fuwari) by [saicaca](https://github.com/saicaca)
 
 ---
 
-*感谢你的来访！希望在这里能找到对你有用的内容！*
-
+*享受生活，享受埋学。*

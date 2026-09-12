@@ -30,6 +30,13 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 
 			// 标签
 			LinkPresets.Tags,
+
+			// 写文章
+			{
+				name: "写文章",
+				url: "/editor/",
+				icon: "material-symbols:edit-note",
+			},
 		],
 	});
 
@@ -79,28 +86,46 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 		children: [
 			{
 				name: "GitHub",
-				url: "https://github.com/CuteLeaf/Firefly",
+				url: "https://github.com/GhostCmdr",
 				external: true,
 				icon: "fa7-brands:github",
 			},
 			{
 				name: "Gitee",
-				url: "https://gitee.com/CuteLeaf/Firefly",
+				url: "https://gitee.com/ghostwebdata",
 				external: true,
 				icon: "fa7-brands:gitee",
 			},
+
+			{
+				name: "CSDN",
+				url: "https://blog.csdn.net/qq_49525131?type=blog",
+				external: true,
+				icon: "material-symbols:copyright",
+			},
+
+			{
+				name: "博客园",
+				url: "https://home.cnblogs.com/u/3321696",
+				external: true,
+				icon: "material-symbols:article",
+			},
+
+			/*
 			{
 				name: "QQ交流群",
-				url: "https://qm.qq.com/q/ZGsFa8qX2G",
+				url: "https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0=&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info",
 				external: true,
 				icon: "fa7-brands:qq",
 			},
+
 			{
 				name: "Firefly文档",
 				url: "https://docs-firefly.cuteleaf.cn",
 				external: true,
 				icon: "material-symbols:docs",
 			},
+			*/
 		],
 	});
 

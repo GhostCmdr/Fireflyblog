@@ -1,0 +1,58 @@
+[
+  {
+    "name": "aLIEz",
+    "artist": "核爆神曲",
+    "number": 0,
+    "url": "/assets/music/00 - aLIEz - 核爆神曲.mp3",
+    "cover": "/assets/music/00 - aLIEz - 核爆神曲.jpg",
+    "lrc": "/assets/music/00 - aLIEz - 核爆神曲.lrc"
+  },
+  {
+    "name": "MY ALL",
+    "artist": "浜崎あゆみ",
+    "number": 1,
+    "url": "/assets/music/01 - MY ALL - 浜崎あゆみ.mp3",
+    "cover": "/assets/music/01 - MY ALL - 浜崎あゆみ.png",
+    "lrc": "/assets/music/01 - MY ALL - 浜崎あゆみ.lrc"
+  },
+  {
+    "name": "知我 (宁姚)",
+    "artist": "谭渊",
+    "number": 2,
+    "url": "/assets/music/02 - 知我 (宁姚) - 谭渊.mp3",
+    "cover": "/assets/music/02 - 知我 (宁姚) - 谭渊.jpg",
+    "lrc": "/assets/music/02 - 知我 (宁姚) - 谭渊.lrc"
+  },
+  {
+    "name": "The Nights",
+    "artist": "Avicii",
+    "number": 3,
+    "url": "/assets/music/03 - The Nights - Avicii.mp3",
+    "cover": "/assets/music/03 - The Nights - Avicii.jpg",
+    "lrc": "/assets/music/03 - The Nights - Avicii.lrc"
+  },
+  {
+    "name": "蓬莱山下",
+    "artist": "今晚打老虎",
+    "number": 4,
+    "url": "/assets/music/04 - 蓬莱山下 - 今晚打老虎.mp3",
+    "cover": "/assets/music/04 - 蓬莱山下 - 今晚打老虎.jpg",
+    "lrc": "/assets/music/04 - 蓬莱山下 - 今晚打老虎.lrc"
+  },
+  {
+    "name": "虞兮叹",
+    "artist": "Sail",
+    "number": 5,
+    "url": "/assets/music/05 - 虞兮叹 - Sail.mp3",
+    "cover": "/assets/music/05 - 虞兮叹 - Sail.jpg",
+    "lrc": "/assets/music/05 - 虞兮叹 - Sail.lrc"
+  },
+  {
+    "name": "时光钟摆",
+    "artist": "花町馆长",
+    "number": 6,
+    "url": "/assets/music/06 - 时光钟摆 - 花町馆长.mp3",
+    "cover": "/assets/music/06 - 时光钟摆 - 花町馆长.jpg",
+    "lrc": "/assets/music/06 - 时光钟摆 - 花町馆长.lrc"
+  }
+]

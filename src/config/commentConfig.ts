@@ -2,7 +2,7 @@ import type { CommentConfig } from "../types/commentConfig";
 
 export const commentConfig: CommentConfig = {
 	// 评论系统类型: none, twikoo, waline, giscus, disqus, artalk，默认为none，即不启用评论系统
-	type: "none",
+	type: "waline",
 
 	//twikoo评论系统配置
 	twikoo: {
@@ -23,7 +23,9 @@ export const commentConfig: CommentConfig = {
 	//waline评论系统配置
 	waline: {
 		// waline 后端服务地址
-		serverURL: "https://waline.vercel.app",
+		serverURL: "https://waline.xiaomaisos.me/",
+		// 国内自建waline后台："https://api.zcservice.houlang.cloud/comment/d93bc8c3ba83dc70228e56885532e176"
+		// "https://waline.xiaomaisos.me/",
 		// 设置 Waline 评论系统语言
 		lang: "zh-CN",
 		// 设置 Waline 评论系统表情地址
@@ -39,6 +41,22 @@ export const commentConfig: CommentConfig = {
 		login: "enable",
 		// 是否启用文章访问量统计功能
 		visitorCount: true,
+		// 是否启用反应功能
+		reaction: [
+			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_look_down.png",
+			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_trollface.png",
+			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_antic.png",
+			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_think.png",
+			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_spit_blodd.png",
+		],
+		locale: {
+			reactionTitle: "(๑˃ᴗ˂)ﻭ 求一连！投个币嘛~",
+			reaction0: "求",
+			reaction1: "一",
+			reaction2: "个",
+			reaction3: "投",
+			reaction4: "币",
+		},
 	},
 
 	// artalk评论系统配置

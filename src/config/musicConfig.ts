@@ -10,8 +10,14 @@ export const musicPlayerConfig: MusicPlayerConfig = {
 	// 是否在导航栏显示音乐播放器入口
 	showInNavbar: true,
 
-	// 使用方式："meting" 使用 Meting API，"local" 使用本地音乐列表
-	mode: "meting",
+	// 使用方式：
+	//   "meting"  — 使用 Meting API（在线音乐平台）
+	//   "local"   — 使用本地音乐列表（需手动在下方 playlist 中添加）
+	//   "auto"    — 自动扫描本地文件夹（只需放文件，不用改代码）
+	//                文件命名规则：序号 - 歌曲名 - 歌手.扩展名
+	//                示例：01 - 知我 (宁姚) - 谭渊.mp3
+	//                运行 node scripts/generate-music-playlist.mjs 生成播放列表
+	mode: "auto",
 
 	// 默认音量 (0-1)
 	volume: 0.7,
@@ -42,11 +48,18 @@ export const musicPlayerConfig: MusicPlayerConfig = {
 		],
 	},
 
+	// Auto 模式配置（当 mode 为 'auto' 时使用）
+	// 使用方法：
+	//   1. 将音乐文件放入 public/assets/music/（歌曲、封面、歌词放同一文件夹）
+	//   2. 文件命名：序号 - 歌曲名 - 歌手.扩展名
+	//   3. 运行 node scripts/generate-music-playlist.mjs
+	//   4. 播放器会自动加载生成的 playlist.json
+	auto: {
+		// playlist.json 的路径（相对于 public 目录）
+		playlistPath: "/assets/music/playlist.json",
+	},
+
 	// 本地音乐配置（当 mode 为 'local' 时使用）
-	// 1. 支持传入歌词文件的路径
-	// lrc: "/assets/music/lrc/使一颗心免于哀伤-哼唱.lrc",
-	// 2. 或者直接填入歌词字符串内容
-	// lrc: "[00:00.00]歌词内容...",
 	local: {
 		playlist: [
 			{

@@ -260,6 +260,8 @@ export const ja: Translation = {
 	// 暗号化
 	[Key.postEncrypted]: "この記事は暗号化されています",
 
+	[Key.editThisPost]: "この記事を編集",
+
 	// 壁紙モード
 	[Key.wallpaperMode]: "壁紙モード",
 	[Key.wallpaperBannerMode]: "バナー壁紙",
@@ -396,4 +398,16 @@ export const ja: Translation = {
 	[Key.videoPrev]: "前の動画",
 	[Key.videoNext]: "次の動画",
 	[Key.videoLoadError]: "動画の読み込みに失敗しました",
+
+	// クラウド下書き
+	[Key.cloudDrafts]: "クラウド下書き",
+	[Key.cloudDraftOpen]: "開く",
+	[Key.cloudDraftDelete]: "削除",
+	[Key.cloudDraftNeedToken]: "GitHub 設定で GitHub Token を入力してください",
+	[Key.cloudDraftEmpty]: "クラウド下書きはありません",
+	[Key.cloudDraftLastFetched]: "最終取得日時",
+	[Key.cloudDraftRefresh]: "クラウドを更新",
+	[Key.cloudDraftLoading]: "読み込み中...",
+	[Key.cloudDraftDeleteConfirm]:
+		"このクラウド下書きファイルを削除しますか？この操作は取り消せません。",
 };

@@ -263,6 +263,8 @@ export const ru: Translation = {
 	// Зашифровано
 	[Key.postEncrypted]: "Эта статья зашифрована",
 
+	[Key.editThisPost]: "Редактировать статью",
+
 	// Режим обоев
 	[Key.wallpaperMode]: "Режим обоев",
 	[Key.wallpaperBannerMode]: "Баннер обои",
@@ -399,4 +401,16 @@ export const ru: Translation = {
 	[Key.videoPrev]: "Предыдущее видео",
 	[Key.videoNext]: "Следующее видео",
 	[Key.videoLoadError]: "Не удалось загрузить видео",
+
+	// Облачные черновики
+	[Key.cloudDrafts]: "Облачные черновики",
+	[Key.cloudDraftOpen]: "Открыть",
+	[Key.cloudDraftDelete]: "Удалить",
+	[Key.cloudDraftNeedToken]: "Сначала укажите GitHub Token в настройках GitHub",
+	[Key.cloudDraftEmpty]: "Нет облачных черновиков",
+	[Key.cloudDraftLastFetched]: "Последнее получение",
+	[Key.cloudDraftRefresh]: "Обновить облако",
+	[Key.cloudDraftLoading]: "Загрузка...",
+	[Key.cloudDraftDeleteConfirm]:
+		"Удалить этот файл облачного черновика? Действие необратимо.",
 };

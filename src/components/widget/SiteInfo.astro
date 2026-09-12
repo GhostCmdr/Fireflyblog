@@ -93,21 +93,19 @@ const licenseName = licenseConfig.enable ? licenseConfig.name : "None";
 // ---- 组装展示数据 ----
 // 始终显示的项目（列表）
 const mainItems = [
+	//站点域名
 	{
-		icon: "material-symbols:cloud-outline",
-		label: i18n(I18nKey.siteInfoBuildPlatform),
-		value: buildPlatform,
+		icon: "material-symbols:language",
+		label: i18n(I18nKey.siteInfoDomain),
+		value: siteDomain,
+		fullWidth: true,
 	},
+	//博客版本
 	{
 		icon: "mdi:clover",
 		label: i18n(I18nKey.siteInfoBlogVersion),
 		value: `Firefly v${blogVersion}`,
 		href: "https://github.com/CuteLeaf/Firefly",
-	},
-	{
-		icon: "material-symbols:copyright-outline",
-		label: i18n(I18nKey.siteInfoLicense),
-		value: licenseName,
 	},
 ];
 
@@ -119,12 +117,14 @@ const detailItems: {
 	value: string;
 	fullWidth?: boolean;
 }[] = [
+	//构建平台
 	{
-		icon: "material-symbols:language",
-		label: i18n(I18nKey.siteInfoDomain),
-		value: siteDomain,
+		icon: "material-symbols:cloud-outline",
+		label: i18n(I18nKey.siteInfoBuildPlatform),
+		value: buildPlatform,
 		fullWidth: true,
 	},
+
 	{
 		icon: "mdi:clover",
 		label: "Firefly",
@@ -145,16 +145,26 @@ const detailItems: {
 		label: i18n(I18nKey.siteInfoPnpmVersion),
 		value: pnpmVersion,
 	},
-	{
-		icon: "material-symbols:build-outline",
-		label: i18n(I18nKey.siteInfoBuildTime),
-		value: buildTime,
-		fullWidth: true,
-	},
+	//系统信息
 	{
 		icon: "material-symbols:computer-outline",
 		label: i18n(I18nKey.siteInfoSystem),
 		value: systemInfo,
+		fullWidth: true,
+	},
+
+	//文章许可
+	{
+		icon: "material-symbols:copyright-outline",
+		label: i18n(I18nKey.siteInfoLicense),
+		value: licenseName,
+		fullWidth: true,
+	},
+	//构建时间
+	{
+		icon: "material-symbols:build-outline",
+		label: i18n(I18nKey.siteInfoBuildTime),
+		value: buildTime,
 		fullWidth: true,
 	},
 ];

@@ -62,6 +62,10 @@ interface Props {
 
 const backgroundImages = getBackgroundImages();
 
+// [Editor] 检测编辑器页面，用于导航栏偏移补偿（解决 overflow:hidden 导致滚动条消失→页面变宽→导航栏右移的问题）
+const isEditorPage =
+	Astro.url.pathname === "/editor/" || Astro.url.pathname === "/editor";
+
 const {
 	title,
 	banner,
@@ -296,6 +300,7 @@ const hasMultipleImages =
         stickyNavbar ? "h-18 fixed top-0 left-0 right-0 z-80" : "",
         navbarWidthFull ? "" : "w-full xl:w-[92vw] max-w-(--page-width) px-0 md:px-4",
     ]}
+    style={undefined}
 >
     <div
         id="navbar-wrapper"
@@ -325,7 +330,7 @@ const hasMultipleImages =
 }>
     <!-- 背景图片显示 -->
     {hasMultipleImages ? (
-    <!-- 轮播模式：渲染所有图片为 slide-item -->
+    /* 轮播模式：渲染所有图片为 slide-item */
     <div class:list={["relative h-full w-full bg-black", `effect-${bannerCarouselEffect}`]} id="banner-images-container"
          style={`z-index: 5; --carousel-interval: ${bannerCarouselInterval}ms`}
          data-carousel-enabled={bannerCarouselEnabledDefault}
@@ -365,7 +370,7 @@ const hasMultipleImages =
         ))}
     </div>
     ) : (
-    <!-- 单图模式 -->
+    /* 单图模式 */
     <div class="relative h-full w-full" id="banner-images-container">
         {backgroundImages.mobile.length > 0 && (
             <div class="banner-image-slot-mobile absolute inset-0 block lg:hidden">
@@ -913,6 +918,22 @@ const hasMultipleImages =
 
 <FloatingControls headings={headings} />
 
+<!-- [Editor] 若本机存有 GitHub Token（gh-token），则显示「编辑此文」等站长专属入口 -->
+<script is:inline>
+  (function syncEditorEnabled() {
+    function apply() {
+      try {
+        var hasToken = !!localStorage.getItem('gh-token');
+        document.body.classList.toggle('editor-enabled', hasToken);
+      } catch (e) {}
+    }
+    apply();
+    document.addEventListener('swup:page:view', apply);
+    if (window.swup) {
+      window.swup.hooks?.on('page:view', apply);
+    }
+  })();
+</script>
 
 </Layout>
 
