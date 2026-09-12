@@ -334,48 +334,88 @@ import { setWallpaperMode } from "@/utils/setting-utils";
     }
 
 
-/** 挂载编辑器模式：首次加载自检 + 注册 swup 钩子（幂等，重复调用无副作用） */
+/** 当前是否已处于"编辑器模式已应用"状态（避免重复 apply/remove） */
+let editorModeApplied = false;
+
+/** 切页后同步编辑器模式状态（幂等：状态一致时不重复应用） */
+function handlePageView(): void {
+  const want = isEditorPath();
+  if (want === editorModeApplied) {
+    // 状态一致：编辑器页顺带刷新一次视频/冻结层同步
+    if (want) syncEditorBgVideo();
+    return;
+  }
+  editorModeApplied = want;
+  if (want) {
+    applyEditorModeLayout();
+    syncEditorBgVideo();
+  } else {
+    removeEditorModeLayout();
+  }
+}
+
+/** 切页前：保存/恢复壁纸模式（原 visit:start 中的编辑器片段） */
+function handleVisitStart(visit: { to: { url: string } }): void {
+  // 编辑器页面壁纸模式：visit:start 只保存原模式，实际切换在 content:replace 阶段
+  const _visitPath = new URL(visit.to.url, location.origin).pathname;
+  const _isGoingToEditor = _visitPath === '/editor/' || _visitPath === '/editor';
+  const _isCurrentlyEditor = location.pathname === '/editor/' || location.pathname === '/editor';
+  if (_isGoingToEditor && !_isCurrentlyEditor) {
+    // 进入编辑器：只保存当前模式，不切换（避免主页动画变透明）
+    const curMode = document.documentElement.getAttribute('data-wallpaper-mode');
+    if (curMode !== 'overlay' && curMode !== 'none') {
+      sessionStorage.setItem('wallpaper-mode-before-editor', curMode!);
+    }
+  } else if (!_isGoingToEditor && _isCurrentlyEditor) {
+    // 离开编辑器：恢复原模式
+    const savedMode = sessionStorage.getItem('wallpaper-mode-before-editor');
+    if (savedMode) {
+      sessionStorage.removeItem('wallpaper-mode-before-editor');
+      setWallpaperMode(savedMode as any);
+    }
+  }
+}
+
+/**
+ * 注册 swup 钩子。注意：swup 可能晚于本模块初始化（本仓库其它组件一律用
+ * "先试注册，失败则等 swup:enable" 的写法），因此这里必须返回是否成功，
+ * 不能静默失败——否则 page:view 不会触发，离开编辑器时无人清理（页面残留 editor-page）。
+ */
+let swupHooksRegistered = false;
+function registerSwupHooks(): boolean {
+  if (swupHooksRegistered) return true;
+  const swup = (window as any).swup;
+  if (!swup?.hooks) return false;
+  swup.hooks.on("page:view", handlePageView);
+  swup.hooks.on("visit:start", handleVisitStart);
+  swupHooksRegistered = true;
+  return true;
+}
+
+/** 挂载编辑器模式：幂等，重复调用无副作用 */
 export function initEditorMode(): void {
   const w = window as any;
   if (w.__oursEditorModeMounted) return;
   w.__oursEditorModeMounted = true;
-  const swup = w.swup;
 
-  // 首次加载（直接访问 /editor 或刷新）
+  // 首次加载（直接访问 /editor 或刷新）——module script 为 defer 语义，此时 DOM 已解析
   if (isEditorPath()) {
+    editorModeApplied = true;
     applyEditorModeLayout();
     syncEditorBgVideo();
   }
 
-  // 切页：进入/离开编辑器
-  swup?.hooks?.on("page:view", () => {
-    if (isEditorPath()) {
-      applyEditorModeLayout();
-      syncEditorBgVideo();
-    } else {
-      removeEditorModeLayout();
-    }
-  });
-
-  // 切页前：保存/恢复壁纸模式（原 visit:start 中的编辑器片段）
-  swup?.hooks?.on("visit:start", (visit: { to: { url: string } }) => {
-      // 编辑器页面壁纸模式：visit:start 只保存原模式，实际切换在 content:replace 阶段
-      const _visitPath = new URL(visit.to.url, location.origin).pathname;
-      const _isGoingToEditor = _visitPath === '/editor/' || _visitPath === '/editor';
-      const _isCurrentlyEditor = location.pathname === '/editor/' || location.pathname === '/editor';
-      if (_isGoingToEditor && !_isCurrentlyEditor) {
-        // 进入编辑器：只保存当前模式，不切换（避免主页动画变透明）
-        const curMode = document.documentElement.getAttribute('data-wallpaper-mode');
-        if (curMode !== 'overlay' && curMode !== 'none') {
-          sessionStorage.setItem('wallpaper-mode-before-editor', curMode!);
-        }
-      } else if (!_isGoingToEditor && _isCurrentlyEditor) {
-        // 离开编辑器：恢复原模式
-        const savedMode = sessionStorage.getItem('wallpaper-mode-before-editor');
-        if (savedMode) {
-          sessionStorage.removeItem('wallpaper-mode-before-editor');
-          setWallpaperMode(savedMode as any);
-        }
-      }
-  });
+  if (!registerSwupHooks()) {
+    // swup 尚未就绪：等 swup:enable 后再注册（与 Navbar / LightDarkSwitch / DisplaySettings 同款）
+    document.addEventListener("swup:enable", () => { registerSwupHooks(); }, { once: true });
+    // 再兜底：万一 swup:enable 在监听前已触发，用短轮询补注册（最多约 3 秒）
+    let tries = 0;
+    const retry = () => {
+      if (registerSwupHooks() || ++tries >= 60) return;
+      setTimeout(retry, 50);
+    };
+    setTimeout(retry, 50);
+  }
+  // 兜底：即使 hooks 注册异常，astro:page-load 也能保证进出编辑器状态正确（handlePageView 幂等）
+  document.addEventListener("astro:page-load", handlePageView);
 }

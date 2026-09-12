@@ -965,6 +965,37 @@ function initEditor() {
       });
     });
   }
+  // [Fix] 块内 HTML 更新时按 src 复用已加载的 <img> 节点：
+  // 原实现直接 el.innerHTML=html，块内容一变（例如粘贴的图与后文同属一块、后文打字导致该块重建），
+  // 图片节点会被销毁重建 → 预览出现"整图闪一下"并重新解码。复用节点即可消除。
+  function _setBlockHtml(el, html) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    var olds = el.querySelectorAll('img');
+    var pool = {};
+    for (var i = 0; i < olds.length; i++) {
+      var s0 = olds[i].getAttribute('src');
+      if (!s0) continue;
+      (pool[s0] = pool[s0] || []).push(olds[i]);
+    }
+    tmp.querySelectorAll('img').forEach(function(nImg) {
+      var s = nImg.getAttribute('src');
+      if (!s || !pool[s] || !pool[s].length) return;
+      var keep = pool[s].shift();
+      var nc = nImg.getAttribute('class');
+      if (keep.__singleDone) {
+        // 该图已"定型"（单图满宽灰底→自然宽的切换已完成）：保留其内联样式，避免重走一遍切换造成闪动
+        if (nc) keep.setAttribute('class', nc);
+      } else {
+        var ns = nImg.getAttribute('style');
+        if (ns) keep.setAttribute('style', ns);
+        if (nc) keep.setAttribute('class', nc);
+      }
+      if (keep.parentNode) keep.parentNode.removeChild(keep);
+      nImg.parentNode.replaceChild(keep, nImg);
+    });
+    el.innerHTML = tmp.innerHTML;
+  }
   function renderBlocksInto(container, blocks) {
     if (!container) return;
     _ensureBlockCss();
@@ -994,7 +1025,7 @@ function initEditor() {
       if (el.__raw === b.raw) { el.setAttribute('data-block', String(i)); continue; } // 未变 → 原位复用，不重建
       el.__raw = b.raw;
       el.setAttribute('data-block', String(i));
-      el.innerHTML = b.html || '';
+      _setBlockHtml(el, b.html);
       _highlightBlockEls(el);
       _hookBlockImgError(el);
     }
@@ -2471,6 +2502,12 @@ var _workerReady = false;
           //    （如 src/content/posts/sub）→ 封面路径拼错 → 显示"图片不可用"。
           window.__editorCoverMdDir = 'src/content/posts';
           applyCover(d.cover || '', { mdDir: 'src/content/posts' });
+          // [Fix] 正文图片（Base64）是异步从 IndexedDB 恢复的：首帧渲染时 imageMap 还是空的，
+          // 预览会画成"图片不可用"占位；必须等恢复完成后再强制渲染一次，图片才会立刻显示
+          // （此前要等用户打字触发 input→updatePreview 才出现）。
+          if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
+          var _md = document.getElementById('markdown-input');
+          if (_md) _md.dispatchEvent(new Event('input'));
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
