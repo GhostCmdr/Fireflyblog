@@ -996,6 +996,19 @@ function initEditor() {
     });
     el.innerHTML = tmp.innerHTML;
   }
+  // [Fix] 记录本地图片（粘贴/拖拽/上传得到的 Base64）的真实尺寸，供预览在"图片加载完成前"就用 aspect-ratio
+  // 占位，避免先按 min-height:200px 铺开、加载完成再跳回真实高度造成的预览闪动。
+  function _rememberImageRatio(filename, dataUrl) {
+    try {
+      var im = new Image();
+      im.onload = function() {
+        if (!im.naturalWidth || !im.naturalHeight) return;
+        var m = window.__editorImageRatios = window.__editorImageRatios || {};
+        m[filename] = { w: im.naturalWidth, h: im.naturalHeight };
+      };
+      im.src = dataUrl;
+    } catch (e) {}
+  }
   function renderBlocksInto(container, blocks) {
     if (!container) return;
     _ensureBlockCss();
@@ -1150,7 +1163,12 @@ var _workerReady = false;
         }
         html += '<div style="text-align:center;">';
         if (!isResolvable) {
-          html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;opacity:0.6;font-size:12px;text-align:center;">图片不可用</div>';
+          // [Fix] 草稿图片恢复中：相对图先画中性灰底，不显示"图片不可用"（恢复完成后会强制重渲染）
+          if (window.__editorImagesRestoring && /^\.\/images\//.test(String(img.src))) {
+            html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;"></div>';
+          } else {
+            html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;opacity:0.6;font-size:12px;text-align:center;">图片不可用</div>';
+          }
         } else {
           // [方案A] grid 云端相对图命中预读尺寸 → aspect-ratio 锁真实比例占位(去 min-height)；未命中回退 min-height:200px
           var _gRatio = img.cloudFn ? (window.__editorImageRatios || {})[img.cloudFn] : null;
@@ -1177,7 +1195,19 @@ var _workerReady = false;
         }
       }
       if (!isResolvable) {
+        // [Fix] 草稿图片正在从 IndexedDB 恢复：相对图此刻尚不可解析，先画"中性灰底"（不带"图片不可用"文字），
+        // 恢复完成后会强制重渲染，避免出现"图片不可用 → 瞬间变正常"的跳变
+        if (window.__editorImagesRestoring && /^\.\/images\//.test(src)) {
+          return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;margin:8px 0;"></div>';
+        }
         return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;">图片不可用</div>';
+      }
+      // [Fix] 本地 Base64 图（粘贴/拖拽/上传）：尺寸在上传时已记录 → 直接按"最终形态"渲染（自然宽 + 居中），
+      // 跳过"满宽灰底 → 加载完成切自然宽"的尺寸跳变，消除预览整块闪动（远程 URL 图仍保留原有占位行为）。
+      if (src.indexOf('data:') === 0) {
+        var localHtml = '<img src="' + src + '" alt="' + alt + '" style="display:block;width:auto;height:auto;max-width:100%;margin:0 auto;border-radius:8px;" />';
+        if (alt) localHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
+        return localHtml;
       }
       // [Editor 乙] 单行图：加载中 = 满宽灰底占位(不透明)；加载完成后由全局 load 捕获(仅 data-single、每图一次)切成自然宽：
       // 大图靠 max-width:100% 压到容器、窄图按真实宽并居中。代价=加载完成瞬间有一次从满宽到真实尺寸的校正。
@@ -1521,6 +1551,7 @@ var _workerReady = false;
         var ext = file.type.split('/')[1] || 'png';
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorImageMap[filename] = dataUrl;
+        _rememberImageRatio(filename, dataUrl);
         imageLines[idx] = '![图片](./images/' + filename + ')';
         loaded++;
         if (loaded === imageFiles.length) {
@@ -1566,6 +1597,7 @@ var _workerReady = false;
         var ext = file.type.split('/')[1] || 'png';
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorImageMap[filename] = dataUrl;
+        _rememberImageRatio(filename, dataUrl);
         imageLines[idx] = '![图片](./images/' + filename + ')';
         loaded++;
         if (loaded === imageFiles.length) {
@@ -2455,6 +2487,8 @@ var _workerReady = false;
           if (extractedFilename) window.__editorCoverFilename = extractedFilename;
         }
         var loadSid = d.savedAt;
+        // [Fix] 进入"正文图片恢复中"状态：此时预览里相对图还解析不出来，先画中性灰底（不显示"图片不可用"）
+        window.__editorImagesRestoring = true;
         var imgPromises = [];
         imgPromises.push(
           idbGet('imgkeys-' + loadSid).then(function(keyList) {
@@ -2505,9 +2539,12 @@ var _workerReady = false;
           // [Fix] 正文图片（Base64）是异步从 IndexedDB 恢复的：首帧渲染时 imageMap 还是空的，
           // 预览会画成"图片不可用"占位；必须等恢复完成后再强制渲染一次，图片才会立刻显示
           // （此前要等用户打字触发 input→updatePreview 才出现）。
+          window.__editorImagesRestoring = false;
           if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
           var _md = document.getElementById('markdown-input');
           if (_md) _md.dispatchEvent(new Event('input'));
+        }).catch(function() {
+          window.__editorImagesRestoring = false;
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
@@ -3605,6 +3642,7 @@ var _workerReady = false;
         var ext = file.type.split('/')[1] || 'png';
         var filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
         window.__editorImageMap[filename] = dataUrl;
+        _rememberImageRatio(filename, dataUrl);
         var mdPath = './images/' + filename;
         pendingImgUrls.push(mdPath);
 
