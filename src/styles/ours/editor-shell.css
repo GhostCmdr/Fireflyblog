@@ -1,0 +1,30 @@
+/* [OURS] 编辑器首帧静态样式（迁移自 Layout.astro 的 head is:inline 块）
+   作用：进入 /editor 时首帧即隐藏两侧栏/分类栏/页脚并铺满、隐藏滚动条，避免"带侧栏→铺满"一闪。
+   仅 body.editor-page 命中，非编辑器页无影响。此文件为我方定制，上游更新不会覆盖。 */
+      body.editor-page #left-sidebar-wrapper,
+      body.editor-page #left-sidebar-dynamic,
+      body.editor-page #right-sidebar-static,
+      body.editor-page #right-sidebar-dynamic,
+      body.editor-page #category-bar-wrapper,
+      body.editor-page .footer,
+      body.editor-page #sidebar-sticky,
+      body.editor-page .sidebar-container { display: none !important; }
+      body.editor-page #main-grid { display: flex !important; flex-direction: column !important; grid-template-columns: none !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #swup-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; flex: 1 !important; }
+      body.editor-page #main-grid > div:first-child { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #main-grid ~ div,
+      body.editor-page .pointer-events-auto { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
+      body.editor-page #main-grid > div { max-width: 100% !important; }
+      html.editor-page { overflow: hidden !important; }
+      body.editor-page { overflow: hidden !important; }
+      /* 隐藏 html/body 滚动条：让首帧即无滚动条，避免 applyEditorModeLayout 后才隐藏造成"滚动条消失动作" */
+      html.editor-page { scrollbar-width: none; -ms-overflow-style: none; }
+      html.editor-page::-webkit-scrollbar { display: none; }
+      body.editor-page { scrollbar-width: none; -ms-overflow-style: none; }
+      body.editor-page::-webkit-scrollbar { display: none; }
+      /* [Editor] 编辑/preview 各自原生滚动条提前到首帧隐藏(不再等 JS editorStyleEl 晚注入)，
+         避免"先露原生+外挂自定义"两套滚动条叠加；scroll-behavior:auto 防止 html 的 smooth 被继承造成滚动割裂/跳动 */
+      body.editor-page #markdown-input { overflow-y: scroll !important; scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: auto !important; }
+      body.editor-page #markdown-input::-webkit-scrollbar { display: none; }
+      body.editor-page #preview-content { scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: auto !important; }
+      body.editor-page #preview-content::-webkit-scrollbar { display: none; }
