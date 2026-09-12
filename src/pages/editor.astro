@@ -2477,6 +2477,9 @@ var _workerReady = false;
         }
         var mdInput = document.getElementById('markdown-input');
         mdInput.value = d.content || '';
+        // [Fix] 必须先进入"正文图片恢复中"状态再渲染首帧：此时相对图还没从 IndexedDB 读出来，
+        // 预览应画中性灰底（不显示"图片不可用"），否则会出现"不可用 → 瞬间变正常"的跳变
+        window.__editorImagesRestoring = true;
         // 立即渲染预览，不等图片加载
         window.__editorForcePreview();
         window.__editorCoverDataUrl = '';
@@ -2487,8 +2490,6 @@ var _workerReady = false;
           if (extractedFilename) window.__editorCoverFilename = extractedFilename;
         }
         var loadSid = d.savedAt;
-        // [Fix] 进入"正文图片恢复中"状态：此时预览里相对图还解析不出来，先画中性灰底（不显示"图片不可用"）
-        window.__editorImagesRestoring = true;
         var imgPromises = [];
         imgPromises.push(
           idbGet('imgkeys-' + loadSid).then(function(keyList) {
