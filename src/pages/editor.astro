@@ -2579,7 +2579,7 @@ var _workerReady = false;
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
-        closePanel();
+        // [Fix] 加载草稿后不再自动关闭草稿箱面板（用户要求：留在面板里可继续操作/连续加载）
       }
       return;
     }
