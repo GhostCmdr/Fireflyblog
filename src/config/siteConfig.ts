@@ -1,24 +1,36 @@
-import type { SiteConfig } from "../types/siteConfig";
+import type { SiteConfig } from "@/types/siteConfig";
+
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留这三行 hook）
+import { mergeDeep, oursSiteConfig } from "./ours/values";
 
 // 定义站点语言
 // 语言代码，例如：'zh_CN', 'zh_TW', 'en', 'ja', 'ru'。
 const SITE_LANG = "zh_CN";
 
-export const siteConfig: SiteConfig = {
+const _base: SiteConfig = {
 	// 站点标题
-	title: "小埋小站",
+	title: "Firefly",
 
 	// 站点副标题
-	subtitle: "埋学研究员",
+	subtitle: "Demo site",
 
 	// 站点 URL
-	site_url: "https://xiaomaisos.me",
+	site_url: "https://firefly.cuteleaf.cn",
 
 	// 站点描述
-	description: "本站致力于研究生活中的埋学事件",
+	description:
+		"Firefly 是一款基于 Astro 框架和 Fuwari 模板开发的清新美观且现代化个人博客主题模板，专为技术爱好者和内容创作者设计。该主题融合了现代 Web 技术栈，提供了丰富的功能模块和高度可定制的界面，让您能够轻松打造出专业且美观的个人博客网站。",
 
 	// 站点关键词
-	keywords: ["SOS团长", "地球Online资深玩家", "独狼玩家", "埋学生活"],
+	keywords: [
+		"Firefly",
+		"Fuwari",
+		"Astro",
+		"ACGN",
+		"博客",
+		"技术博客",
+		"静态博客",
+	],
 
 	// 主题色
 	themeColor: {
@@ -46,7 +58,7 @@ export const siteConfig: SiteConfig = {
 	// Favicon 配置
 	favicon: [
 		{
-			// 图标文件路径，站点窗口的标签页图标
+			// 图标文件路径
 			src: "/favicon/favicon.ico",
 			// 可选，指定主题 'light' | 'dark'
 			// theme: "light",
@@ -65,23 +77,23 @@ export const siteConfig: SiteConfig = {
 		// 4. 网络图片: { type: "url", value: "https://example.com/logo.png", alt: "Logo" }
 		logo: {
 			type: "image",
-			value: "assets/images/xiaomai.png",
+			value: "assets/images/firefly.png",
 			alt: "🍀",
 		},
 		// 导航栏标题
-		title: "小埋小站",
+		title: "Firefly",
 		// 全宽导航栏，导航栏是否占满屏幕宽度
 		widthFull: false,
 		// 导航菜单对齐方式，left：左对齐，center：居中
 		menuAlign: "center",
-		// 导航栏左侧的站点图标和标题是否跟随主题色
+		// 导航栏图标和标题是否跟随主题色
 		followTheme: false,
 		// 导航栏是否固定在顶部并始终可见
 		stickyNavbar: true,
 	},
 
 	// 站点开始日期，用于统计运行天数
-	siteStartDate: "2026-06-30",
+	siteStartDate: "2025-01-01",
 
 	// 站点时区（IANA 时区字符串），用于格式化bangumi、rss里的构建日期时间等等..
 	// 示例："Asia/Shanghai", "UTC", 如果为空，则按照构建服务器的时区进行时区转换
@@ -96,7 +108,7 @@ export const siteConfig: SiteConfig = {
 		// 留言板页面开关，需要配置评论系统
 		guestbook: true,
 		// 番组计划页面开关，含追番、游戏、书籍和音乐
-		bangumi: false,
+		bangumi: true,
 		// 相册页面开关
 		gallery: true,
 		// 追番页面开关
@@ -115,41 +127,12 @@ export const siteConfig: SiteConfig = {
 		defaultMode: "list",
 		// 移动端默认布局模式，不设置则跟随 defaultMode
 		mobileDefaultMode: "list",
-		// 是否允许用户切换布局
-		allowSwitch: true,
+		// 是否在文章列表中显示标签
+		showTags: true,
 		// 文章简介显示行数，设为 0 则不截断
 		descriptionLines: 2,
-		// 文章卡片底部统计和发布日期是否显示图标
-		showStatsIcons: true,
-		// 标签显示位置
-		// 设置为"meta"：显示在文章标题下的元数据
-		// 设置为"bottom"：顶替stats在底部显示
-		tagsPosition: "bottom" as "meta" | "bottom",
-		// PostMeta 元数据显示控制
-		meta: {
-			// 是否显示发布日期
-			showPublished: true,
-			// 是否显示分类
-			showCategory: true,
-			// 是否显示标签
-			showTags: true,
-			// 标签数量，设为 0 则不限制
-			tagCount: 5,
-			// 是否显示字数
-			showWords: false,
-			// 是否显示阅读时间
-			showReadingTime: false,
-		},
-		// 底部 PostStats 统计信息显示控制
-		// 如果tagsPosition设置为"bottom"，则stats将不显示
-		stats: {
-			// 是否显示发布日期
-			showPublished: true,
-			// 是否显示字数
-			showWords: true,
-			// 是否显示阅读时间
-			showReadingTime: true,
-		},
+		// 是否允许用户切换布局
+		allowSwitch: true,
 		// 网格布局配置，仅在 defaultMode 为 "grid" 或允许切换布局时生效
 		grid: {
 			// 是否开启瀑布流布局，同时有封面图和无封面图的混合文章推荐开启
@@ -202,7 +185,7 @@ export const siteConfig: SiteConfig = {
 		// Bilibili 配置
 		bilibili: {
 			// 你的 Bilibili 用户 UID
-			uid: "114421126",
+			uid: "38932988",
 		},
 		// TMDB 配置（可选，需要翻墙）
 		// tmdb: {
@@ -241,3 +224,6 @@ export const siteConfig: SiteConfig = {
 	// 站点语言，在本配置文件顶部SITE_LANG定义
 	lang: SITE_LANG,
 };
+
+// [OURS] 导出 = 上游默认值 + 我方值（深合并；数组整体替换）
+export const siteConfig = mergeDeep(_base, oursSiteConfig) as SiteConfig;

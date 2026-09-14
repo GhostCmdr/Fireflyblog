@@ -5,6 +5,8 @@ import "@/styles/fancybox-custom.css";
 ---
 
 <script>
+  // [OURS] 我方灯箱选项（动画/快捷键/工具栏精简）集中在 src/config/ours/values.ts
+  import { mergeDeep, oursFancyboxOptions } from "@/config/ours/values";
   let Fancybox: any;
   const IMG_SELECTOR = ".custom-md img, #post-cover img, .moment-images img";
   const LINK_SELECTOR = ".moment-images a[data-fancybox], [data-fancybox]:not(.moment-images a)";
@@ -57,10 +59,10 @@ import "@/styles/fancybox-custom.css";
   }
 
   function getCommonOptions() {
-    return {
+    const _base = {
       Thumbs: {
-        autoStart: false,
-        showOnStart: "no",
+        autoStart: true,
+        showOnStart: "yes",
       },
       Toolbar: {
         display: {
@@ -69,45 +71,41 @@ import "@/styles/fancybox-custom.css";
             "zoomIn",
             "zoomOut",
             "toggle1to1",
+            "rotateCCW",
+            "rotateCW",
+            "flipX",
+            "flipY",
           ],
-          right: ["close"],
+          right: ["slideshow", "thumbs", "close"],
         },
       },
-      zoomEffect: false,          // 禁用从缩略图到全屏的缩放动画（Fancybox v6 内置选项）
-      fadeEffect: false,          // 禁用 UI 淡入动画
-      showClass: false,           // 禁用打开时的 CSS 动画
-      hideClass: false,           // 禁用关闭时的 CSS 淡出动画
-      dragToClose: false,
-      Carousel: {
-        transition: "none",
-        preload: 1,
-      },
+      animated: true,
+      dragToClose: true,
       keyboard: {
         Escape: "close",
+        Delete: "close",
+        Backspace: "close",
+        PageUp: "next",
+        PageDown: "prev",
+        ArrowUp: "next",
+        ArrowDown: "prev",
         ArrowRight: "next",
         ArrowLeft: "prev",
       },
-      fitToView: false,
-      preload: 1,
+      fitToView: true,
+      preload: 3,
       infinite: true,
       Panzoom: {
-        maxScale: 2,
+        maxScale: 3,
         minScale: 1,
       },
       caption: false,
     };
+    // [OURS] 叠加我方选项（关闭动画/精简工具栏/禁用部分快捷键；写 undefined 表示删除上游该键）
+    return mergeDeep(_base, oursFancyboxOptions);
   }
 
   async function preprocessSvgImages() {
-    // 快速检查：页面没有 SVG 图片则跳过
-    const hasSvg = Array.from(document.querySelectorAll<HTMLImageElement>(IMG_SELECTOR)).some(
-      (img) => isSvgSrc(img.getAttribute("src") || "")
-    );
-    const hasSvgLink = Array.from(document.querySelectorAll<HTMLElement>(LINK_SELECTOR)).some(
-      (el) => isSvgSrc(el.getAttribute("data-src") || el.getAttribute("href") || "")
-    );
-    if (!hasSvg && !hasSvgLink) return;
-
     const promises: Promise<void>[] = [];
 
     document.querySelectorAll<HTMLImageElement>(IMG_SELECTOR).forEach((img) => {
@@ -146,21 +144,8 @@ import "@/styles/fancybox-custom.css";
     await Promise.allSettled(promises);
   }
 
-  // 页面空闲时预加载 Fancybox 模块，避免第一次点击时等待动态 import
-  function preloadFancybox() {
-    if (Fancybox) return;
-    if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => import("@fancyapps/ui").then(mod => { Fancybox = mod.Fancybox; }));
-    } else {
-      setTimeout(() => import("@fancyapps/ui").then(mod => { Fancybox = mod.Fancybox; }), 200);
-    }
-  }
-
   async function setup() {
     if (!document.querySelector(IMG_SELECTOR) && !document.querySelector(LINK_SELECTOR)) return;
-
-    // 预加载
-    preloadFancybox();
 
     if (!Fancybox) {
       const mod = await import("@fancyapps/ui");

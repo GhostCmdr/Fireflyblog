@@ -1,6 +1,9 @@
 import type { BackgroundWallpaperConfig } from "@/types/backgroundWallpaper";
 
-export const backgroundWallpaper: BackgroundWallpaperConfig = {
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留这三行 hook）
+import { mergeDeep, oursBackgroundWallpaper } from "./ours/values";
+
+const _base: BackgroundWallpaperConfig = {
 	// 壁纸模式："banner" 横幅壁纸，"fullscreen" 全屏壁纸，"overlay" 全屏透明，"none" 纯色背景无壁纸
 	mode: "banner",
 	// 是否允许用户通过导航栏切换壁纸模式
@@ -81,15 +84,17 @@ export const backgroundWallpaper: BackgroundWallpaperConfig = {
 			// 是否允许用户通过控制面板切换横幅标题显示
 			switchable: true,
 			// 主页横幅主标题
-			title: "埋学生",
+			title: "Lovely firefly!",
 			// 主页横幅主标题字体大小
 			titleSize: "3.8rem",
 			// 主页横幅副标题
 			subtitle: [
-				"埋学生活，埋学人生",
-				"研究埋学事件，探索埋学世界",
-				"地球Online资深独狼玩家",
-				"享受生活，享受埋学",
+				"In Reddened Chrysalis, I Once Rest",
+				"From Shattered Sky, I Free Fall",
+				"Amidst Silenced Stars, I Deep Sleep",
+				"Upon Lighted Fyrefly, I Soon Gaze",
+				"From Undreamt Night, I Thence Shine",
+				"In Finalized Morrow, I Full Bloom",
 			],
 			// 主页横幅副标题字体大小
 			subtitleSize: "1.5rem",
@@ -181,3 +186,6 @@ export const backgroundWallpaper: BackgroundWallpaperConfig = {
 		position: "center",
 	},
 };
+
+// [OURS] 导出 = 上游默认值 + 我方值（深合并；数组整体替换）
+export const backgroundWallpaper = mergeDeep(_base, oursBackgroundWallpaper) as BackgroundWallpaperConfig;

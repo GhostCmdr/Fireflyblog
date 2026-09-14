@@ -1,14 +1,16 @@
 import type { FriendLink, FriendsPageConfig } from "../types/friendsConfig";
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
+import { mergeDeep, oursFriendsConfig, oursFriendsPageConfig } from "./ours/values";
 
 // 可以在src/content/spec/friends.md中编写友链页面下方的自定义内容
 
 // 友链页面配置
-export const friendsPageConfig: FriendsPageConfig = {
+const _basePage: FriendsPageConfig = {
 	// 页面标题，如果留空则使用 i18n 中的翻译
 	title: "",
 
 	// 页面描述文本，如果留空则使用 i18n 中的翻译
-	description: "这是我的友链页面，欢迎互相访问友链",
+	description: "",
 
 	// 是否显示底部自定义内容（friends.mdx 中的内容）
 	showCustomContent: true,
@@ -21,28 +23,26 @@ export const friendsPageConfig: FriendsPageConfig = {
 };
 
 // 友链配置
-export const friendsConfig: FriendLink[] = [
+const _baseFriends: FriendLink[] = [
 	{
-		title: "小埋团长",
+		title: "夏夜流萤",
 		imgurl:
 			"https://weavatar.com/avatar/d252655d40d6874417a720bad0a6c5f77f8f6a1fd2f882f8f338402dc37e4190?s=640",
-		desc: "小埋团长的博客",
-		siteurl: "https://xiaomaisos.me",
+		desc: "飞萤之火自无梦的长夜亮起，绽放在终竟的明天。",
+		siteurl: "https://blog.cuteleaf.cn",
 		tags: ["Blog"],
 		weight: 10, // 权重，数字越大排序越靠前
 		enabled: true, // 是否启用
 	},
 	{
-		title: "GitHub",
-		imgurl:
-			"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-		desc: "小埋团长的主页",
-		siteurl: "https://github.com/GhostCmdr",
-		tags: ["Web"],
+		title: "Firefly Docs",
+		imgurl: "https://docs-firefly.cuteleaf.cn/logo.png",
+		desc: "Firefly主题模板文档",
+		siteurl: "https://docs-firefly.cuteleaf.cn",
+		tags: ["Docs"],
 		weight: 9,
 		enabled: true,
 	},
-	/*
 	{
 		title: "Astro",
 		imgurl: "https://avatars.githubusercontent.com/u/44914786?v=4&s=640",
@@ -52,7 +52,6 @@ export const friendsConfig: FriendLink[] = [
 		weight: 8,
 		enabled: true,
 	},
-	*/
 ];
 
 // 获取启用的友链并进行排序
@@ -65,3 +64,6 @@ export const getEnabledFriends = (): FriendLink[] => {
 
 	return friends.sort((a, b) => b.weight - a.weight);
 };
+
+export const friendsPageConfig = mergeDeep(_basePage, oursFriendsPageConfig) as FriendsPageConfig;
+export const friendsConfig: FriendLink[] = oursFriendsConfig as FriendLink[];

@@ -1,7 +1,9 @@
 import type { GalleryConfig } from "@/types/galleryConfig";
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
+import { mergeDeep, oursGalleryConfig } from "./ours/values";
 
 // 相册配置
-export const galleryConfig: GalleryConfig = {
+const _base: GalleryConfig = {
 	// 相册列表
 	albums: [
 		// 支持jpg/png/webp/avif/gif格式
@@ -16,30 +18,23 @@ export const galleryConfig: GalleryConfig = {
 		// passwordHint: 密码提示，设置后在输入密码错误时显示（可选，需配合password使用）
 		// 每添加一个数组项就相当于添加了一个相册，记得在 public/gallery/ 目录下创建对应的子目录并放入图片
 		{
-			id: "测试相簿",
-			name: "测试相簿",
-			description: "测试1",
-			location: "网页",
-			date: "2026-07-21",
-			tags: ["异次元", "测试", "相册"],
+			id: "firefly-2026",
+			name: "可爱流萤",
+			description: "飞萤之火自无梦的长夜亮起，绽放在终竟的明天。",
+			location: "崩坏：星穹铁道",
+			date: "2026-01-01",
+			tags: ["崩坏星穹铁道", "流萤"],
 		},
 		{
-			id: "封面上传相册测试",
-			cover: "/gallery/封面上传相册测试/cover.jpg",
-			name: "封面上传相册测试",
-			description: "封面设置ghost",
-			location: "hub20260101",
-			date: "2026-07-23",
-			tags: ["测试", "封面", "时间", "设置"],
-		},
-		{
-			id: "封面上传相册测试222",
-			cover: "/gallery/封面上传相册测试222/cover.png",
-			name: "封面上传相册测试222",
-			description: "封面设置ghost",
-			location: "hub20260101",
-			date: "2026-07-23",
-			tags: ["测试", "封面", "时间", "设置"],
+			id: "encrypted-test",
+			name: "加密相册示例",
+			description:
+				"这是一个加密相册的示例，设置了访问密码，只有输入正确的密码才能查看相册内容。",
+			location: "崩坏：星穹铁道",
+			date: "2026-02-01",
+			tags: ["加密相册", "示例"],
+			password: "123456",
+			passwordHint: "示例密码123456",
 		},
 	],
 
@@ -47,3 +42,5 @@ export const galleryConfig: GalleryConfig = {
 	// 值越小列数越多，值越大列数越少
 	columnWidth: 240,
 };
+
+export const galleryConfig = mergeDeep(_base, oursGalleryConfig) as GalleryConfig;

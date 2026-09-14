@@ -99,6 +99,9 @@ export type SiteConfig = {
 		mobileDefaultMode?: "list" | "grid"; // 移动端默认布局模式（视口宽度<780px时使用），不设置则跟随 defaultMode
 		allowSwitch: boolean; // 是否允许用户切换布局
 		descriptionLines?: number; // 文章简介显示行数，设为 0 则不截断，默认 2
+		// [OURS] 上游默认值里仍存在该字段（是否在文章列表 meta 中显示标签），
+		// 我方已改用 meta.showTags + tagsPosition 控制显示位置；保留声明以免上游默认值校验失败。
+		showTags?: boolean;
 		showStatsIcons?: boolean; // 文章卡片底部统计是否显示图标
 		tagsPosition?: "meta" | "bottom"; // 标签显示位置
 		meta?: {

@@ -1,9 +1,11 @@
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
+import { mergeDeep, oursSidebarConfig } from "./ours/values";
 import type { SidebarLayoutConfig } from "../types/sidebarConfig";
 
 /**
  * 侧边栏布局配置
  */
-export const sidebarLayoutConfig: SidebarLayoutConfig = {
+const _base: SidebarLayoutConfig = {
 	// 是否启用侧边栏功能
 	enable: true,
 
@@ -21,7 +23,8 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 	// 文章详情页隐藏侧边栏，设为 true 则只在首页等非文章页显示
 	hideSidebarOnPostPage: false,
 
-	// 使用单侧栏(position为left或right)时，是否在文章详情页显示双侧边栏
+	// 文章详情页保持双侧栏
+	// 使用单侧栏(position为left或right)时，是否在文章详情页显示双侧边栏，（hideSidebarOnPostPage需要保持false）
 	// 当position为left时开启此项，文章详情页将额外显示右侧边栏
 	// 当position为right时开启此项，文章详情页将额外显示左侧边栏
 	// 适用在只想用单侧栏，但在文章详情页想用对侧栏的目录等组件的场景
@@ -55,9 +58,18 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			// 组件位置
 			position: "top",
 			// 是否在文章详情页显示
-			showOnPostPage: false,
+			showOnPostPage: true,
 		},
-
+		{
+			// 组件类型：音乐播放器
+			type: "music",
+			// 是否启用该组件
+			enable: true,
+			// 组件位置
+			position: "sticky",
+			// 是否在文章详情页显示
+			showOnPostPage: true,
+		},
 		{
 			// 组件类型：分类组件
 			type: "categories",
@@ -88,34 +100,37 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 				collapseThreshold: 10,
 			},
 		},
+	],
 
+	// 右侧边栏组件配置列表
+	rightComponents: [
 		{
 			// 组件类型：站点统计组件
 			type: "stats",
 			// 是否启用该组件
 			enable: true,
 			// 组件位置
-			position: "sticky",
-			// 是否在文章详情页显示
-			showOnPostPage: false,
-			// 是否仅在主页显示
-			homePageOnly: true,
-		},
-	],
-
-	// 右侧边栏组件配置列表
-	rightComponents: [
-		{
-			// 组件类型：音乐播放器
-			type: "music",
-			// 是否启用该组件
-			enable: true,
-			// 组件位置
-			position: "sticky",
+			position: "top",
 			// 是否在文章详情页显示
 			showOnPostPage: true,
 		},
-
+		{
+			// 组件类型：站点信息组件
+			type: "siteInfo",
+			// 是否启用该组件
+			enable: true,
+			// 组件位置
+			position: "top",
+			// 是否在文章详情页显示
+			showOnPostPage: true,
+			// 组件专属配置
+			specificConfig: {
+				siteInfo: {
+					// 未能识别的构建平台回退显示文本，可自定义
+					unknownBuildPlatform: "Unknown CI",
+				},
+			},
+		},
 		{
 			// 组件类型：日历组件
 			type: "calendar",
@@ -135,7 +150,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 				},
 			},
 		},
-
 		{
 			// 组件类型：侧边栏目录组件（只在文章详情页显示）
 			type: "sidebarToc",
@@ -148,27 +162,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			// 是否在非文章详情页隐藏
 			hideOnNonPostPage: true,
 		},
-
-		{
-			// 组件类型：站点信息组件
-			type: "siteInfo",
-			// 是否启用该组件
-			enable: true,
-			// 组件位置
-			position: "sticky",
-			// 是否在文章详情页显示
-			showOnPostPage: false,
-			// 是否仅在主页显示
-			homePageOnly: true,
-			// 组件专属配置
-			specificConfig: {
-				siteInfo: {
-					// 未能识别的构建平台回退显示文本，可自定义
-					unknownBuildPlatform: "Unknown CI",
-				},
-			},
-		},
-
 		{
 			// 组件类型：广告栏组件 1
 			type: "advertisement",
@@ -287,8 +280,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			enable: true,
 			// 是否在文章详情页显示
 			showOnPostPage: true,
-			// 是否仅在主页显示
-			homePageOnly: true,
 		},
 		{
 			// 组件类型：站点信息组件
@@ -297,8 +288,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			enable: true,
 			// 是否在文章详情页显示
 			showOnPostPage: true,
-			// 是否仅在主页显示
-			homePageOnly: true,
 			// 组件专属配置
 			specificConfig: {
 				siteInfo: {
@@ -309,3 +298,5 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 		},
 	],
 };
+
+export const sidebarLayoutConfig = mergeDeep(_base, oursSidebarConfig) as SidebarLayoutConfig;

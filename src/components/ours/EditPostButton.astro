@@ -1,0 +1,39 @@
+---
+/**
+ * [OURS] 文章页「编辑此文」按钮（我方组件）
+ *
+ * 为什么单独成组件：上游 `src/pages/posts/[...slug].astro` 经常改动（自基线以来 13 次），
+ * 把这段 UI 外移后，上游文件里只留一行挂载 `<EditPostButton slug={...} />`，几乎不会冲突。
+ *
+ * 可见性：默认隐藏，仅当本机存有 GitHub Token（`body.editor-enabled`，由 MainGridLayout 添加）时显示，
+ *        样式在 `src/styles/ours/overrides.css` 的 `.edit-this-post-btn` 规则里。
+ */
+interface Props {
+	/** 文章文件名（含扩展名），用于编辑器 `?slug=` 参数 */
+	slug: string;
+}
+
+const { slug } = Astro.props;
+---
+
+<a
+	href={`/editor/?slug=${encodeURIComponent(slug)}`}
+	data-swup-ignore
+	class="edit-this-post-btn absolute right-0 top-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+				 bg-(--primary) text-white dark:text-black/80 hover:opacity-90 active:scale-95 transition-all"
+	title="编辑"
+>
+	<svg
+		width="16"
+		height="16"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path
+			d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg
+	>
+	<span>编辑</span>
+</a>

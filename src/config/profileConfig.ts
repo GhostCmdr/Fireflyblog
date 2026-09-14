@@ -1,6 +1,8 @@
 import type { ProfileConfig } from "../types/profileConfig";
+// [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
+import { mergeDeep, oursProfileConfig } from "./ours/values";
 
-export const profileConfig: ProfileConfig = {
+const _base: ProfileConfig = {
 	// 头像
 	// 图片路径支持三种格式：
 	// 1. public 目录（以 "/" 开头，不优化）："/assets/images/avatar.webp"
@@ -9,10 +11,10 @@ export const profileConfig: ProfileConfig = {
 	avatar: "assets/images/avatar.avif",
 
 	// 名字
-	name: "小埋SOS团长",
+	name: "Firefly",
 
 	// 个人签名
-	bio: "地球Online资深独狼玩家",
+	bio: "Hello, I'm Firefly.",
 
 	// 链接配置
 	// 已经预装的图标集：fa7-brands，fa7-regular，fa7-solid，material-symbols，simple-icons
@@ -24,29 +26,21 @@ export const profileConfig: ProfileConfig = {
 		{
 			name: "qq",
 			icon: "fa7-brands:qq",
-			url: "https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0%3D&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info",
-			showName: false,
-		},
-		{
-			name: "Bilibili",
-			icon: "fa7-brands:bilibili",
-			url: "https://space.bilibili.com/114421126", // 替换为你的 B 站个人空间链接
+			url: "https://qm.qq.com/q/ZGsFa8qX2G",
 			showName: false,
 		},
 		{
 			name: "GitHub",
 			icon: "fa7-brands:github",
-			url: "https://github.com/GhostCmdr",
+			url: "https://github.com/CuteLeaf",
 			showName: false,
 		},
-		/*
 		{
 			name: "Email",
 			icon: "fa7-solid:envelope",
-			url: "mailto:3055401252@qq.com",
+			url: "mailto:xiaye@msn.com",
 			showName: false,
 		},
-		*/
 		{
 			name: "RSS",
 			icon: "fa7-solid:rss",
@@ -55,3 +49,5 @@ export const profileConfig: ProfileConfig = {
 		},
 	],
 };
+
+export const profileConfig = mergeDeep(_base, oursProfileConfig) as ProfileConfig;
