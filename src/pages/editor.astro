@@ -2479,6 +2479,29 @@ var _workerReady = false;
         mdInput.value = d.content || '';
         // [Fix] 必须先进入"正文图片恢复中"状态再渲染首帧：此时相对图还没从 IndexedDB 读出来，
         // 预览应画中性灰底（不显示"图片不可用"），否则会出现"不可用 → 瞬间变正常"的跳变
+        // [Fix] 载入提示：图片/封面异步恢复期间显示常驻提示（延迟 250ms 出现，秒开时不闪；
+        // 完成/失败时原地替换为短提示，复用同一个提示元素避免残影）
+        var _draftToastEl = null;
+        var _draftToastPending = true;
+        var _draftToastTimer = setTimeout(function() {
+          if (!_draftToastPending) return;
+          if (typeof window.__editorShowToast === 'function') _draftToastEl = window.__editorShowToast('⏳ 正在载入草稿…', 0);
+        }, 250);
+        var _endDraftToast = function(doneMsg) {
+          _draftToastPending = false;
+          clearTimeout(_draftToastTimer);
+          if (_draftToastEl) {
+            if (doneMsg) {
+              _draftToastEl.textContent = doneMsg;
+              window.__editorToastAutoClose(_draftToastEl, 1500);
+            } else {
+              window.__editorCloseToast(_draftToastEl);
+            }
+            _draftToastEl = null;
+          } else if (doneMsg && typeof window.__editorShowToast === 'function') {
+            window.__editorShowToast(doneMsg);
+          }
+        };
         window.__editorImagesRestoring = true;
         // [Fix] 此处**不再立即渲染**：草稿的正文图片是异步从 IndexedDB 恢复的，先渲染必然先出现
         // "灰底占位"、恢复完成后再变真图 → 一次可见的跳变。
@@ -2547,15 +2570,16 @@ var _workerReady = false;
           if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
           var _md = document.getElementById('markdown-input');
           if (_md) _md.dispatchEvent(new Event('input'));
+          _endDraftToast('✅ 草稿已加载');
         }).catch(function() {
           // 恢复异常：清标记并补一次渲染，避免预览停留在"未刷新"状态
           window.__editorImagesRestoring = false;
           if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
+          _endDraftToast(null);
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
         closePanel();
-        showToast('草稿已加载');
       }
       return;
     }
