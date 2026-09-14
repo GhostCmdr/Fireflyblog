@@ -31,6 +31,8 @@ import "@/styles/main.css";
 import "@/styles/variables.styl";
 import "@/styles/markdown-extend.styl";
 import "@rehype-callouts-theme";
+// [OURS] 我方样式覆盖（必须在 main.css 之后引入才能覆盖上游默认值）
+import "@/styles/ours/overrides.css";
 
 interface Props {
 	title?: string;

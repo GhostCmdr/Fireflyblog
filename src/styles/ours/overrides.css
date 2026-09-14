@@ -1,0 +1,48 @@
+/* [OURS] 我方样式覆盖集中文件
+ *
+ * 为什么单独放：我方原先直接改上游样式文件（main.css / layout-styles.css / markdown.css），
+ * 每次上游更新这些文件都会冲突。集中到本文件后，上游文件保持原样，我方规则在此覆盖。
+ *
+ * 加载顺序：在 Layout.astro 的 frontmatter 中于 `@/styles/main.css` **之后**引入，
+ * 因此同优先级时我方规则生效（必要时我方再加更具体选择器或 !important）。
+ */
+@import "./categories.css";
+
+/* ── 1) 「编辑此文」按钮：默认隐藏，仅本机存有 GitHub Token（body.editor-enabled）时显示 ── */
+.edit-this-post-btn {
+  display: none;
+}
+body.editor-enabled .edit-this-post-btn {
+  display: inline-flex;
+}
+
+/* ── 2) 编辑器冻结壁纸的内层背景层 ──
+   复刻主页 overlay：背景画在该层、对其做 scale(1.05)+blur，由 #wallpaper-wrapper
+   （.wallpaper-overlay 自带 overflow:hidden）裁掉放大的模糊羽化边缘，页面四边不再出现
+   主页没有的白色模糊边。层置于视频之下、不拦截事件。
+   注意：不声明 will-change。编辑期内该层静止（1.05x 放大由 background-size 烘焙，非动画），
+   持久 will-change 会迫使浏览器长期保留全屏独立合成层，在每次文本输入/选区时被迫重参与合成，
+   造成编辑器输入延迟（仅主页 overlay 来源时出现，壁纸来源无模糊故无此问题）。 */
+#editor-bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* ── 3) Markdown 任务列表：隐藏原生圆点/序号（复选框由 marked 渲染为 input） ──
+   等价于原 markdown.css 中 `.custom-md { ul, ol { … } }` 嵌套写法展开后的选择器。 */
+.custom-md ul li:has(> input[type="checkbox"])::marker,
+.custom-md ul li:has(> p > input[type="checkbox"])::marker,
+.custom-md ol li:has(> input[type="checkbox"])::marker,
+.custom-md ol li:has(> p > input[type="checkbox"])::marker {
+  content: none !important;
+  display: none !important;
+}
+.custom-md ul li:has(> input[type="checkbox"]),
+.custom-md ul li:has(> p > input[type="checkbox"]),
+.custom-md ol li:has(> input[type="checkbox"]),
+.custom-md ol li:has(> p > input[type="checkbox"]) {
+  list-style-type: none !important;
+}

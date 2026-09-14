@@ -3,12 +3,11 @@
 @import './navbar.css';
 @import './banner-title.css';
 @import './waves.css';
-@import './transition.css';
+@import './transition.css'; 
 @import './custom-scrollbar.css';
+@import './tags.css';
 @import './gallery.css';
 @import './anime-bangumi.css';
-@import './tags.css';
-@import './categories.css';
 
 @plugin '@tailwindcss/typography';
 
@@ -474,14 +473,6 @@ html {
     pointer-events: none;
     transition: all 0.3s;
     transform: translateY(-50%);
-}
-
-/* [Editor] 「编辑此文」按钮默认隐藏，仅本机存有 GitHub Token（body.editor-enabled）时显示 */
-.edit-this-post-btn {
-    display: none;
-}
-body.editor-enabled .edit-this-post-btn {
-    display: inline-flex;
 }
 
 
