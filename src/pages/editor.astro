@@ -874,7 +874,7 @@ function initEditor() {
       const cls = lang ? ' class="hljs language-' + lang + '"' : ' class="hljs"';
       return '<pre><code' + cls + '>' + highlighted + '</code></pre>';
     };
-    marked.setOptions({ breaks: false, gfm: true, renderer: renderer }); // [Fix #2] 与 marked-worker 的 breaks:false 一致，避免降级/worker 单换行结果不同
+    marked.setOptions({ breaks: true, gfm: true, renderer: renderer }); // [OURS] breaks:true = GFM 硬换行（单换行即换行），与 marked-worker 及文章页 remark-hard-breaks 保持一致
   }
 
   // 实时预览（100ms 防抖 + RAF 保证每帧最多渲染一次）

@@ -10,7 +10,7 @@ self.onmessage = function(e) {
   var md = e.data;
   try {
     if (typeof marked !== 'undefined') {
-      marked.setOptions({ breaks: false, gfm: true });
+      marked.setOptions({ breaks: true, gfm: true });
       var tokens = marked.lexer(md);
       var blocks = [];
       var joined = '';

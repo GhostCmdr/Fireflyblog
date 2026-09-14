@@ -24,6 +24,8 @@ import remarkAdmonitionToBlockquoteCallout from "remark-admonition-to-blockquote
 import remarkDirective from "remark-directive"; /* Handle directives */
 import remarkMath from "remark-math";
 import remarkSectionize from "remark-sectionize";
+// [OURS] GFM 风格硬换行（单换行即换行，等价 remark-breaks，自实现零依赖）
+import remarkHardBreaks from "./src/plugins/ours/remark-hard-breaks.mjs";
 import { expressiveCodeConfig, fontConfig, fontsList, mermaidConfig, plantumlConfig, siteConfig } from "./src/config";
 import { collectUsedFontCssVars } from "./src/utils/fontHelper";
 import I18nKey from "./src/i18n/i18nKey";
@@ -228,6 +230,8 @@ export default defineConfig({
 	markdown: {
 		processor: unified({
 			remarkPlugins: [
+				// [OURS] 最先执行：把段落内软换行转成 <br>（GFM 硬换行语义，与编辑器预览保持一致）
+				remarkHardBreaks,
 				...(siteConfig.post.rehypeCallouts.enablePythonMarkdownAdmonitions !== false
 					? [remarkAdmonitionToBlockquoteCallout]
 					: []),
