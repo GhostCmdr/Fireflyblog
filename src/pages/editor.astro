@@ -228,35 +228,9 @@ body.wallpaper-transparent #right-icon-bar {
 #panel-content:hover::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); }
 #panel-content:hover::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.55); }
 
-/* 任务列表：隐藏原生圆点/序号
-   注意：编辑器预览的 Markdown 由 public/marked-worker.js（Web Worker）解析，不走 editor.astro 里
-   那套自定义 listitem 渲染器，所以 <li> 会带默认标记；必须直接在 li 上清除 list-style 并清掉 ::marker，
-   且 ul / ol 都要覆盖（有序任务列表同样会出序号）。 */
-#preview-content li:has(> input[type="checkbox"]),
-#preview-content li:has(> p > input[type="checkbox"]),
-#fullscreen-content li:has(> input[type="checkbox"]),
-#fullscreen-content li:has(> p > input[type="checkbox"]) {
-  list-style: none !important;
-  list-style-type: none !important;
-}
-#preview-content ul:has(li > input[type="checkbox"]),
-#preview-content ul:has(li > p > input[type="checkbox"]),
-#preview-content ol:has(li > input[type="checkbox"]),
-#preview-content ol:has(li > p > input[type="checkbox"]),
-#fullscreen-content ul:has(li > input[type="checkbox"]),
-#fullscreen-content ul:has(li > p > input[type="checkbox"]),
-#fullscreen-content ol:has(li > input[type="checkbox"]),
-#fullscreen-content ol:has(li > p > input[type="checkbox"]) {
-  list-style: none !important;
-  list-style-type: none !important;
-}
-#preview-content li:has(> input[type="checkbox"])::marker,
-#preview-content li:has(> p > input[type="checkbox"])::marker,
-#fullscreen-content li:has(> input[type="checkbox"])::marker,
-#fullscreen-content li:has(> p > input[type="checkbox"])::marker {
-  content: none !important;
-  display: none !important;
-}
+/* 任务列表：隐藏原生圆点/序号 → 规则已移至全局样式 src/styles/ours/overrides.css。
+   原因：预览/全屏预览的内容由 JS 注入（innerHTML），而本 <style> 是 Astro 作用域样式，
+   作用域属性只会加到选择器最后一级，注入的 ul/li 没有该属性 → 规则永不命中（历史坑）。 */
 </style>
 
 <!-- 草稿箱/语法内层滚动条：与单层面板 gutter 逻辑统一收归本文件。

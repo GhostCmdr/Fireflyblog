@@ -46,3 +46,34 @@ body.editor-enabled .edit-this-post-btn {
 .custom-md ol li:has(> p > input[type="checkbox"]) {
   list-style-type: none !important;
 }
+
+/* ── 4) 编辑器预览 / 全屏预览的任务列表：隐藏原生圆点与序号 ──
+   必须放在全局样式：预览内容是 JS 注入的（innerHTML），而 editor.astro 里的 <style> 是
+   Astro 作用域样式（作用域属性只加到选择器最后一级），注入的 ul/li 没有该属性 → 规则永不命中。
+   另：预览由 public/marked-worker.js 解析，不走 editor.astro 的自定义 listitem 渲染器，
+   因此 <li> 会带默认标记，需在 li 级清除 list-style 并清掉 ::marker；ul / ol 都要覆盖。 */
+#preview-content li:has(> input[type="checkbox"]),
+#preview-content li:has(> p > input[type="checkbox"]),
+#fullscreen-content li:has(> input[type="checkbox"]),
+#fullscreen-content li:has(> p > input[type="checkbox"]) {
+  list-style: none !important;
+  list-style-type: none !important;
+}
+#preview-content ul:has(li > input[type="checkbox"]),
+#preview-content ul:has(li > p > input[type="checkbox"]),
+#preview-content ol:has(li > input[type="checkbox"]),
+#preview-content ol:has(li > p > input[type="checkbox"]),
+#fullscreen-content ul:has(li > input[type="checkbox"]),
+#fullscreen-content ul:has(li > p > input[type="checkbox"]),
+#fullscreen-content ol:has(li > input[type="checkbox"]),
+#fullscreen-content ol:has(li > p > input[type="checkbox"]) {
+  list-style: none !important;
+  list-style-type: none !important;
+}
+#preview-content li:has(> input[type="checkbox"])::marker,
+#preview-content li:has(> p > input[type="checkbox"])::marker,
+#fullscreen-content li:has(> input[type="checkbox"])::marker,
+#fullscreen-content li:has(> p > input[type="checkbox"])::marker {
+  content: none !important;
+  display: none !important;
+}
