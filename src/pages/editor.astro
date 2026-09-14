@@ -3043,7 +3043,7 @@ var _workerReady = false;
       // 预览立即刷新（强制版，绕过防抖）
       if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
       if (mdInput) mdInput.dispatchEvent(new Event('input'));
-      closePanel();
+      // [Fix] 与本地草稿一致：加载后不再自动关闭草稿箱面板（用户要求）
       window.__editorShowToast('已载入云端草稿：' + (meta.title || path));
     }).catch(function(err) {
       var fe2 = friendlyGhError(err && err.message);
