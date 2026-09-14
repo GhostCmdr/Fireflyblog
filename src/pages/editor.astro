@@ -2480,8 +2480,11 @@ var _workerReady = false;
         // [Fix] 必须先进入"正文图片恢复中"状态再渲染首帧：此时相对图还没从 IndexedDB 读出来，
         // 预览应画中性灰底（不显示"图片不可用"），否则会出现"不可用 → 瞬间变正常"的跳变
         window.__editorImagesRestoring = true;
-        // 立即渲染预览，不等图片加载
-        window.__editorForcePreview();
+        // [Fix] 此处**不再立即渲染**：草稿的正文图片是异步从 IndexedDB 恢复的，先渲染必然先出现
+        // "灰底占位"、恢复完成后再变真图 → 一次可见的跳变。
+        // 改为：正文立刻写入 textarea（用户马上能看到内容），预览等图片恢复完成后**一次性渲染**，
+        // 这样预览区直接出现最终图片，没有中间过程。（恢复失败/异常时也会在 catch 里补渲染）
+
         window.__editorCoverDataUrl = '';
         window.__editorCoverFilename = '';
         if (d.cover) {
@@ -2545,7 +2548,9 @@ var _workerReady = false;
           var _md = document.getElementById('markdown-input');
           if (_md) _md.dispatchEvent(new Event('input'));
         }).catch(function() {
+          // 恢复异常：清标记并补一次渲染，避免预览停留在"未刷新"状态
           window.__editorImagesRestoring = false;
+          if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
         });
         var titleInput = document.getElementById('post-title-input');
         if (titleInput) titleInput.value = d.title || '';
