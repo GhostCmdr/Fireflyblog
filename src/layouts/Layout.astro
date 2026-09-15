@@ -601,7 +601,11 @@ import "@/styles/ours/editor-shell.css";
   import { initEditorMode } from "@/scripts/ours/editor-mode";
   // [OURS] swup 过渡看门狗：过渡类残留（快速来回切换竞态）导致"页面卡死"时自动留证并恢复
   import { initSwupWatchdog } from "@/scripts/ours/swup-watchdog";
+  // [OURS] dev 模块过期自愈：Vite 依赖重建后旧标签页的依赖块 504 → island 注入失败 → 整页点不动，
+  // 这里检测到特征后提示并自动刷新（生产环境空转）
+  import { initDevModuleRecovery } from "@/scripts/ours/dev-module-recovery";
   initLayout();
   initEditorMode();
   initSwupWatchdog();
+  initDevModuleRecovery();
 </script>
