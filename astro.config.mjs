@@ -71,6 +71,12 @@ const adapter = process.env.CF_WORKERS
 export default defineConfig({
 	site: siteConfig.site_url,
 
+	// [OURS] 关闭开发工具栏：它会往页面注入 /@id/astro/runtime/client/dev-toolbar/entrypoint.js，
+	// 当 Vite 依赖预构建被重建（改配置/装依赖/删缓存后）该 URL 会返回 504 (Outdated Optimize Dep)，
+	// Vite 客户端随即强制整页 reload，反复不一致时表现为"页面反复重载/卡死"（纯开发环境现象）。
+	// 关掉它即可掐断这条重载链；生产构建本来就没有该工具栏。
+	devToolbar: { enabled: false },
+
 	base: "/",
 	trailingSlash: "always",
 

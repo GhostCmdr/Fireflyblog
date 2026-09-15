@@ -599,6 +599,9 @@ import "@/styles/ours/editor-shell.css";
   import { initLayout } from "@/utils/layout-init";
   // [OURS] 编辑器模式（铺满布局/壁纸冻结/导航栏对齐；内部自注册 swup 钩子且幂等）
   import { initEditorMode } from "@/scripts/ours/editor-mode";
+  // [OURS] swup 过渡看门狗：过渡类残留（快速来回切换竞态）导致"页面卡死"时自动留证并恢复
+  import { initSwupWatchdog } from "@/scripts/ours/swup-watchdog";
   initLayout();
   initEditorMode();
+  initSwupWatchdog();
 </script>
