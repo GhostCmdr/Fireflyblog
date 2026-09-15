@@ -411,3 +411,12 @@ export const oursGalleryConfig = {
 		},
 	],
 };
+
+/* ────────────────────────── displaySettingsConfig ────────────────────────── */
+// 显示设置面板总开关：上游默认 false（为省体积，官方建议生产关闭），我方需要该面板
+// 来切换"壁纸模式/主题色/文章布局/特效"，故在本地开启。
+// 注意：只覆盖 enable 一项，其余子开关沿用上游默认（resolveDisplaySettingsConfig 会把
+// enable=false 解析成"全部子项关闭"的整份禁用配置，所以必须在配置层开启而不是事后覆盖）。
+export const oursDisplaySettingsConfig = {
+	enable: true,
+};

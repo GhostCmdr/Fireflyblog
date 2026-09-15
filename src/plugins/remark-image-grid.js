@@ -41,6 +41,21 @@ function getGridColumnClass(imgCount) {
 	return "md:grid-cols-4";
 }
 
+/**
+ * 递归移除 `break` 节点。
+ *
+ * 我方"单换行即换行"插件（src/plugins/ours/remark-hard-breaks.mjs）会先执行，把 `[grid]`
+ * 段落内的软换行转成 `break` 节点；若不清掉，这些节点会渲染成 `<br>` 并**成为网格项**
+ * 与图片抢格子（2 列时排成 [br, 图1] / [br, 图2] 两行），表现为"并排图片变成上下排列"。
+ * 网格内部换行本无意义，直接移除。
+ */
+function stripBreaks(node) {
+	if (!node || !Array.isArray(node.children)) return node;
+	node.children = node.children.filter((child) => child.type !== "break");
+	node.children.forEach(stripBreaks);
+	return node;
+}
+
 /** Count all images found inside the given nodes, recursively. */
 function countImages(nodes) {
 	let imgCount = 0;
@@ -69,7 +84,7 @@ function buildGridNode(nodes) {
 				],
 			},
 		},
-		children: nodes,
+		children: nodes.filter((n) => n.type !== "break").map(stripBreaks),
 	};
 }
 
@@ -131,9 +146,10 @@ function processGridBlocks(children) {
 							],
 						},
 					},
-					children: node.children.filter(
-						(n) => n.type !== "text" || n.value.trim() !== "",
-					), // Remove empty text nodes left over
+					children: node.children
+						.filter((n) => n.type !== "break") // 清掉硬换行产生的 break（否则 <br> 会占网格格子）
+						.filter((n) => n.type !== "text" || n.value.trim() !== "") // 去空文本
+						.map(stripBreaks), // 嵌套层（图片被 link 包裹等）同样清理
 				});
 				continue;
 			}

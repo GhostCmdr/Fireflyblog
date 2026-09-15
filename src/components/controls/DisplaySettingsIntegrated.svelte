@@ -343,6 +343,8 @@ function switchFullscreenLayout(layout: FullscreenWallpaperLayout) {
 }
 
 function resetLayout() {
+	// [OURS] 编辑器内不改文章布局
+	if (isEditor) return;
 	currentLayout = effectiveDefaultLayout;
 	localStorage.removeItem("postListLayout");
 
@@ -532,7 +534,8 @@ function refreshAllRangeProgress() {
 }
 
 function switchLayout() {
-	if (!mounted || isSwitching) return;
+	// [OURS] 编辑器内不改文章布局（会破坏编辑页的铺满布局）
+	if (!mounted || isSwitching || isEditor) return;
 
 	isSwitching = true;
 	currentLayout = currentLayout === "list" ? "grid" : "list";
@@ -682,6 +685,14 @@ $effect(() => {
 $effect(() => {
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 	activeTab;
+	// [OURS] 透明设置区（overlay 模式 / fullscreen+hero 布局）是**条件渲染**：切壁纸模式或切 classic/hero
+	// 布局时这些 range 元素会被销毁重建，内联的 --range-progress 随之丢失 → 表现为"首次打开面板时
+	// 绿色进度条与右侧数值不符，点一下/拖一下才对齐"。故把 wallpaperMode、fullscreenLayout 也纳入依赖，
+	// DOM 更新后统一重算。（编辑器页由 editor-mode 强制 overlay 也走这条路径，同样被覆盖。）
+	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+	wallpaperMode;
+	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+	fullscreenLayout;
 	requestAnimationFrame(refreshAllRangeProgress);
 });
 </script>
@@ -738,8 +749,8 @@ $effect(() => {
 			<div class="section-title">
 				{i18n(I18nKey.postListLayout)}
 				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
-						class:opacity-0={currentLayout === effectiveDefaultLayout} class:pointer-events-none={currentLayout === effectiveDefaultLayout}
-						disabled={currentLayout === effectiveDefaultLayout} aria-hidden={currentLayout === effectiveDefaultLayout ? "true" : undefined} onclick={resetLayout}>
+						class:opacity-0={currentLayout === effectiveDefaultLayout || isEditor} class:pointer-events-none={currentLayout === effectiveDefaultLayout || isEditor}
+						disabled={currentLayout === effectiveDefaultLayout || isEditor} aria-hidden={currentLayout === effectiveDefaultLayout ? "true" : undefined} onclick={resetLayout}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
 					</div>
@@ -751,7 +762,8 @@ $effect(() => {
 					class="flex-1 btn-regular rounded-md py-2 px-3 flex items-center justify-center gap-2 active:scale-95 transition-all relative overflow-hidden"
 					class:opacity-60={currentLayout !== 'list'}
 					class:bg-(--btn-regular-bg-hover)={currentLayout === 'list'}
-					disabled={isSwitching}
+					disabled={isSwitching || isEditor}
+					style={isEditor ? "opacity: 0.4; pointer-events: none;" : ""}
 					onclick={switchLayout}
 					title={i18n(I18nKey.postListLayoutList)}
 				>
@@ -765,7 +777,8 @@ $effect(() => {
 					class="flex-1 btn-regular rounded-md py-2 px-3 flex items-center justify-center gap-2 active:scale-95 transition-all relative overflow-hidden"
 					class:opacity-60={currentLayout !== 'grid'}
 					class:bg-(--btn-regular-bg-hover)={currentLayout === 'grid'}
-					disabled={isSwitching}
+					disabled={isSwitching || isEditor}
+					style={isEditor ? "opacity: 0.4; pointer-events: none;" : ""}
 					onclick={switchLayout}
 					title={i18n(I18nKey.postListLayoutGrid)}
 				>

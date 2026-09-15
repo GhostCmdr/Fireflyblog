@@ -1,13 +1,14 @@
 import type { DisplaySettingsConfig } from "../types/displaySettingsConfig";
 import { resolveDisplaySettingsConfig } from "../utils/display-settings-utils";
+// [OURS] 我方配置叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
+import { mergeDeep, oursDisplaySettingsConfig } from "./ours/values";
 
 // 显示设置面板开关配置
 // 集中管理设置面板中所有可切换项的开关
 // 方便统一控制哪些设置项对用户可见
 // 也方便进行调试预览效果
 
-export const displaySettingsConfig: DisplaySettingsConfig =
-	resolveDisplaySettingsConfig({
+const _base: DisplaySettingsConfig = {
 		// ── 总开关 (Master switch) ────────────────────────────
 
 		// 视图设置面板总开关，关闭时下方所有设置项均不生效，前台将不显示设置面板
@@ -69,4 +70,10 @@ export const displaySettingsConfig: DisplaySettingsConfig =
 
 		// 樱花特效开关
 		sakuraSwitchable: true,
-	});
+};
+
+// [OURS] 叠加我方覆盖值（enable: true 打开设置面板：调色板入口 + 壁纸模式/主题色/特效等全部设置项）
+// 部署平台仍可用环境变量 PUBLIC_DISPLAY_SETTINGS 覆盖（resolveDisplaySettingsConfig 里 env 优先级更高）
+export const displaySettingsConfig: DisplaySettingsConfig = resolveDisplaySettingsConfig(
+	mergeDeep(_base, oursDisplaySettingsConfig) as DisplaySettingsConfig,
+);

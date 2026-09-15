@@ -1,0 +1,4 @@
+# 占位文件：让 Astro 保持 src/icons/ 目录存在。
+# astro-icon 会把 src/icons/ 当作本地图标集合目录（collection: local）扫描；
+# 目录不存在时会抛 ENOENT 并打印 WARN "[astro-icon] Failed to load icons from src/icons"。
+# 本目录当前不使用本地 svg 图标（图标都来自 npm 集合），保留空目录仅为消除该警告。

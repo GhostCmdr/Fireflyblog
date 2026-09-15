@@ -14,6 +14,16 @@ import { setWallpaperMode } from "@/utils/setting-utils";
       var p = window.location.pathname;
       return p === '/editor/' || p === '/editor';
     }
+    // 测量平台滚动条宽度（临时 div）。注意 scrollbar-width 不继承，
+    // 所以 html.editor-page 上的"藏滑块"不影响这里的测量值（= 平台默认宽度，如 15px）。
+    function measureScrollbarWidth() {
+      var d = document.createElement('div');
+      d.style.cssText = 'overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;';
+      document.body.appendChild(d);
+      var w = d.offsetWidth - d.clientWidth;
+      d.remove();
+      return w;
+    }
     // 计算滚动条区域的背景图片 CSS（可复用，壁纸模式切换时重新计算）
 
     // 冻结壁纸视觉状态：编辑器页面壁纸和主页保持一致，右边多出滚动条宽度的区域自然露出
@@ -124,39 +134,18 @@ import { setWallpaperMode } from "@/utils/setting-utils";
     function applyEditorModeLayout() {
       if (editorStyleEl) return;
       // 测量滚动条宽度
-      var scrollDiv = document.createElement('div');
-      scrollDiv.style.cssText = 'overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;';
-      document.body.appendChild(scrollDiv);
-      var scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth;
-      document.body.removeChild(scrollDiv);
-      // 编辑器导航栏与主页"同宽同位置"：
-      // #top-row 在 sticky 下是 position:fixed; left:0; right:0，内层靠 mx-auto + max-w 在这个空间里居中。
-      // 主页有滚动条，可用空间 = innerWidth - sw；编辑器 body overflow:hidden 无滚动条，可用空间 = innerWidth，
-      // 比主页宽 sw，内层居中后整体右移 sw/2。
-      // #top-row 自身带 w-full xl:w-[92vw] max-w-(--page-width) + mx-auto（MainGridLayout.astro:295-301）。
-      // 实测（视口1528/sw15）：主页 #top-row 宽1392 左60；编辑器 宽1400 左64。
-      // 成因：92vw 的 vw 按"含滚动条视口"算(1405.76)，两边相同；主页因有滚动条布局宽只有 clientWidth=1513，
-      // 92% 实际落到 1392 并被 max-w(1400) 之下；编辑器 clientWidth=1528，92vw 超过 1400 被截成 1400 → 宽多8px。
-      // 仅收 left/right 无效：可用空间变了但 vw 不变，max-w 依旧把宽度截在 1400。
-      // 修法分两步（缺一不可）：
-      //  1) 宽度：按主页坐标系复算上限 homeMax = min(--page-width, (innerWidth-sw)*0.92) 设为 max-width。
-      //  2) 位置：left 保持 0、right 收 sw（不是各收 sw/2！滚动条只占右侧，主页包含块起点就是 0；
-      //     对称收缩会把起点推到 sw/2，实测导致右偏 8px）。包含块宽=innerWidth-sw 与主页一致，
-      //     mx-auto 居中结果自然重合。
-      // 两步都做才对齐：只做 2) 宽度仍被 max-w 截断；只做 1) 位置仍偏 sw/2。
-      // 单一计算路径（无缓存）：2026-09-09 实测（视口1528/滚动条15）：主页 92vw 实际解析为
-      // 0.92 × clientWidth(1513) = 1391.95，并非旧注释假设的 0.92 × innerWidth(1528) = 1405.76。
-      // 旧注释的"vw 含滚动条"假设在该浏览器/缩放组合下不成立，且 sessionStorage 缓存两次被
-      // 过渡态污染（值 1440），故整体删除缓存机制，公式直接按主页实测规律复算：
-      // 目标宽 = min(--page-width, (innerWidth − 滚动条宽) × 0.92)，实测与主页逐位吻合（差 0.01px 不可见）。
-      var _pw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')) || 0;
-      var _pwPx = _pw > 0 && _pw < 200 ? _pw * 16 : _pw; // rem→px（配置为 rem 值时换算）
-      var homeClient = window.innerWidth - scrollbarWidth;
-      var homeMax = Math.min(_pwPx || Infinity, homeClient * 0.92);
-      // 不做 1px 奇偶补偿：新公式（0.92×客户区宽）已与主页渲染规律吻合，
-      // 补偿实测反而引入 0.4px 偏移（主页 left 60.42 vs 补偿后 60.02；不补偿 60.52，仅差 0.1px 不可见）
+      var scrollbarWidth = measureScrollbarWidth();
+      // 编辑器导航栏与主页"同宽同位置"（2026-09-15 重做：宽度交回 CSS，JS 只补"编辑器少一条滚动条"）
+      // #top-row 宽度完全由上游 CSS 决定：`w-full xl:w-[92vw] max-w-(--page-width)`（HeaderTopRow.astro）。
+      // 编辑器页把根滚动条藏了（ours/editor-shell.css），可用空间比主页宽 sw → mx-auto 居中后整体右移 sw/2。
+      // 修正只需一处：把包含块右界收 sw（left 保持 0），使可用空间回到与主页一致（innerWidth - sw）。
+      // 不能对称收缩（left/right 各收 sw/2）：滚动条只占右侧、主页包含块起点就是 0，对称收缩会右偏。
+      // 另：不再用 JS 复刻宽度。旧实现写 max-width = min(--page-width, 0.92 × 客户区宽)，与上游 CSS 的
+      // 92vw 语义不同（Chrome/Edge 的 vw 按含滚动条视口计算）→ 编辑器比主页窄 0.92×sw（≈14px），
+      // 并让导航栏内层 grid 的 minmax(0,1fr) 中列被压扁（表现为中间菜单文字挤成一团）。
+      // 宽度交回 CSS 后，上游将来改宽度规则我们自动跟随，无需再同步公式。
       var rightInset = scrollbarWidth;
-      var navbarCss = 'body.editor-page.sticky-navbar #top-row { max-width: ' + homeMax + 'px !important; left: 0px !important; right: ' + rightInset + 'px !important; transition: none !important; }';
+      var navbarCss = 'body.editor-page.sticky-navbar #top-row, body.editor-page.dynamic-navbar #top-row { left: 0px !important; right: ' + rightInset + 'px !important; transition: none !important; }';
       document.body.classList.add('editor-page');
       document.documentElement.classList.add('editor-page');
       // 编辑器仅保留两种背景模式：
@@ -214,14 +203,15 @@ import { setWallpaperMode } from "@/utils/setting-utils";
         navbarCss
       ].join('\n');
       document.head.appendChild(editorStyleEl);
-      // 导航栏：复算宽度上限 + 右界收 sw（左界保持 0，与主页包含块起点一致）（与 navbarCss 一致）
-      // 注意：必须用 setProperty(..., 'important')。body.sticky-navbar #top-row 里有 `right: 0 !important`，
+      // 导航栏：只补"右界收 sw"（左界保持 0，与主页包含块起点一致）；宽度不再由 JS 写（交回 CSS）
+      // 注意：必须用 setProperty(..., 'important')。body.sticky/dynamic-navbar #top-row 里有 `right: 0 !important`，
       // 内联的**普通**声明打不过 !important（实测 inlineRight=15px 但 computedRight=0px），必须同级对抗。
       var row = document.getElementById('top-row');
       if (row) {
         row.style.width = '';
         row.style.transform = '';
-        row.style.setProperty('max-width', homeMax + 'px', 'important');
+        // 清掉可能残留的旧 max-width（上一版实现写过），确保宽度完全由 CSS 决定
+        row.style.removeProperty('max-width');
         row.style.setProperty('left', '0px', 'important');
         row.style.setProperty('right', rightInset + 'px', 'important');
       }
@@ -229,32 +219,26 @@ import { setWallpaperMode } from "@/utils/setting-utils";
       if (document.documentElement.getAttribute('data-wallpaper-mode') === 'overlay') {
         freezeWallpaperForEditor(scrollbarWidth);
       }
-      // resize 监听：用 rAF 帧节流替代 100ms 防抖。
-      // 原因：编辑器导航栏宽度由 JS 锁定（主页坐标补正），若滞后 100ms 才更新，
-      // 放大窗口时会出现"窗口已宽、导航栏还窄"的挤压 → 内容挤在中间后瞬间放宽（用户实测为编辑器独有）。
-      // 帧节流使 max-width 随窗口实时更新（≈主页 CSS 实时流行为），计算公式不变 → 最终对齐不变。
+      // resize 监听：rAF 帧节流（宽度已交回 CSS，这里只做幂等的"右界重写 + 冻结层复算"）
       var _resizeRaf: number | null = null;
       editorResizeHandler = function() {
         if (_resizeRaf) return; // 已有待执行帧则合并，避免堆积
         _resizeRaf = requestAnimationFrame(function() {
           _resizeRaf = null;
-          var sw2 = scrollDiv.offsetWidth !== undefined ? (function(){ var d=document.createElement('div'); d.style.cssText='overflow:scroll;position:absolute;top:-9999px;width:100px;height:100px;'; document.body.appendChild(d); var w=d.offsetWidth-d.clientWidth; document.body.removeChild(d); return w; })() : 0;
-          // 拖窗时按新视口实时复算（公式与进入时一致：0.92 × 客户区宽，见 applyEditorModeLayout 注释）
-          var homeClient2 = window.innerWidth - sw2;
-          var homeMax2 = Math.min(_pwPx || Infinity, homeClient2 * 0.92);
+          var sw2 = measureScrollbarWidth();
           var rightInset2 = sw2;
           var r = document.getElementById('top-row');
           if (r) {
             r.style.width = '';
             r.style.transform = '';
-            // 同样必须 important，否则被 body.sticky-navbar #top-row 的 right:0 !important 压制
-            r.style.setProperty('max-width', homeMax2 + 'px', 'important');
+            // 同样必须 important，否则被 body.sticky/dynamic-navbar #top-row 的 right:0 !important 压制
+            r.style.removeProperty('max-width');
             r.style.setProperty('left', '0px', 'important');
             r.style.setProperty('right', rightInset2 + 'px', 'important');
           }
           if (editorStyleEl) {
             var rules = editorStyleEl.textContent || '';
-            rules = rules.replace(/max-width: [\d.]+px !important; left: [\d.]+px !important; right: [\d.]+px !important;/, 'max-width: ' + homeMax2 + 'px !important; left: 0px !important; right: ' + rightInset2 + 'px !important;');
+            rules = rules.replace(/left: [\d.]+px !important; right: [\d.]+px !important;/, 'left: 0px !important; right: ' + rightInset2 + 'px !important;');
             editorStyleEl.textContent = rules;
           }
           // 窗口尺寸变化后按新的视口宽度重新冻结壁纸（仅全屏透明模式）
