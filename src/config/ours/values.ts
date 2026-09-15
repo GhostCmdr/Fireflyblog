@@ -43,6 +43,8 @@ export const oursSiteConfig = {
 	},
 	siteStartDate: "2026-06-30",
 	pages: {
+		// 上游 6.16.x 起把「追番(anime)」拆分为 bilibili / myanimelist / vndb 三个页面
+		bilibili: true,
 		bangumi: false,
 	},
 	anime: {
@@ -314,7 +316,8 @@ export const oursNavBarConfig = {
 			icon: "material-symbols:person",
 			children: [
 				{ name: "相册", url: "/gallery/", icon: "material-symbols:photo-library", pageKey: "gallery" },
-				{ name: "追番", url: "/anime/", icon: "material-symbols:live-tv", pageKey: "anime" },
+				// [OURS] 上游已把 /anime/ 拆为 /bilibili/(哔哩哔哩) 等页面 → 追番指向新路由
+				{ name: "追番", url: "/bilibili/", icon: "fa7-brands:bilibili", pageKey: "bilibili" },
 				{ name: "番组计划", url: "/bangumi/", icon: "material-symbols:movie", pageKey: "bangumi" },
 			],
 		},
