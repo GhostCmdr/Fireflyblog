@@ -1,6 +1,6 @@
 ---
 title: "编辑功能测试文章"
-slug: 
+slug: test-00
 published: 2026-08-20
 draft: false
 description: "用于验证「编辑此文」全链路的测试文章，包含全部元数据字段与各类代码块"
