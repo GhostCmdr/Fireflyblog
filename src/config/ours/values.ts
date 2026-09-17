@@ -112,6 +112,11 @@ export const oursMusicConfig = {
 	auto: {
 		playlistPath: "/assets/music/playlist.json",
 	},
+	// [OURS] 歌词按钮开关：上游 6.16.8 把默认值从 `true` 改成了 `false`
+	// （合并前 backup/pre-upstream-port-20260912 版本为 true），我方未显式覆盖 →
+	// 按钮整体消失。按「凡想长期控制的值必须写进 ours/values.ts」的约定在此固定为 true。
+	// MusicManager.astro 取值 `config.showLyrics ?? true`；单曲是否有歌词仍取决于是否存在同名 .lrc/.txt。
+	showLyrics: true,
 };
 
 /* ────────────────────────── 共用链接常量 ────────────────────────── */
@@ -476,6 +481,9 @@ export const oursNavBarConfig = {
 				{ name: "归档", url: "/archive/", icon: "material-symbols:archive" },
 				{ name: "分类", url: "/categories/", icon: "material-symbols:folder-open-rounded" },
 				{ name: "标签", url: "/tags/", icon: "material-symbols:tag-rounded" },
+				// [OURS] 系列（上游新增页面）：入口之前缺失。位置/名称/图标与上游 LinkPresets.Series 一致
+				// （上游把「系列」放在「文章」组里，紧跟「标签」）。上游该预设无 pageKey，故此处也不写。
+				{ name: "系列", url: "/series/", icon: "material-symbols:layers" },
 				{ name: "写文章", url: "/editor/", icon: "material-symbols:edit-note" },
 			],
 		},
