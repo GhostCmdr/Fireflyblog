@@ -1,18 +1,20 @@
 ---
-title: "编辑功能测试文章"
+title: 编辑功能测试文章
 slug: test-00
 published: 2026-08-20
-draft: false
-description: "用于验证「编辑此文」全链路的测试文章，包含全部元数据字段与各类代码块"
-category: "测试"
+updated: 2026-09-17
+description: 用于验证「编辑此文」全链路的测试文章，包含全部元数据字段与各类代码块
+category: 测试
 tags: [编辑, 测试, 功能验证]
-image: "./images/1.png"
+image: ./images/1.png
 pinned: true
 comment: true
+draft: false
 ---
+
 # 编辑功能测试文章
 
-
+测试
 
 这是一篇专门用于验证「编辑此文」按钮 → 编辑器载入 → 发布更新全链路的测试文章。下面尽量覆盖所有元数据与正文元素。
 
