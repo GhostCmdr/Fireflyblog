@@ -1,4 +1,6 @@
 import type { BooknavGroup, BooknavPageConfig } from "../types/booknavConfig";
+// [OURS] 我方书签数据叠加（值见 ./ours/values.ts 的 oursBooknavConfig；上游更新时本文件只需保留 hook 行）
+import { oursBooknavConfig } from "./ours/values";
 
 // 书签导航页面配置
 export const booknavPageConfig: BooknavPageConfig = {
@@ -21,9 +23,9 @@ export const booknavPageConfig: BooknavPageConfig = {
 	},
 };
 
-// 书签导航配置
+// 书签导航配置（上游默认示例；我方已整体替换 —— 见文件末尾的 [OURS] hook）
 // 每个数组项是一个分类组，分类组内的 items 是该分类下的书签
-export const booknavConfig: BooknavGroup[] = [
+const _baseBooknav: BooknavGroup[] = [
 	{
 		id: "dev",
 		name: "开发",
@@ -154,3 +156,8 @@ export const booknavConfig: BooknavGroup[] = [
 		],
 	},
 ];
+
+// [OURS] 书签导航：数组不做深合并 → 直接整体替换（与 friendsConfig 同一套做法）。
+// 数据在 src/config/ours/values.ts 的 oursBooknavConfig（我方完全掌控，上游新增的示例书签不会出现）。
+// 上面上游那份示例保留为 _baseBooknav 仅作参考（未使用）。
+export const booknavConfig: BooknavGroup[] = oursBooknavConfig as BooknavGroup[];

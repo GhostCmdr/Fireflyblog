@@ -28,3 +28,15 @@
       body.editor-page #markdown-input::-webkit-scrollbar { display: none; }
       body.editor-page #preview-content { scrollbar-width: none; -ms-overflow-style: none; scroll-behavior: auto !important; }
       body.editor-page #preview-content::-webkit-scrollbar { display: none; }
+
+      /* [OURS] 编辑器右下角悬浮控件（回到主页 🏠 等）位置对齐（2026-09-16）
+         直接原因：浮动控件是 `position: fixed; right: 1rem`，fixed 的包含块是"布局视口"，
+         而布局视口宽 = 窗口宽 − 滚动条宽。编辑器页藏掉了根滚动条（见上），布局视口就比其它页宽 sw，
+         于是同一个 `right: 1rem` 在编辑器里离窗口右缘近了 sw（Windows ≈15px）→ 位置与文章页不一致。
+         修法：把 sw 直接补进 right（变量由 editor-mode.ts 实测写入，与导航栏用的是同一个测量值），
+         这样它与文章内容页在"距窗口右缘"上严格一致。
+         ⚠️ 不要再在这里加"绕过图标栏"之类的额外偏移 —— 位置基准与其它页一致才是本意。
+         面板打开时浮窗的显隐由 editor.astro 的 openPanel/closePanel 套用主题 .hide 完成，不在此写样式。 */
+      body.editor-page .floating-controls-container {
+        right: calc(1rem + var(--editor-scrollbar-width, 0px)) !important;
+      }

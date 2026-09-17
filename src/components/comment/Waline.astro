@@ -10,7 +10,9 @@ const config = {
 	el: "#waline",
 	path: Astro.props.path,
 	dark: "html.dark",
-	wordLimit: ["2", "300"],
+	// [OURS] 放宽字数下限（2026-09-16）：上游默认 ["2","300"]，英文按"词/字"计数时
+	// 单个英文单词只算 1 字 → 会被"评论字数应在 2 到 300 字之间"直接拒掉。改为允许 1 字。
+	wordLimit: ["1", "300"],
 	...(commentConfig.waline?.visitorCount ? { pageview: true } : {}),
 };
 ---

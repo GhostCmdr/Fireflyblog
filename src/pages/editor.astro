@@ -454,6 +454,12 @@ body.wallpaper-transparent #right-icon-bar {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.414 17.414A2 2 0 0 1 22 18.828V21a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a1 1 0 0 0 -1 -1h-1a1 1 0 0 1 -1 -1v-1a1 1 0 0 0 -1 -1h-0.172a2 2 0 0 1 -1.414 -0.586l-0.814 -0.814a6.5 6.5 0 1 1 4 -4z"/><line x1="6.9393" y1="9.0607" x2="9.0607" y2="6.9393"/></svg>
       </button>
       <div class="flex-1"></div>
+      <button id="btn-import-md" class="icon-bar-btn" title="导入 MD（选择本地文件，覆盖当前编辑区）">
+        <!-- 导入：文档 + 箭头"指进"文档（Lucide file-input）。语义与「导出」正好相反：
+             导入 = 内容进入编辑器/文档；导出 = 托盘 + 箭头向下"出去"。
+             两者连"形状族"都不同（文档 vs 托盘），不再靠箭头方向区分 -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M2 15h10"/><path d="m9 18 3-3-3-3"/></svg>
+      </button>
       <button id="btn-export-md" class="icon-bar-btn" title="导出 MD">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
@@ -465,7 +471,7 @@ body.wallpaper-transparent #right-icon-bar {
 
 <!-- GitHub 发布弹窗 -->
 <div id="github-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 hidden">
-  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
+  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: min(420px, calc(100vw - 2rem));">
     <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4 flex items-center gap-2">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-black/80 dark:text-white/80"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
       发布到 GitHub
@@ -501,9 +507,18 @@ body.wallpaper-transparent #right-icon-bar {
      注意：遮罩不加 backdrop-blur —— 编辑器页 fixed inset-0 遮罩加模糊会与固定导航栏
      在层叠边界产生渲染伪影（见记忆：backdrop-blur 与固定导航栏伪影） -->
 <div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 hidden">
-  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
-    <h3 id="confirm-modal-title" class="text-base font-bold text-black/90 dark:text-white/90 mb-4">确认操作</h3>
-    <p id="confirm-modal-message" class="text-sm text-black/70 dark:text-white/70 leading-relaxed break-words"></p>
+  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: min(420px, calc(100vw - 2rem));">
+    <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4 flex items-center gap-2">
+      <!-- 危险操作的统一警示图标（线条 SVG，与右侧图标栏同族；默认隐藏，仅 opts.danger 时显示，
+           替代原先写在标题文案里的 emoji —— emoji 与全站的线条图标风格不一致） -->
+      <svg id="confirm-modal-icon" class="hidden shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="confirm-modal-title">确认操作</span>
+    </h3>
+    <!-- 用 div 而非 p：结构化正文里会出现块级 <div>（如提示框），放进 <p> 会被浏览器移出段落导致布局错乱 -->
+    <div id="confirm-modal-message" class="text-sm text-black/70 dark:text-white/70 leading-relaxed break-words"></div>
+    <!-- 可选说明行（opts.note）：样式与「发布到 GitHub」弹窗底部那行 11px 灰字一致（字号/颜色/间距同档），
+         让两个弹窗在发布流程里连着出现时高度观感一致；不传 opts.note 时保持隐藏，其余确认弹窗不受影响 -->
+    <p id="confirm-modal-note" class="hidden mt-3 text-[11px] leading-relaxed text-black/35 dark:text-white/35"></p>
     <div class="flex justify-end gap-2.5 mt-6">
       <button id="confirm-modal-cancel" class="px-4 py-2 rounded-lg text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer">
         取消
@@ -591,7 +606,7 @@ body.wallpaper-transparent #right-icon-bar {
 
 <!-- 链接弹窗 -->
 <div id="link-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: 420px;">
+  <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="width: min(420px, calc(100vw - 2rem));">
     <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4">插入链接</h3>
     <div class="space-y-3">
       <div>
@@ -661,6 +676,17 @@ function initEditor() {
   const textarea = document.getElementById('markdown-input');
   const preview = document.getElementById('preview-content');
   const fullscreenContent = document.getElementById('fullscreen-content');
+  // [OURS] 预览里"图片占位 / 图片不可用"的**统一盒子样式**（2026-09-16）
+  // 为什么统一：加载态是 <img>（灰底占位）、失败态是 <div>（"图片不可用"），两者若尺寸/边距不同，
+  //   同一篇里并排图/上下图会"一张大一张小"（历史：失败框 margin:8px 0、加载图 margin:0 auto，
+  //   在 [grid] 两列里高度差 16px）。基准直接对齐加载态 <img> 的写法。
+  var _IMG_BOX_BASE = 'width:100%;min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;margin:0 auto;';
+  var _IMG_BOX_FAIL = _IMG_BOX_BASE + 'display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;';
+  // [OURS] 单图（独立成块）的**间距容器**：上下间距统一由这一层提供，与"加载中 / 已加载 / 失败"状态**无关** ——
+  // 这样三态之间不会因为 margin 不同而"间隔忽有忽无"，也不会出现尺寸跳变（原实现把 8px 加在失败框自己身上，
+  // 一旦为了统一尺寸把失败框 margin 归零，上下图之间的间隔就消失了）。
+  // 注：[grid] 并排图不用它 —— 那里的间距由网格容器 gap 提供，格子内不能再加垂直 margin。
+  function _imgBlock(html) { return '<div style="margin:8px 0;">' + html + '</div>'; }
   // [Editor 乙] 单行图(data-single)：加载完成瞬间切成自然宽(加载中用满宽灰底占位)；用 capture 捕获 load(不冒泡)且每图只切一次
   if (!window.__editorSingleLoadRegistered) {
     window.__editorSingleLoadRegistered = true;
@@ -685,6 +711,167 @@ function initEditor() {
       _btn.click();
     });
   }
+  // [Editor] 载入文章的"落地"函数（2026-09-16 抽取）
+  // ─────────────────────────────────────────────────────────────
+  // 为什么抽：此前"frontmatter 反向解析 + 表单回填（标题/日期/标签/封面/正文）+ 渲染预览"
+  //   整段内联在 loadFromSlug 里，只有"从 GitHub 拉已有文章"这一个入口能用。
+  //   新增"导入本地 MD"需要完全同一套行为；若再抄一份，就会重演本文件历史上
+  //   "同一规则散落多处 → 各自漂移"的老问题（见封面图那段背景注释）。
+  // 参数：
+  //   raw  — md 原文（frontmatter 可省略）
+  //   opts — {
+  //     slug:          发布目标相对路径（'edit-test.md' / 'sub/a.md'）：回填「文章路径」，
+  //                    并据此推导封面相对路径的预览目录
+  //     fallbackTitle: 无 title 时的兜底标题（导入本地文件时传文件名）
+  //     ratioPreload:  是否后台预读正文相对图尺寸（仅当"这些图确实在仓库里"时才有意义）
+  //   }
+  // 返回解析出的 frontmatter 对象，便于调用方判断（如标题是否为空）。
+  function applyLoadedPost(raw, opts) {
+    opts = opts || {};
+    var fm = {};
+    var body = raw == null ? '' : String(raw);
+    // 先去掉 BOM 与开头空行，再匹配 frontmatter：某些编辑器导出的 md 带 U+FEFF 或开头空行，
+    // 会让 /^---/ 直接失配 → 整份文件被当成正文、元信息全丢。
+    // ⚠️ 只去"空行"，不去首行缩进 —— 首行 4 空格是代码块语义，不能吃。
+    var head = body.replace(/^\uFEFF/, '').replace(/^(?:[ \t]*\r?\n)+/, '');
+    var m = head.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+    if (m) {
+      body = head.slice(m[0].length);
+      var lines = m[1].split(/\r?\n/);
+      // [OURS] 支持 YAML 的**多行数组**写法（其他软件/上游文章很常见）：
+      //   tags:
+      //     - Astro
+      //     - 教程
+      // 处理：遇到 "key:"（值为空）先记下 key，随后以 "- " 开头的行都聚合给它，
+      //      聚合结果与单行数组 [a, b] 一致（都用 ", " 连接），保证下游只按字符串处理。
+      var _pendingListKey = null;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var lm = line.match(/^\s*-\s+(.*)$/);
+        if (lm && _pendingListKey) {
+          var item = lm[1].trim();
+          if ((item[0] === '"' && item[item.length - 1] === '"') ||
+              (item[0] === "'" && item[item.length - 1] === "'")) item = item.slice(1, -1);
+          if (item) fm[_pendingListKey] = fm[_pendingListKey] ? fm[_pendingListKey] + ', ' + item : item;
+          continue;
+        }
+        var kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+        if (!kv) continue;
+        var key = kv[1];
+        var val = kv[2].trim();
+        _pendingListKey = null;
+        if (val === '') {
+          fm[key] = '';
+          // 可能是多行数组的开头（下面若跟 "- xxx" 会聚合上来）；普通空值保持空字符串不受影响
+          _pendingListKey = key;
+          continue;
+        }
+        // 去掉首尾引号
+        if ((val[0] === '"' && val[val.length - 1] === '"') ||
+            (val[0] === "'" && val[val.length - 1] === "'")) {
+          val = val.slice(1, -1);
+        } else if (val[0] === '[' && val[val.length - 1] === ']') {
+          // 数组：[a, b] 或 ["a", "b"]
+          var inner = val.slice(1, -1);
+          val = inner.split(',').map(function(s) {
+            s = s.trim();
+            if ((s[0] === '"' && s[s.length - 1] === '"') ||
+                (s[0] === "'" && s[s.length - 1] === "'")) s = s.slice(1, -1);
+            return s;
+          }).filter(Boolean).join(', ');
+        }
+        fm[key] = val;
+      }
+    } else {
+      body = head;
+    }
+    var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+    var setChecked = function(id, v) { var el = document.getElementById(id); if (el) el.checked = !!v; };
+    var titleVal = fm.title || opts.fallbackTitle || '';
+    setVal('post-title', titleVal);
+    // 面板内的标题输入框不在表单同步链上（只在 #post-title 的 input 事件里被动同步），
+    // 程序化回填不触发事件 → 这里补一次，避免"顶栏有标题、打开面板却空着"
+    setVal('post-title-input', titleVal);
+    setVal('post-desc', fm.description);
+    setVal('post-category', fm.category);
+    setVal('post-tags', fm.tags);
+    setVal('post-cover', fm.image);
+    setVal('post-slug', opts.slug);
+    setVal('post-url-slug', fm.slug);
+    // [OURS] 日期兜底归一化：其他软件/工具导出的 frontmatter 常写 ISO 时间
+    // （2026-09-16T10:00:00+08:00、2026/09/16、2026.9.6 等），而 input[type=date] 只认 YYYY-MM-DD →
+    // 直接 setVal 会让日期框变空、**发布日期静默丢失**。这里统一裁剪成 YYYY-MM-DD（取不到就留空）。
+    var normDate = function(v) {
+      var s = String(v == null ? '' : v).trim();
+      var md = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+      if (!md) return '';
+      return md[1] + '-' + ('0' + md[2]).slice(-2) + '-' + ('0' + md[3]).slice(-2);
+    };
+    setVal('post-published', normDate(fm.published));
+    setVal('post-updated', normDate(fm.updated));
+    setVal('post-password', fm.password);
+    setVal('post-password-hint', fm.passwordHint);
+    setChecked('chk-pinned', fm.pinned === 'true' || fm.pinned === true);
+    setChecked('chk-comment', !(fm.comment === 'false' || fm.comment === false));
+    setChecked('chk-draft', fm.draft === 'true' || fm.draft === true);
+    // 同步 checkbox 追踪变量（面板关闭后 DOM 不存在，发布时从其读取）
+    if (window.__editorMetaCheckbox) {
+      window.__editorMetaCheckbox.pinned = fm.pinned === 'true' || fm.pinned === true;
+      window.__editorMetaCheckbox.comment = !(fm.comment === 'false' || fm.comment === false);
+      window.__editorMetaCheckbox.draft = fm.draft === 'true' || fm.draft === true;
+    }
+    // 封面图统一处理：mdDir 由 slug 推导（支持文章位于 posts 子目录的情况），
+    // 相对路径据此拼 raw 地址预览；写入 frontmatter 的仍是原始相对路径
+    window.__editorCoverValue = fm.image || '';
+    window.__editorCoverDataUrl = '';
+    window.__editorCoverFilename = '';
+    if (fm.image && !fm.image.startsWith('data:')) {
+      var cf = fm.image.split('/').pop();
+      if (cf) window.__editorCoverFilename = cf;
+    }
+    var mdDir = 'src/content/posts';
+    // ⚠️ 原写法 replace(/\/[^/]*$/, '') 对【不含斜杠】的字符串不匹配，会原样返回，
+    //    导致顶层文章 slug='my-post.md' 时被推成目录 'src/content/posts/my-post'
+    //    → 封面 raw 地址拼错 → 明明存在的图显示"图片不可用"。
+    //    改用 lastIndexOf：只有真正含子目录时才追加。
+    var slugPath = String(opts.slug || '').replace(/\.mdx?$/i, '');
+    var lastSlash = slugPath.lastIndexOf('/');
+    if (lastSlash > -1) {
+      var slugDir = slugPath.substring(0, lastSlash);
+      if (slugDir) mdDir = 'src/content/posts/' + slugDir;
+    }
+    window.__editorCoverMdDir = mdDir;
+    // [方案3] 记录本文载入时正文已有的云端相对图文件名，预览对这些相对图拼 GitHub raw 显示（新写的相对图仍灰框）
+    // [OURS] 2026-09-16：只在"从仓库载入"时登记（opts.cloudImages !== false）。
+    //   本地导入的 md 里 ./images/* 必然不在仓库 → 登记了只会白发一次 raw 请求、再落到"图片不可用"，
+    //   表现为预览里"中性灰底 → 图片不可用"的跳变；不登记则渲染时直接判"不可用"，无跳变、无无效请求。
+    window.__editorCloudBodyImages = {};
+    if (opts.cloudImages !== false) {
+      var _cbiRe = /!\[[^\]]*\]\(\.\/images\/([^)]+)\)/g, _cbiM;
+      while ((_cbiM = _cbiRe.exec(body)) !== null) window.__editorCloudBodyImages[_cbiM[1]] = true;
+    }
+    if (typeof window.applyCover === 'function') {
+      window.applyCover(fm.image || '', { mdDir: mdDir });
+    }
+    if (textarea) textarea.value = body;
+    // 立即渲染预览：编辑区与预览同时出现——渲染最早发起，别让下面图预读的同步循环占用主线程推后预览
+    if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
+    // [方案A] 渲染之后再后台预读正文云端相对图尺寸，供后续(打字重建等)渲染占位用 aspect-ratio
+    if (opts.ratioPreload) {
+      var _ratioMap = window.__editorImageRatios = window.__editorImageRatios || {};
+      var _repoL = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
+      var _branchL = localStorage.getItem('gh-branch') || 'main';
+      Object.keys(window.__editorCloudBodyImages || {}).forEach(function(fn) {
+        var _im = new Image();
+        _im.onload = function() { try { if (_im.naturalWidth && _im.naturalHeight) _ratioMap[fn] = { w: _im.naturalWidth, h: _im.naturalHeight }; } catch(e) {} };
+        _im.onerror = function() {};
+        _im.src = 'https://raw.githubusercontent.com/' + _repoL + '/' + _branchL + '/' + mdDir + '/images/' + encodeURIComponent(fn);
+      });
+    }
+    return fm;
+  }
+  window.__editorApplyLoadedPost = applyLoadedPost;
+
   // [Editor] 编辑已有文章：从 ?slug 读取并载入正文（含 frontmatter 反向解析）
   // 在 initEditor 开头执行，填充后再让后续预览/面板逻辑生效
   (function loadFromSlug() {
@@ -741,102 +928,8 @@ function initEditor() {
           _endLoadingToast('⚠️ 文章加载失败：未找到该文章或无法访问仓库');
           return;
         }
-        var raw = d.content;
-        var fm = {};
-        var body = raw;
-        var m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-        if (m) {
-          body = raw.slice(m[0].length);
-          var lines = m[1].split(/\r?\n/);
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            var kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-            if (!kv) continue;
-            var key = kv[1];
-            var val = kv[2].trim();
-            if (val === '') { fm[key] = ''; continue; }
-            // 去掉首尾引号
-            if ((val[0] === '"' && val[val.length - 1] === '"') ||
-                (val[0] === "'" && val[val.length - 1] === "'")) {
-              val = val.slice(1, -1);
-            } else if (val[0] === '[' && val[val.length - 1] === ']') {
-              // 数组：[a, b] 或 ["a", "b"]
-              var inner = val.slice(1, -1);
-              val = inner.split(',').map(function(s) {
-                s = s.trim();
-                if ((s[0] === '"' && s[s.length - 1] === '"') ||
-                    (s[0] === "'" && s[s.length - 1] === "'")) s = s.slice(1, -1);
-                return s;
-              }).filter(Boolean).join(', ');
-            }
-            fm[key] = val;
-          }
-        }
-        var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
-        var setChecked = function(id, v) { var el = document.getElementById(id); if (el) el.checked = !!v; };
-        setVal('post-title', fm.title);
-        setVal('post-desc', fm.description);
-        setVal('post-category', fm.category);
-        setVal('post-tags', fm.tags);
-        setVal('post-cover', fm.image);
-        setVal('post-slug', slug);
-        setVal('post-url-slug', fm.slug);
-        setVal('post-published', fm.published);
-        setVal('post-updated', fm.updated);
-        setVal('post-password', fm.password);
-        setVal('post-password-hint', fm.passwordHint);
-        setChecked('chk-pinned', fm.pinned === 'true' || fm.pinned === true);
-        setChecked('chk-comment', !(fm.comment === 'false' || fm.comment === false));
-        setChecked('chk-draft', fm.draft === 'true' || fm.draft === true);
-        // 同步 checkbox 追踪变量（面板关闭后 DOM 不存在，发布时从其读取）
-        if (window.__editorMetaCheckbox) {
-          window.__editorMetaCheckbox.pinned = fm.pinned === 'true' || fm.pinned === true;
-          window.__editorMetaCheckbox.comment = !(fm.comment === 'false' || fm.comment === false);
-          window.__editorMetaCheckbox.draft = fm.draft === 'true' || fm.draft === true;
-        }
-        // 封面图统一处理：mdDir 由 API 返回的 slug 推导（支持文章位于 posts 子目录的情况），
-        // 相对路径据此拼 raw 地址预览；写入 frontmatter 的仍是原始相对路径
-        window.__editorCoverValue = fm.image || '';
-        window.__editorCoverDataUrl = '';
-        window.__editorCoverFilename = '';
-        if (fm.image && !fm.image.startsWith('data:')) {
-          var cf = fm.image.split('/').pop();
-          if (cf) window.__editorCoverFilename = cf;
-        }
-        var importMdDir = 'src/content/posts';
-        if (d.slug) {
-          // ⚠️ 原写法 replace(/\/[^/]*$/, '') 对【不含斜杠】的字符串不匹配，会原样返回，
-          //    导致顶层文章 slug='my-post.md' 时被推成目录 'src/content/posts/my-post'
-          //    → 封面 raw 地址拼错 → 明明存在的图显示"图片不可用"。
-          //    改用 lastIndexOf：只有真正含子目录时才追加。
-          var slugPath = String(d.slug).replace(/\.md$/i, '');
-          var lastSlash = slugPath.lastIndexOf('/');
-          if (lastSlash > -1) {
-            var slugDir = slugPath.substring(0, lastSlash);
-            if (slugDir) importMdDir = 'src/content/posts/' + slugDir;
-          }
-        }
-        window.__editorCoverMdDir = importMdDir;
-        // [方案3] 记录本文载入时正文已有的云端相对图文件名，预览对这些相对图拼 GitHub raw 显示（新写的相对图仍灰框）
-        window.__editorCloudBodyImages = {};
-        var _cbiRe = /!\[[^\]]*\]\(\.\/images\/([^)]+)\)/g, _cbiM;
-        while ((_cbiM = _cbiRe.exec(body)) !== null) window.__editorCloudBodyImages[_cbiM[1]] = true;
-        if (typeof window.applyCover === 'function') {
-          window.applyCover(fm.image || '', { mdDir: importMdDir });
-        }
-        if (textarea) textarea.value = body;
-        // 立即渲染预览：编辑区与预览同时出现——渲染最早发起，别让下面图预读的同步循环占用主线程推后预览
-        if (typeof window.__editorForcePreview === 'function') window.__editorForcePreview();
-        // [方案A] 渲染之后再后台预读正文云端相对图尺寸，供后续(打字重建等)渲染占位用 aspect-ratio
-        var _ratioMap = window.__editorImageRatios = window.__editorImageRatios || {};
-        var _repoL = localStorage.getItem('gh-repo') || 'GhostCmdr/Fireflyblog';
-        var _branchL = localStorage.getItem('gh-branch') || 'main';
-        Object.keys(window.__editorCloudBodyImages || {}).forEach(function(fn) {
-          var _im = new Image();
-          _im.onload = function() { try { if (_im.naturalWidth && _im.naturalHeight) _ratioMap[fn] = { w: _im.naturalWidth, h: _im.naturalHeight }; } catch(e) {} };
-          _im.onerror = function() {};
-          _im.src = 'https://raw.githubusercontent.com/' + _repoL + '/' + _branchL + '/' + importMdDir + '/images/' + encodeURIComponent(fn);
-        });
+        // 解析 + 回填 + 渲染统一走 applyLoadedPost（与「导入本地 MD」共用同一份逻辑）
+        applyLoadedPost(d.content, { slug: d.slug, ratioPreload: true });
         window.__editorLoadingPost = false;
         _endLoadingToast('✅ 文章已加载');
       })
@@ -917,7 +1010,7 @@ function initEditor() {
       im.addEventListener('error', function() {
         var alt = im.getAttribute('alt') || '';
         var box = document.createElement('div');
-        box.style.cssText = 'min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;';
+        box.style.cssText = _IMG_BOX_FAIL;
         box.textContent = '图片不可用';
         if (im.parentNode) im.parentNode.replaceChild(box, im);
       });
@@ -947,7 +1040,7 @@ function initEditor() {
       im.__editorErrHooked = true;
       im.addEventListener('error', function() {
         var box = document.createElement('div');
-        box.style.cssText = 'min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;';
+        box.style.cssText = _IMG_BOX_FAIL;
         box.textContent = '图片不可用';
         if (im.parentNode) im.parentNode.replaceChild(box, im);
       });
@@ -1153,9 +1246,9 @@ var _workerReady = false;
         if (!isResolvable) {
           // [Fix] 草稿图片恢复中：相对图先画中性灰底，不显示"图片不可用"（恢复完成后会强制重渲染）
           if (window.__editorImagesRestoring && /^\.\/images\//.test(String(img.src))) {
-            html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;"></div>';
+            html += '<div style="' + _IMG_BOX_BASE + '"></div>';
           } else {
-            html += '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;opacity:0.6;font-size:12px;text-align:center;">图片不可用</div>';
+            html += '<div style="' + _IMG_BOX_FAIL + '">图片不可用</div>';
           }
         } else {
           // [方案A] grid 云端相对图命中预读尺寸 → aspect-ratio 锁真实比例占位(去 min-height)；未命中回退 min-height:200px
@@ -1186,22 +1279,22 @@ var _workerReady = false;
         // [Fix] 草稿图片正在从 IndexedDB 恢复：相对图此刻尚不可解析，先画"中性灰底"（不带"图片不可用"文字），
         // 恢复完成后会强制重渲染，避免出现"图片不可用 → 瞬间变正常"的跳变
         if (window.__editorImagesRestoring && /^\.\/images\//.test(src)) {
-          return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;margin:8px 0;"></div>';
+          return _imgBlock('<div style="' + _IMG_BOX_BASE + '"></div>');
         }
-        return '<div style="min-height:200px;background:var(--line-divider, rgba(128,128,128,0.15));border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--font-color,#999);opacity:0.6;font-size:12px;text-align:center;margin:8px 0;">图片不可用</div>';
+        return _imgBlock('<div style="' + _IMG_BOX_FAIL + '">图片不可用</div>');
       }
       // [Fix] 本地 Base64 图（粘贴/拖拽/上传）：尺寸在上传时已记录 → 直接按"最终形态"渲染（自然宽 + 居中），
       // 跳过"满宽灰底 → 加载完成切自然宽"的尺寸跳变，消除预览整块闪动（远程 URL 图仍保留原有占位行为）。
       if (src.indexOf('data:') === 0) {
         var localHtml = '<img src="' + src + '" alt="' + alt + '" style="display:block;width:auto;height:auto;max-width:100%;margin:0 auto;border-radius:8px;" />';
         if (alt) localHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
-        return localHtml;
+        return _imgBlock(localHtml);
       }
       // [Editor 乙] 单行图：加载中 = 满宽灰底占位(不透明)；加载完成后由全局 load 捕获(仅 data-single、每图一次)切成自然宽：
       // 大图靠 max-width:100% 压到容器、窄图按真实宽并居中。代价=加载完成瞬间有一次从满宽到真实尺寸的校正。
       var imgHtml = '<img src="' + src + '" alt="' + alt + '" data-single="1" style="display:block;width:100%;height:auto;max-width:100%;min-height:200px;margin:0 auto;border-radius:8px;object-fit:cover;background:var(--line-divider, rgba(128,128,128,0.15));" />';
       if (alt) imgHtml += '\n<p style="font-size:12px;color:var(--font-color, #999);opacity:0.6;margin:4px 0 0;text-align:center;">' + alt + '</p>';
-      return imgHtml;
+      return _imgBlock(imgHtml);
     });
     // [B] 编辑器预览简版识别 admonition / ::github（不裸语法）；PlantUML 保留代码块显示
     md = md.replace(/^> \[!(\w+)\]\s*\n((?:^>.*\n?)+)/gm, function(m, type, body) {
@@ -1996,7 +2089,8 @@ var _workerReady = false;
       ? opts.published.split('T')[0]
       : new Date().toISOString().split('T')[0];
     fm += 'published: ' + publishedVal + '\n';
-    // [DateFields] updated 仅当显式传入(undefined 不写，如导出)才输出：有 YYYY-MM-DD 用手动值；空/其它 → 今天(策略 C)
+    // [DateFields] updated 仅当显式传入才输出（调用方传 undefined = 不写该字段）：
+    // 有 YYYY-MM-DD 用手动值；空/其它 → 今天（策略 C：发布与导出都走这里，规则只有一份）
     if (opts.updated !== undefined) {
       var updatedVal = opts.updated && /^\d{4}-\d{2}-\d{2}/.test(opts.updated)
         ? opts.updated.split('T')[0]
@@ -2062,6 +2156,27 @@ var _workerReady = false;
 
   var currentPanel = '';
 
+  // [2026-09-16] 面板滑出时把右下角悬浮控件（回到主页/回顶/沉浸/浮目录…）藏起来。
+  // 隐藏方式：直接套用主题自带的 `.hide`（见 components/common/FloatingButton.astro：
+  //   .floating-btn.hide = transform:scale(0.5) + opacity:0 + width/height/margin/padding 归零收起布局，
+  //   配父级 transition:all .3s）—— 不另写任何隐藏样式/动画，与"回到顶部"等按钮同一套表现。
+  // 只记录"本次被我们藏起来的"并在关闭面板时还原：回顶/回首页按钮自身的显隐由滚动位置与路由决定，
+  // 无脑 remove('hide') 会把本该隐藏的按钮点亮（或反之）。
+  var _floatingHiddenByPanel = [];
+  function hideFloatingForPanel() {
+    _floatingHiddenByPanel = [];
+    var kids = document.querySelectorAll('.floating-controls-container > *');
+    for (var i = 0; i < kids.length; i++) {
+      if (!kids[i].classList.contains('hide')) {
+        kids[i].classList.add('hide');
+        _floatingHiddenByPanel.push(kids[i]);
+      }
+    }
+  }
+  function restoreFloatingAfterPanel() {
+    for (var i = 0; i < _floatingHiddenByPanel.length; i++) _floatingHiddenByPanel[i].classList.remove('hide');
+    _floatingHiddenByPanel = [];
+  }
 
   function openPanel(name) {
     if (currentPanel === name && slidePanel.style.width === '288px') {
@@ -2139,7 +2254,7 @@ var _workerReady = false;
             syncCheckboxStyle(panel);
           }
         });
-        // [DateFields] 日期回填 + change 写回隐藏源 + 「今天」按钮（面板每次打开重建 DOM，故在此处绑定）
+        // [DateFields] 日期回填 + change 写回隐藏源（面板每次打开重建 DOM，故在此处绑定）
         var _dateOnly = function(v) {
           var d = String(v || '').split('T')[0].split(' ')[0];
           return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
@@ -2150,7 +2265,10 @@ var _workerReady = false;
         if (!document.getElementById('editor-date-empty-css')) {
           var _deStyle = document.createElement('style');
           _deStyle.id = 'editor-date-empty-css';
-          _deStyle.textContent = '#post-published-panel[data-empty="true"]::-webkit-datetime-edit, #post-updated-panel[data-empty="true"]::-webkit-datetime-edit { color: transparent; -webkit-text-fill-color: transparent; }';
+          // [DateFields] 加 :not(:focus)：聚焦输入过程中浏览器在"某段未输完/输成非法值"时会把 value 置空，
+          // 触发 change → data-empty=true → 原来会把 yyyy/mm/日 三段文字变透明，看起来"时间消失了"
+          //（再输数字又恢复）。聚焦时保持可见即可，只有失焦后的空态才透明。
+          _deStyle.textContent = '#post-published-panel[data-empty="true"]:not(:focus)::-webkit-datetime-edit, #post-updated-panel[data-empty="true"]:not(:focus)::-webkit-datetime-edit { color: transparent; -webkit-text-fill-color: transparent; }';
           document.head.appendChild(_deStyle);
         }
         if (!window.__editorDateTouched) window.__editorDateTouched = { 'post-published': false, 'post-updated': false };
@@ -2190,6 +2308,8 @@ var _workerReady = false;
     panelInner.style.display = 'flex';
     panelInner.style.flexDirection = 'column';
     panelInner.style.height = '100%';
+    // 面板已展开：把右下角悬浮控件藏起来（套用主题 .hide）
+    hideFloatingForPanel();
   }
 
   function closePanel() {
@@ -2204,6 +2324,8 @@ var _workerReady = false;
     panelContent.classList.remove('overflow-y-auto');
     panelContent.classList.add('overflow-hidden');
     // 按钮焦点环已由全局 CSS（button:focus-visible { outline:none }）统一处理，无需 JS blur
+    // 面板已收起：还原被我们藏起来的那些悬浮控件（只还原本次藏过的）
+    restoreFloatingAfterPanel();
   }
 
   // [Editor] 草稿缓存：避免每次操作都从 localStorage 读取+解析
@@ -2776,22 +2898,42 @@ var _workerReady = false;
   }
 
   // ─── 通用确认弹窗（替代浏览器原生 confirm，原生样式与编辑器风格不统一）───
-  // 用法：window.__editorConfirm({ title, message, okText }, function(){ /* 确认后执行 */ });
+  // 用法：window.__editorConfirm({ title, message, okText, onCancel }, function(){ /* 确认后执行 */ });
   var _confirmCallback = null;
+  // [OURS] 取消回调（可选）：给"必须收尾"的调用方用（如发布被迫中止时要复位状态/继续流程），
+  //   原先只有 onConfirm，调用方点取消后拿不到任何通知 → 会一直挂在"等待"状态。
+  var _confirmCancelCb = null;
+  var _confirmAccepted = false;   // 本次是"确认"还是"取消"（确认时关闭弹窗不能误触发取消回调）
   window.__editorConfirm = function(opts, onConfirm) {
     var modal = document.getElementById('confirm-modal');
     var titleEl = document.getElementById('confirm-modal-title');
     var msgEl = document.getElementById('confirm-modal-message');
     var okBtn = document.getElementById('confirm-modal-ok');
+    var iconEl = document.getElementById('confirm-modal-icon');
+    var noteEl = document.getElementById('confirm-modal-note');
     if (!modal || !msgEl) {
       // 兜底：弹窗元素缺失时退回原生 confirm
       if (onConfirm && window.confirm((opts && opts.message) || '')) onConfirm();
+      // [OURS] 原生 confirm 返回 false（取消）时也要通知调用方，否则调用方永远等不到结果
+      else if (opts && opts.onCancel) opts.onCancel();
       return;
     }
     if (titleEl) titleEl.textContent = (opts && opts.title) || '确认操作';
-    msgEl.textContent = (opts && opts.message) || '';
+    // [OURS] 危险操作可选显示统一警示图标（线条 SVG，替代 emoji）
+    if (iconEl) iconEl.classList.toggle('hidden', !(opts && opts.danger));
+    // [OURS] 可选 messageHtml：用于"结构化正文"（等宽路径块 + 小字提示），
+    //   仅当调用方自己转义了插值内容时才可用；不传时仍走 textContent（原行为完全不变）
+    if (opts && opts.messageHtml) msgEl.innerHTML = opts.messageHtml;
+    else msgEl.textContent = (opts && opts.message) || '';
+    // [OURS] 可选说明行：与「发布到 GitHub」弹窗底部 11px 灰字同规格（高度观感对齐）
+    if (noteEl) {
+      if (opts && opts.note) { noteEl.textContent = opts.note; noteEl.classList.remove('hidden'); }
+      else { noteEl.textContent = ''; noteEl.classList.add('hidden'); }
+    }
     if (okBtn && opts && opts.okText) okBtn.textContent = opts.okText;
     _confirmCallback = onConfirm || null;
+    _confirmCancelCb = (opts && opts.onCancel) || null;
+    _confirmAccepted = false;
     modal.classList.remove('hidden');
   };
   window.__editorCloseConfirm = function() {
@@ -2799,6 +2941,9 @@ var _workerReady = false;
     if (modal) modal.classList.add('hidden');
     // 按钮焦点环已由全局 CSS（button:focus-visible { outline:none }）统一处理，无需 JS blur
     _confirmCallback = null;
+    // [OURS] 不是"点了确认"就关掉的（点取消 / 点遮罩空白）→ 触发取消回调
+    if (!_confirmAccepted && _confirmCancelCb) { var _cc = _confirmCancelCb; _confirmCancelCb = null; _cc(); }
+    _confirmCancelCb = null;
   };
   // 按钮/遮罩事件一次性绑定（用 _confirmCallback 存回调，避免重复绑定累积）
   (function() {
@@ -2808,6 +2953,8 @@ var _workerReady = false;
     if (cCancel) cCancel.addEventListener('click', function() { window.__editorCloseConfirm(); });
     if (cOk) cOk.addEventListener('click', function() {
       var cb = _confirmCallback;
+      // [OURS] 先标记"已确认"再关闭：否则 closeConfirm 会把它当成"取消"触发 onCancel
+      _confirmAccepted = true;
       window.__editorCloseConfirm();
       if (cb) cb();
     });
@@ -3239,6 +3386,118 @@ var _workerReady = false;
   // 关闭按钮
   if (panelClose) panelClose.addEventListener('click', closePanel);
 
+  // 侧边栏导入MD按钮：选本地 .md → 走 applyLoadedPost 落地（与「编辑此文」同一份逻辑）
+  // 支持的 frontmatter 键与本站文章一致（title/slug/published/updated/description/category/
+  // tags/image/password/passwordHint/pinned/comment/draft）；无 frontmatter 的纯 md 也能导入。
+  var importBtn = document.getElementById('btn-import-md');
+  if (importBtn) importBtn.addEventListener('click', function() {
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.md,.markdown,.mdx,.txt,text/markdown,text/plain';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.addEventListener('change', function() {
+      var f = fileInput.files && fileInput.files[0];
+      // 用完即弃：input 不留在 DOM 里，避免多次点击堆积
+      try { document.body.removeChild(fileInput); } catch (e) {}
+      if (!f) return;
+      // 读文件：统一取字节 → 先按 UTF-8 解码；疑似非 UTF-8（GBK/GB18030，中文 Windows 常见：
+      // 记事本"另存为"、Word 导出的 txt、老编辑器）再换 gb18030 重解一次。
+      // 不这样做的后果：按 UTF-8 硬读会把整篇中文变成乱码/替换字符，而"导入成功"的提示照常出现 ✗
+      // 注：TextDecoder('utf-8') 默认会去掉 BOM（applyLoadedPost 里另有一层 BOM 兜底）。
+      var readFile = function(file, cb) {
+        var decode = function(buf) {
+          var txt = '';
+          try { txt = new TextDecoder('utf-8').decode(buf); } catch (e) { return cb(null); }
+          var bad = (txt.match(/\uFFFD/g) || []).length;
+          if (bad && bad / Math.max(1, txt.length) > 0.002) {
+            try {
+              var alt = new TextDecoder('gb18030').decode(buf);
+              if ((alt.match(/\uFFFD/g) || []).length < bad) txt = alt;
+            } catch (e) {}
+          }
+          cb(txt);
+        };
+        if (typeof file.arrayBuffer === 'function') {
+          file.arrayBuffer().then(decode).catch(function() { cb(null); });
+          return;
+        }
+        var fr = new FileReader();
+        fr.onload = function() { try { decode(fr.result); } catch (e) { cb(null); } };
+        fr.onerror = function() { cb(null); };
+        fr.readAsArrayBuffer(file);
+      };
+      // 导入动作（抽成函数：覆盖确认改走主题弹窗后，需要在弹窗回调里执行）
+      var _doImport = function() {
+        // 体量提示（不阻塞）：超大 md 会让预览渲染变慢，先告知用户
+        if (f.size > 1024 * 1024) {
+          if (typeof window.__editorShowToast === 'function') window.__editorShowToast('ℹ️ 文件较大（' + (f.size / 1048576).toFixed(1) + ' MB），预览可能较慢');
+        }
+        // 清掉"草稿图片正在恢复"标记：上一次草稿恢复若异常中断，该标记会残留，
+        // 导致导入后的相对图被渲染成"中性灰底"而不是"图片不可用"（看起来像没识别）
+        window.__editorImagesRestoring = false;
+        readFile(f, function(txt) {
+        if (txt == null) {
+          if (typeof window.__editorShowToast === 'function') window.__editorShowToast('⚠️ 文件读取失败，请重试');
+          return;
+        }
+        // 兜底标题用文件名（去扩展名）；slug 用完整文件名，与「编辑此文」传 query slug 的形态一致
+        var base = f.name.replace(/\.(md|markdown|mdx|txt)$/i, '') || 'imported';
+        // ⚠️ 作用域陷阱：applyLoadedPost 定义在 initEditor()（本页另一段脚本）里，与本节作用域相互独立，
+        //   直接按名字调用会 ReferenceError（表现为"导入失败：内容无法解析"，实为 is not defined）。
+        //   必须经 window 取用 —— 同 window.applyCover 的处理方式（那段注释已写明"各 script 作用域独立"）。
+        var applyFn = window.__editorApplyLoadedPost;
+        if (typeof applyFn !== 'function') {
+          if (typeof window.__editorShowToast === 'function') window.__editorShowToast('⚠️ 导入功能尚未就绪，请刷新页面后重试');
+          return;
+        }
+        var applied = null;
+        try {
+          // 文章路径规范化：与"发布"时的 slug 清洗规则保持一致（保留 a-z0-9 与中文，其余转 '-'），
+          // 否则 "我的 文章 (1).md" 之类会变成含空格/括号的 git 路径；
+          // 已是规范名的（导出→再导入的常见路径）清洗后不变，往返不受影响。
+          var _safeName = base.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
+          var safeSlug = (_safeName || 'imported') + '.md';
+          // cloudImages:false → 导入文件里的相对图不做 GitHub raw 探测，直接在预览里显示"图片不可用"
+          applied = applyFn(txt, { slug: safeSlug, fallbackTitle: base, ratioPreload: false, cloudImages: false });
+        } catch (err) {
+          // 回填/解析抛异常：把"真实原因"同时打到控制台和提示条——否则只看到一句
+          // "无法解析"，既不知道是解析还是 DOM 回填炸的，也无从排查。
+          console.error('[editor] 导入 MD 失败', err);
+          if (typeof window.__editorShowToast === 'function') {
+            window.__editorShowToast('⚠️ 导入失败：' + ((err && err.message) ? err.message : '内容无法解析'));
+          }
+          return;
+        }
+        // 明确交代"图片没跟过来"：md 里引用的相对路径图不在本站图库里（预览会是灰框），
+        // 需在编辑器里重新粘贴/上传，发布时才会一起传到仓库。
+        var relImgs = (txt.match(/!\[[^\]]*\]\((?!\s*(?:https?:|data:|blob:))[^)]+\)/g) || []).length;
+        var msg = '✅ 已导入 ' + ((applied && applied.title) || base);
+        if (relImgs > 0) msg += '，其中 ' + relImgs + ' 张相对路径图片需重新上传';
+        if (typeof window.__editorShowToast === 'function') window.__editorShowToast(msg);
+        });
+      };
+      // 覆盖确认：套用编辑器自带的主题确认弹窗（#confirm-modal / window.__editorConfirm），
+      // 替代浏览器原生 confirm（原生弹窗与编辑器风格不统一）。弹窗元素缺失时该函数会自行回退原生 confirm。
+      var curTitle = document.getElementById('post-title');
+      var curBody = document.getElementById('markdown-input');
+      if ((curTitle && curTitle.value.trim()) || (curBody && curBody.value.trim())) {
+        if (typeof window.__editorConfirm === 'function') {
+          window.__editorConfirm({
+            title: '导入 Markdown',
+            message: '导入会覆盖当前编辑区的标题、正文与元信息，确定继续？',
+            okText: '确定导入',
+          }, _doImport);
+        } else {
+          _doImport();
+        }
+      } else {
+        _doImport();
+      }
+    });
+    fileInput.click();
+  });
+
   // 侧边栏导出MD按钮
   var exportBtn = document.getElementById('btn-export-md');
   if (exportBtn) exportBtn.addEventListener('click', function() {
@@ -3256,7 +3515,10 @@ var _workerReady = false;
     // [Editor] 修复：导出 MD 此前漏传 slug/draft，导致下载文件缺 slug、draft 恒 false（与发布一致需显式传）
     var slug = getVal('post-url-slug').trim().toLowerCase()
       .replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
-    var fm = buildFrontmatter({ title: title, slug: slug, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment, draft: draft, published: getVal('post-published') });
+    // [DateFields] 导出与发布对齐：显式传 updated（手填值；留空 → 今天）。
+    // 曾顾虑"导出未发布的内容也被标今天"，但导出件是用于自查 / 发给他人 / 导入其它 MD 软件，
+    // 基本不会直接发布上站 → 不影响线上日期正确性；写了反而与「导入本地 MD」形成完整往返。
+    var fm = buildFrontmatter({ title: title, slug: slug, desc: desc, category: category, tags: tags, cover: cover, password: password, passwordHint: passwordHint, pinned: pinned, comment: comment, draft: draft, published: getVal('post-published'), updated: getVal('post-updated') });
     var textarea = document.getElementById('markdown-input');
     var blob = new Blob([fm + textarea.value], { type: 'text/markdown' });
     var a = document.createElement('a');
@@ -3451,6 +3713,9 @@ var _workerReady = false;
     var draft = metaCheckboxState.draft;
 
     var slug = title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
+    // [OURS] 兜底：标题全是符号（如 "!!!"）时清洗结果为空 → 会生成 src/content/posts/.md 这种隐藏文件。
+    //   用时间戳生成一个合法文件名，避免产出畸形路径。
+    if (!slug) slug = 'post-' + Date.now().toString(36);
     // [Editor] 编辑已有文章时用 post-slug（content collection 的 id，通常无扩展名）定位文件，避免生成新文件
     var existingSlug = getVal('post-slug');
     if (existingSlug && !/\.md$/i.test(existingSlug)) {
@@ -3517,6 +3782,11 @@ var _workerReady = false;
     // 先上传图片，最后发布文章（确保 Vercel 构建时所有文件已存在）
     var base64 = btoa(unescape(encodeURIComponent(fm + content)));
     var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/' + filename;
+    // [OURS] "已存在同名文章"确认弹窗用的两个状态：
+    //   _cancelled = 用户在弹窗里点了取消（后续 then 据此跳过"✅ 发布完成"、保留"已取消"提示）
+    //   _existed   = 目标文件在仓库里已存在（用于完成提示里讲清"已新建 / 已更新"）
+    var _cancelled = false;
+    var _existed = false;
 
     // 第一步：上传封面图（如果有）
     var coverDataUrl = window.__editorCoverDataUrl;
@@ -3565,26 +3835,93 @@ var _workerReady = false;
       if (!res.ok) return res.json().then(function(e) { throw new Error(e.message); });
       return res.json();
     }).then(function(existing) {
-      var body = {
-        message: (existing ? 'update' : 'post') + ': "' + title + '"',
-        content: base64,
-        branch: branch,
+      _existed = !!(existing && existing.sha);
+      var _relPath = filename.replace(/^src\/content\/posts\//, '');
+      // 写入动作（原样搬进函数：确认之后才执行）
+      var doPut = function() {
+        var body = {
+          message: (_existed ? 'update' : 'post') + ': "' + title + '"',
+          content: base64,
+          branch: branch,
+        };
+        if (existing && existing.sha) body.sha = existing.sha;
+        return fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': 'token ' + token,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
       };
-      if (existing && existing.sha) body.sha = existing.sha;
-      return fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-          'Authorization': 'token ' + token,
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+      // [OURS] 覆盖确认（无差别）：**只要目标文件已存在就弹一次**，由用户自己判断这次是
+      //   "有意更新这篇" 还是 "意外同名"。
+      //   为什么不做"来源判断"（编辑此文不弹、只有导入/新建才弹）：判定一旦有漏（例如以后新增
+      //   一个载入入口忘了打标记）就会**漏报 → 静默覆盖**；无差别确认没有判定，也就不存在误判。
+      //   代价是"有意更新时也多一次点击"，所以弹窗里必须显示**要覆盖哪个文件**，让人一眼认出
+      //   它是不是自己正在编辑的那篇。
+      if (!_existed) return doPut();
+      return new Promise(function(resolve) {
+        status.textContent = '⚠️ 等确认（已存在同名文章）...';
+        status.className = 'text-sm text-amber-500';
+        // [结构 / 高度对齐] 本弹窗与「发布到 GitHub」弹窗做成**同构**，高度自然一致（≈250px）：
+        //   标题 → [提示框] → 状态行(text-sm) → 11px 说明行 → 按钮
+        //   「发布到 GitHub」的提示框是 `#gh-publish-hint`（`flex ... gap-2 rounded-lg px-3 py-2.5` + 浅底 + 边框
+        //   + 左侧 10px 小标签 + 12px 说明），所以这里的"目标文件路径块"直接沿用同一套 class，
+        //   位置也放到标题正下方第一块（与它一致）。
+        //   注意：正文只占一行；14px 文案在 372px 正文宽里超过约 26 字就会折行 → 弹窗立刻比参照物高。
+        // 路径取自文件名/标题（属外部输入）→ 拼 HTML 前必须转义。
+        var _escHtml = function(s) {
+          return String(s).replace(/[&<>"']/g, function(c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        };
+        var _msgHtml =
+          '<div class="flex items-center gap-2 rounded-lg px-3 py-2.5 leading-[1.5] bg-red-50 border border-red-100 dark:bg-red-500/10 dark:border-red-500/20">' +
+            '<span class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500 text-white">目标文件</span>' +
+            '<span class="flex-1 min-w-0 text-xs leading-relaxed text-red-600 dark:text-red-300 break-all">src/content/posts/' + _escHtml(_relPath) + '</span>' +
+          '</div>' +
+          '<div class="mt-3 leading-5 text-amber-500">继续更新会覆盖已有文章。</div>';
+        window.__editorConfirm({
+          title: '已存在同名文章',
+          danger: true,
+          // 原生 confirm 兜底分支读的是 message（纯文本），所以两个都给
+          message: 'src/content/posts/' + _relPath + ' 已存在，继续更新会覆盖已有文章；原内容只能在 GitHub 提交历史里找回。',
+          messageHtml: _msgHtml,
+          // 说明行：样式与「发布到 GitHub」弹窗底部 11px 灰字同规格；这里承担"后果 + 核对提示"
+          note: '原内容只能在 GitHub 提交历史里找回；请核对上方路径。',
+          okText: '继续更新',
+          onCancel: function() {
+            _cancelled = true;
+            status.textContent = '已取消发布（未覆盖任何文章）';
+            status.className = 'text-sm text-amber-500';
+            resolve(null);
+          },
+        }, function() {
+          status.textContent = '⏳ 发布文章...';
+          status.className = 'text-sm text-blue-500';
+          resolve(doPut());
+        });
       });
     }).then(function(res) {
+      if (!res) return;   // 用户在确认弹窗里点了取消 → 本轮发布会话到此为止
       if (!res.ok) return res.json().then(function(e) { throw new Error(e.message || '发布失败'); });
       return res.json();
     }).then(function() {
-      status.textContent = '✅ 发布完成！';
+      if (_cancelled) return;   // 取消时保留"已取消发布"提示，不要被"发布完成"覆盖掉
+      // [OURS] 回填「文章路径」= 本次写入的文件：
+      //   修掉"新建发布 → 改标题 → 再发布"会按新标题重新算路径、又新建一篇
+      //   （同一篇文章在仓库里出现两个文件）的问题。回填后之后发布都写同一个文件，
+      //   标题怎么改都不再产生副本。
+      //   注意：回填**不会**让后续发布跳过覆盖确认（现在是无差别确认）——目标已存在仍会问一次。
+      var _rel = filename.replace(/^src\/content\/posts\//, '');
+      var _slugInput = document.getElementById('post-slug');
+      if (_slugInput) _slugInput.value = _rel;
+      // 讲清这次到底是"新建"还是"覆盖"，避免用户对同名/覆盖心里没底
+      status.innerHTML = '✅ 发布完成！' +
+        '<br><span style="font-size:12px;opacity:.7;">' + (_existed ? '已更新：' : '已新建：') +
+        'src/content/posts/' + _rel + '</span>';
       status.className = 'text-sm text-green-500';
     }).catch(function(e) {
       // 友好报错：发布失败最常见原因是 Token 无效（GitHub 原文 "Bad credentials"），不直接裸露

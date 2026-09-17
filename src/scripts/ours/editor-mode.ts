@@ -135,6 +135,13 @@ import { setWallpaperMode } from "@/utils/setting-utils";
       if (editorStyleEl) return;
       // 测量滚动条宽度
       var scrollbarWidth = measureScrollbarWidth();
+      // [2026-09-16] 把实测的滚动条宽度暴露成 CSS 变量，供"纯 CSS 侧"的 fixed 定位补齐。
+      // 背景：`.floating-btn` 容器是 `position: fixed; right: 1rem`，而 fixed 的包含块是"布局视口"，
+      //      布局视口宽 = 窗口宽 − 滚动条宽；编辑器页藏掉了根滚动条 → 布局视口宽了 sw，
+      //      同一个 right:1rem 在编辑器里就比其它页离窗口右缘近 sw（Windows ≈15px）→ 观感"位置不对"。
+      //      导航栏（#top-row）那处由 JS 直接写 right 已处理；其它 fixed 元素统一用这个变量补 sw。
+      // 只有一套测量值来源（measureScrollbarWidth），不要在 CSS 里硬写 15px。
+      document.documentElement.style.setProperty('--editor-scrollbar-width', scrollbarWidth + 'px');
       // 编辑器导航栏与主页"同宽同位置"（2026-09-15 重做：宽度交回 CSS，JS 只补"编辑器少一条滚动条"）
       // #top-row 宽度完全由上游 CSS 决定：`w-full xl:w-[92vw] max-w-(--page-width)`（HeaderTopRow.astro）。
       // 编辑器页把根滚动条藏了（ours/editor-shell.css），可用空间比主页宽 sw → mx-auto 居中后整体右移 sw/2。
@@ -226,6 +233,8 @@ import { setWallpaperMode } from "@/utils/setting-utils";
         _resizeRaf = requestAnimationFrame(function() {
           _resizeRaf = null;
           var sw2 = measureScrollbarWidth();
+          // 与进入编辑器时同一把尺子：窗口尺寸变化后同步刷新（缩放/系统滚动条设置可能变）
+          document.documentElement.style.setProperty('--editor-scrollbar-width', sw2 + 'px');
           var rightInset2 = sw2;
           var r = document.getElementById('top-row');
           if (r) {
@@ -281,6 +290,8 @@ import { setWallpaperMode } from "@/utils/setting-utils";
     function removeEditorModeLayout() {
       document.body.classList.remove('editor-page');
       document.documentElement.classList.remove('editor-page');
+      // 离开编辑器：撤掉为编辑器补的滚动条宽度变量（不留残留状态给其它页面）
+      document.documentElement.style.removeProperty('--editor-scrollbar-width');
       unfreezeWallpaper();
       if (editorStyleEl) { editorStyleEl.remove(); editorStyleEl = null; }
       if (editorResizeHandler) { window.removeEventListener('resize', editorResizeHandler); editorResizeHandler = null; }

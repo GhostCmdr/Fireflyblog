@@ -77,3 +77,60 @@ body.editor-enabled .edit-this-post-btn {
   content: none !important;
   display: none !important;
 }
+
+/* [OURS] 让「公告 / 站点统计 / 站点信息」只在主页显示（2026-09-16，用户要求）
+   ─────────────────────────────────────────────────────────────
+   为什么配置里做不到：上游的 `homePageOnly` 字段**已不被任何代码消费**（死代码，我们在
+   2026-09-14 清理时确认），配置里怎么写都不生效；现在侧栏唯一可用的开关是 `showOnPostPage`
+   （只控制"文章详情页"显不显示，归档/分类/标签/友链等列表页仍会显示）。
+   做法：
+     ① 主页标记：`Layout.astro` 给主页 <body> 加了 `is-home` 类 → 用 `body:not(.is-home)` 取反；
+     ② 组件钩子：侧栏组件统一渲染为自定义元素 `<widget-layout data-id="...">`
+        （announcement / site-stats / site-info；其它还有 categories / tags / music / calendar /
+         sidebarToc / profile / advertisement / dynamic，按需追加即可）。
+   注意：写在我们自己的样式文件里 → **上游更新不会覆盖**（上游只覆盖"指针"，不覆盖我们的文件）。
+   附注：`isHomePage()` 只认根路径 `/`，所以「主页第 2 页」（/page/2/）也会隐藏 —— 符合"只在主页显示"的字面含义。 */
+body:not(.is-home) widget-layout[data-id="announcement"],
+body:not(.is-home) widget-layout[data-id="site-stats"],
+body:not(.is-home) widget-layout[data-id="site-info"] {
+  display: none !important;
+}
+
+/* [OURS] 页脚只保留 RSS：隐藏 Atom / Sitemap 两个链接（2026-09-16，用户要求）
+   要点：
+   1. 只隐藏"页脚上的链接"，`/atom.xml` 与 `/sitemap-index.xml` **照常生成**
+      （订阅能力、搜索引擎收录**都不受影响**，只是页脚不再展示入口）。
+   2. 不改上游的 `components/layout/Footer.astro` —— 改它下次合并会被上游覆盖；
+      这里用属性选择器精确命中，并用 `span:has(+ a[...])` 把"RSS / Atom / Sitemap"
+      之间的分隔斜杠一并隐藏，避免页脚残留成 "RSS / /"。
+   3. 想恢复：删掉本段即可。 */
+footer.site-footer a[href$="atom.xml"],
+footer.site-footer a[href$="sitemap-index.xml"],
+footer.site-footer span[aria-hidden="true"]:has(+ a[href$="atom.xml"]),
+footer.site-footer span[aria-hidden="true"]:has(+ a[href$="sitemap-index.xml"]) {
+  display: none !important;
+}
+
+/* [OURS] 日期输入框的 📅 图标统一染色（2026-09-16）
+   覆盖 4 处：编辑器「文章信息」面板的发布时间 / 更新时间，以及相册的
+   「新建相册」(#new-album-date) / 「编辑相册」(#edit-album-date)。
+   原生 ::-webkit-calendar-picker-indicator 是黑色 SVG，深色主题下发黑、与主题色不搭。
+   做法：去掉原生背景图 → 用同形状 SVG 当 mask → 背景色取主题色 --primary。
+   用 mask + 背景色（而不是 filter）是因为本站主题色可配置，filter 无法跟随。
+   注：点开后的日历弹窗是浏览器原生 UI，颜色改不了；这里只改输入框右侧的小图标。 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  background-image: none;
+  background-color: var(--primary);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 2.5v4M16 2.5v4M3 10h18'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 2.5v4M16 2.5v4M3 10h18'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  cursor: pointer;
+  opacity: 1;
+}

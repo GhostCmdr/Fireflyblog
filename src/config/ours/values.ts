@@ -10,6 +10,9 @@
 
 type AnyObj = Record<string, any>;
 
+// 仅类型导入（无运行时代价）：给下面的数组加显式类型，确保结构写错时 astro check 能报出来
+import type { BooknavGroup } from "../../types/booknavConfig";
+
 /** 深合并：对象合并、数组替换、undefined=删除键 */
 export function mergeDeep<T extends AnyObj>(base: T, override: AnyObj | undefined): T {
 	if (!override) return base;
@@ -36,6 +39,11 @@ export const oursSiteConfig = {
 	site_url: "https://xiaomaisos.me",
 	description: "本站致力于研究生活中的埋学事件",
 	keywords: ["SOS团长", "地球Online资深玩家", "独狼玩家", "埋学生活"],
+	// 标签页图标（浏览器窗口左上角）：合并上游 6.16.x 时该键被上游默认值覆盖成 /favicon/firefly-32.png，
+	// 而我方原图标 public/favicon/favicon.ico 一直没被动过（blob 与合并前一致）→ 这里显式指回。
+	// 数组 → 整体替换（mergeDeep 语义），写一项即可，不依赖上游数组内容。
+	// 注：Layout.astro 对以 "/" 开头的 src 会走 url() 加 basePath，请勿改成 src/assets 相对路径。
+	favicon: [{ src: "/favicon/favicon.ico" }],
 	navbar: {
 		// 站点图标（src 目录，构建时自动优化）
 		logo: { value: "assets/images/xiaomai.png" },
@@ -47,8 +55,10 @@ export const oursSiteConfig = {
 		bilibili: true,
 		bangumi: false,
 	},
-	anime: {
-		bilibili: { uid: "114421126" },
+	// [OURS] 上游 6.16.x 已把 Bilibili 配置从旧结构 `anime.bilibili.uid` 迁到**顶层 `bilibili.uid`**；
+	// 我们原先仍写在旧键上 → 不生效，追番页用的是上游默认 uid(38932988)。2026-09-16 修正为顶层键。
+	bilibili: {
+		uid: "114421126",
 	},
 	// 文章列表布局：我方自定义了 meta / stats / tagsPosition / showStatsIcons 等显示控制项
 	postListLayout: {
@@ -104,6 +114,11 @@ export const oursMusicConfig = {
 	},
 };
 
+/* ────────────────────────── 共用链接常量 ────────────────────────── */
+// QQ 群分享链接较长且在两处使用（侧栏个人资料 links + 首页横幅 links），集中一处便于维护
+const QQ_GROUP_URL =
+	"https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0%3D&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info";
+
 /* ────────────────────────── backgroundWallpaper ────────────────────────── */
 export const oursBackgroundWallpaper = {
 	common: {
@@ -115,6 +130,33 @@ export const oursBackgroundWallpaper = {
 				"地球Online资深独狼玩家",
 				"享受生活，享受埋学",
 			],
+			// 首页横幅标题下方的链接按钮（数组 → 整体替换）。
+			// ⚠️ 上游 6.16.x 新增了这个 links 数组且默认指向 CuteLeaf（GitHub / Email / Sponsor / RSS），
+			//    合并时我方没有覆盖它 → 点开全是上游地址（2026-09-16 修）。
+			// 这里改为我方地址，与下方 oursProfileConfig.links 保持一致；图标名沿用上游的 Iconify 写法。
+			links: [
+				{
+					name: "GitHub",
+					icon: "fa7-brands:github",
+					url: "https://github.com/GhostCmdr",
+					showName: true,
+				},
+				{
+					name: "QQ群",
+					icon: "fa7-brands:qq",
+					url: QQ_GROUP_URL,
+				},
+				{
+					name: "Bilibili",
+					icon: "fa7-brands:bilibili",
+					url: "https://space.bilibili.com/114421126",
+				},
+				{
+					name: "RSS",
+					icon: "fa7-solid:rss",
+					url: "/rss/",
+				},
+			],
 		},
 	},
 };
@@ -124,23 +166,26 @@ export const oursBackgroundWallpaper = {
 export const oursProfileConfig = {
 	name: "小埋SOS团长",
 	bio: "地球Online资深独狼玩家",
+	// ⚠️ 数组顺序 = 侧栏个人资料里图标的显示顺序（从左到右）
+	// 2026-09-16：按用户要求互换 GitHub 与 QQ，再互换 QQ 与 Bilibili
+	// 现顺序：GitHub → QQ → Bilibili → RSS（与首页横幅标题下方的 links 顺序保持一致）
 	links: [
+		{
+			name: "GitHub",
+			icon: "fa7-brands:github",
+			url: "https://github.com/GhostCmdr",
+			showName: false,
+		},
 		{
 			name: "qq",
 			icon: "fa7-brands:qq",
-			url: "https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0%3D&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info",
+			url: QQ_GROUP_URL,
 			showName: false,
 		},
 		{
 			name: "Bilibili",
 			icon: "fa7-brands:bilibili",
 			url: "https://space.bilibili.com/114421126",
-			showName: false,
-		},
-		{
-			name: "GitHub",
-			icon: "fa7-brands:github",
-			url: "https://github.com/GhostCmdr",
 			showName: false,
 		},
 		{
@@ -181,6 +226,124 @@ export const oursFriendsConfig = [
 	},
 ];
 
+/* ────────────────────────── booknavConfig（书签导航页 /booknav/）────────────────────────── */
+// 数组 → 整体替换（与 friendsConfig 同一套做法：上游的示例书签不再使用）
+// 分组按 weight 降序排列，组内条目同样按 weight 降序（权重越大越靠前）
+// 条目不填 icon → 由 booknavPageConfig.favicon.api 自动抓目标站点图标（当前已启用）
+export const oursBooknavConfig: BooknavGroup[] = [
+	{
+		id: "dev",
+		name: "开发",
+		icon: "material-symbols:code-rounded",
+		desc: "写代码时常用的站点",
+		weight: 100,
+		items: [
+			{
+				title: "GitHub",
+				url: "https://github.com/",
+				desc: "全球最大的代码托管平台",
+				weight: 10,
+			},
+			{
+				title: "VScode",
+				url: "https://code.visualstudio.com/",
+				desc: "Visual Studio Code 代码编辑器",
+				weight: 9,
+			},
+			{
+				title: "JETBRAINS",
+				url: "https://www.jetbrains.com.cn/",
+				desc: "JetBrains 全家桶（IDEA / PyCharm / WebStorm…）",
+				weight: 8,
+			},
+		],
+	},
+	{
+		id: "ai",
+		name: "AI工具",
+		icon: "material-symbols:smart-toy",
+		desc: "常用大模型与 AI 工具",
+		weight: 90,
+		items: [
+			{
+				title: "DeepSeek",
+				url: "https://chat.deepseek.com/",
+				desc: "DeepSeek 对话",
+				weight: 10,
+			},
+			{
+				title: "ChatGPT",
+				url: "https://chatgpt.com/",
+				desc: "OpenAI ChatGPT",
+				weight: 9,
+			},
+			{
+				title: "Claude",
+				url: "https://claude.ai/downloads",
+				desc: "Anthropic Claude（下载页）",
+				weight: 8,
+			},
+			{
+				title: "WorkBuddy",
+				url: "https://www.workbuddy.cn/app",
+				desc: "AI 效率工具",
+				weight: 7,
+			},
+			{
+				title: "MiMo",
+				url: "https://mimo.mi.com/",
+				desc: "小米 MiMo 大模型",
+				weight: 6,
+			},
+		],
+	},
+	{
+		id: "anime",
+		name: "动漫",
+		icon: "material-symbols:movie",
+		desc: "追番与在线动漫",
+		weight: 80,
+		items: [
+			{
+				title: "Bilibili",
+				url: "https://www.bilibili.com/",
+				desc: "哔哩哔哩弹幕网",
+				weight: 10,
+			},
+			{
+				title: "樱花动漫",
+				url: "https://www.yinhuadm.one/",
+				desc: "在线动漫",
+				weight: 9,
+			},
+			{
+				title: "次元城动漫",
+				url: "https://www.cycani.org/",
+				desc: "在线动漫",
+				weight: 8,
+			},
+			{
+				title: "OmoFun动漫",
+				url: "https://www.omofuns.com/",
+				desc: "在线动漫",
+				weight: 7,
+			},
+			{
+				title: "AGE动漫",
+				url: "https://rentry.org/agefans",
+				desc: "AGE 动漫地址发布页",
+				weight: 6,
+			},
+			{
+				title: "片库网",
+				url: "https://www.988lm.com",
+				desc: "在线影视",
+				weight: 5,
+			},
+		],
+	},
+];
+
 /* ────────────────────────── sidebarConfig ────────────────────────── */
 // 数组 → 整体替换（左右侧栏与移动端底部组件的启用/顺序由我方完全掌控）
 // 注意：不含已废弃的 homePageOnly 字段（2026-09-14 决定删除）
@@ -205,6 +368,12 @@ export const oursSidebarConfig = {
 		{ type: "stats", enable: true, position: "sticky", showOnPostPage: false },
 	],
 	rightComponents: [
+		// [OURS] 最新动态（上游新增侧栏组件，2026-09-16 启用）：右栏第一块、在音乐播放器上方。
+		// position: "top" = 不吸附（随页面滚动看，滚上去就离开视口）；默认显示最近 3 条
+		// （未配 specificConfig.dynamic.limit → 组件默认 3 条）。
+		// 数据来自 /api/dynamic.json（由 src/content/dynamic/*.md 生成）：
+		// 当前动态为空（上游示例已清）→ 会显示空态「还没有发布动态」，发一条动态后即有内容。
+		{ type: "dynamic", enable: true, position: "top", showOnPostPage: true },
 		{ type: "music", enable: true, position: "sticky", showOnPostPage: true },
 		{
 			type: "calendar",
@@ -266,6 +435,8 @@ export const oursSidebarConfig = {
 		},
 	],
 	mobileBottomComponents: [
+		// [OURS] 最新动态：与桌面右栏一致放到最前（移动端底部栏没有 position 字段）
+		{ type: "dynamic", enable: true, showOnPostPage: true },
 		{ type: "profile", enable: true, showOnPostPage: true },
 		{ type: "announcement", enable: true, showOnPostPage: true },
 		{ type: "music", enable: true, showOnPostPage: true },
@@ -308,17 +479,32 @@ export const oursNavBarConfig = {
 				{ name: "写文章", url: "/editor/", icon: "material-symbols:edit-note" },
 			],
 		},
-		{ name: "友链", url: "/friends/", icon: "material-symbols:group", pageKey: "friends" },
-		{ name: "留言", url: "/guestbook/", icon: "material-symbols:chat", pageKey: "guestbook" },
+		// [OURS] 社交分组：与上游结构一致（上游 navBarConfig 的「社交」= 友链 + 留言）
+		{
+			name: "社交",
+			url: "#",
+			icon: "material-symbols:group",
+			children: [
+				{ name: "友链", url: "/friends/", icon: "material-symbols:link-2-rounded", pageKey: "friends" },
+				{ name: "留言", url: "/guestbook/", icon: "material-symbols:chat", pageKey: "guestbook" },
+			],
+		},
 		{
 			name: "我的",
 			url: "#",
 			icon: "material-symbols:person",
 			children: [
+				// [OURS] 动态（上游新增页面）：数据由 src/pages/api/dynamic.json.ts 从
+				// src/content/dynamic/*.md 生成，入口之前一直缺失（我方自定义导航没列它）
+				{ name: "动态", url: "/dynamic/", icon: "material-symbols:forum-rounded", pageKey: "dynamic" },
+				// [OURS] 项目展示（上游新增页面）：入口之前缺失；内容由 src/content/projects/*.md 提供
+				{ name: "项目", url: "/projects/", icon: "material-symbols:rocket-launch", pageKey: "projects" },
 				{ name: "相册", url: "/gallery/", icon: "material-symbols:photo-library", pageKey: "gallery" },
-				// [OURS] 上游已把 /anime/ 拆为 /bilibili/(哔哩哔哩) 等页面 → 追番指向新路由
-				{ name: "追番", url: "/bilibili/", icon: "fa7-brands:bilibili", pageKey: "bilibili" },
+				// [OURS] 上游已把 /anime/ 拆为 /bilibili/ 等页面；名称对齐上游预设「哔哩哔哩」（2026-09-16）
+				{ name: "哔哩哔哩", url: "/bilibili/", icon: "fa7-brands:bilibili", pageKey: "bilibili" },
 				{ name: "番组计划", url: "/bangumi/", icon: "material-symbols:movie", pageKey: "bangumi" },
+				// [OURS] 书签导航（上游新增页面）：pageKey 会让该入口随 siteConfig.pages.booknav 自动显隐
+				{ name: "书签导航", url: "/booknav/", icon: "material-symbols:bookmarks", pageKey: "booknav" },
 			],
 		},
 		{
