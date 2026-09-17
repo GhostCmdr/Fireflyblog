@@ -3,23 +3,31 @@
  * [OURS] 上游更新体检报告 —— 每次拉取上游前/后跑一次，把"玄学合并"变成"看报告"
  * ─────────────────────────────────────────────────────────────────────────────
  * 用法：
- *   node scripts/ours/upstream-report.mjs [--base <ref>] [--target <ref>] [--fetch] [--out <file>]
+ *   node scripts/ours/upstream-report.mjs [--base <ref>] [--target <ref>] [--snapshot <ref>] [--fetch] [--out <file>]
  *
- *   --base    对比基准，默认 HEAD
- *   --target  上游目标，默认 upstream/master（退化时自动试 upstream/main）
- *   --fetch   先 git fetch upstream --tags（报告会更准）
- *   --out     报告输出路径，默认 .backups/upstream-report-<时间戳>.md
+ *   --base     对比基准，默认 HEAD（语义＝"我方分支相对上游"）
+ *   --target   上游目标，默认 upstream/master（退化时自动试 upstream/main）
+ *   --snapshot 第七节（默认值变化）的对比基准，默认自动探测最近的 `backup-*` tag 或 `backup/pre-upstream-port-*` 分支，
+ *              都没有则退回 --base。语义＝"上次合并的基线"，与 --base 不同（见第七节顶部说明）
+ *   --fetch    先 git fetch upstream --tags（报告会更准）
+ *   --out      报告输出路径，默认 .backups/upstream-report-<时间戳>.md
  *
- * 报告内容（六节）：
+ * 报告内容（七节）：
  *   一、上游提交摘要（按 feat/fix/perf/refactor… 分组，带 hash/日期/作者）← 你要的"上游这次加了什么"
  *   二、新功能开关表（上游新增的配置键 → 是否已被我方 ours/ 覆盖 → 建议动作）
  *   三、配置文件键级变化（新增/删除，逐文件）
  *   四、我方 ours 覆盖健康度（hook 是否还在 / 覆盖的键是否还存在＝键搬家检测）
  *   五、改动文件清单（含"与我方定制同路径"的冲突预警）
  *   六、依赖版本变化（dependencies / devDependencies）
+ *   七、默认值变化（快照 → 当前工作区）＝"上游悄悄改默认值"导致的静默回归
+ *      （第三节只查"键新增/删除"，**查不到"键还在但值被改了"**；历史踩坑：musicConfig.showLyrics
+ *       被上游由 true 改 false → 播放器歌词按钮消失；displaySettingsConfig.enable → 设置面板消失）
  *
- * ⚠️ 说明：这是"启发式"报告工具（键提取按"行首 1 个 Tab 的 `键:`"识别，深度只到第一层），
- *    用于**提示风险与待评估项**，不是精确 diff。结论请人工确认后再动手。
+ * ⚠️ 说明：这是"启发式"报告工具（键提取按"行首 1 个 Tab 的 `键:`"识别，深度只到第一层；
+ *    第七节按"缩进栈"还原点路径、只比标量值），用于**提示风险与待评估项**，不是精确 diff。
+ *    第七节的已知局限：① 数组项会被误当键（如 galleryConfig.albums.id）② 多行对象 / 模板字符串 /
+ *    `as` 类型断言解析不到 → 可能漏报 ③ 只扫 `src/config/`，`src/constants/`（如自动生成的 lqips.json）
+ *    等**不在范围内** ⇒ **不代表全站已查**。结论请人工确认后再动手。
  * ⚠️ 本文件属我方工具（scripts/ours/），不修改 package.json（避免与上游冲突）：
  *    想加 npm script 请自行在 package.json 里加 "upstream:report": "node scripts/ours/upstream-report.mjs --fetch"。
  */
@@ -72,6 +80,37 @@ if (!git(["rev-parse", "--verify", "--quiet", target], { allowFail: true })) {
 const targetShort = git(["rev-parse", "--short", target]);
 const baseShort = git(["rev-parse", "--short", base]);
 const targetDate = git(["log", "-1", "--format=%ad", "--date=short", target]);
+
+// ── 0.2 第七节的对比基准（"上次合并的基线"）────────────────────────
+// 为什么需要单独一个基准：第一/二/三/五/六节都走 `base..target`（我方分支 vs 上游），
+// 那样得到的是"上游改了什么"；而第七节要回答的是"**我上次合并时的基线 vs 我现在工作区实际用的值**"——
+// 两者语义不同，混用会得出误导结论，所以这里单独解析。
+// 优先级：--snapshot 显式指定 > 自动探测最近的 backup-* tag > 自动探测 backup/pre-upstream-port-* 分支 >
+// 退回 --base（并在报告里注明"未找到快照"，避免把结果误当成"快照对比"）。
+function detectSnapshot() {
+	const tags = git(["tag", "-l", "backup-*", "--sort=-creatordate"], { allowFail: true });
+	const tag = tags ? tags.split("\n").map((s) => s.trim()).filter(Boolean)[0] : "";
+	if (tag) return { ref: tag, how: "自动探测：最近的 backup-* tag" };
+	const brs = git(["for-each-ref", "--format=%(refname:short)", "--sort=-creatordate", "refs/heads/backup/"], {
+		allowFail: true,
+	});
+	const br = brs ? brs.split("\n").map((s) => s.trim()).filter(Boolean)[0] : "";
+	if (br) return { ref: br, how: "自动探测：backup/ 下最近的分支" };
+	return null;
+}
+let snapshot = opt("snapshot", null);
+let snapshotHow = "由 --snapshot 显式指定";
+if (!snapshot) {
+	const detected = detectSnapshot();
+	if (detected) {
+		snapshot = detected.ref;
+		snapshotHow = detected.how;
+	} else {
+		snapshot = base;
+		snapshotHow = "⚠️ 未找到备份快照，退回 --base 对照（结果仅供参考）";
+	}
+}
+const snapshotShort = git(["rev-parse", "--short", snapshot], { allowFail: true }) || snapshot;
 
 /* ── 1. 提交摘要（按 conventional commit 类型分组）───────────────── */
 const CONV = /^([a-zA-Z]+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/;
@@ -223,6 +262,91 @@ for (const name of Object.keys(mine)) {
 	oursHealth.push({ name, file, missing, note: missing.length ? "上游该键已不存在（疑似改名/删除/搬家）" : "" });
 }
 
+/* ── 4.5 默认值变化（第七节数据：快照 → 当前工作区）──────────────── */
+// 只做一件事：找出"上次合并基线里存在、当前工作区里**同一路径但值不同**"的标量项。
+// 为什么比的是"工作区"而不是 target 版本：本节要回答"我现在实际用的值有没有被悄悄改掉"，
+// 而上游文件里的值只是默认值（我方可能已覆盖）⇒ 工作区文件才是真实来源。
+// 键的新增/删除/改名由第三节负责，本节只管"值变化"，两节职责不重叠。
+// 开关类键名识别。⚠️ 必须含"前缀式"命名（如 showLyrics / enableXxx），
+// 首版写成精确 `show`／`enable` 会漏掉 showLyrics —— 那正是本节要抓的那个案例（自测抓出的漏洞）。
+const SWITCH_KEY_RE = /^(?:enable[\w$]*|show[\w$]*|hide[\w$]*|is[A-Z][\w$]*|[\w$]*Switchable|[\w$]*Enabled|[\w$]*Enable)$/;
+function scalarPaths(src) {
+	const map = new Map();
+	if (!src) return map;
+	const stack = [];
+	for (const raw of src.split(/\r?\n/)) {
+		// tab 统一折算成 2 空格再比缩进：本项目配置用 tab，混用空格会把层级算错
+		const line = raw.replace(/\t/g, "  ");
+		const m = line.match(/^\s*([A-Za-z_$][\w$]*)\s*:\s*(.*)$/);
+		if (!m) continue;
+		const indent = line.search(/\S/);
+		while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+		const key = m[1];
+		const val = m[2].replace(/,\s*$/, "").trim();
+		if (val === "" || /^[[{]/.test(val)) {
+			// 进入对象/数组：只记路径，不进值表。把"是不是数组"也记下来 ——
+			// 数组项（如 leftComponents[].showOnPostPage）会被本启发式当成键，属已知误报，
+			// 后面据此把它们从 7.1 低噪音视图里剔除，只在 7.2 标注展示。
+			stack.push({ indent, key, isArray: val.startsWith("[") });
+			continue;
+		}
+		// 函数式赋值 / 类型注解行不是"上游默认值"，跳过（否则会大量误报）
+		if (/=>|\bmergeDeep\b|\bresolve[A-Z]|^ours|^_base/.test(val)) continue;
+		map.set([...stack.map((s) => s.key), key].join("."), { val, fromArray: stack.some((s) => s.isArray) });
+	}
+	return map;
+}
+// 覆盖判定：严格＝同一上游文件对应的 ours 块里含该键（第一层键有效，与第二节判定方式一致）；
+// 退化＝键名出现在 values.ts 任意位置（嵌套键只能这样粗判）→ 标"疑似覆盖、需人工确认"
+function coverageOf(file, dotPath) {
+	const leaf = dotPath.split(".").pop();
+	const strict = Object.entries(mine)
+		.filter(([n, keys]) => keys.has(leaf) && hookMap[n] === file)
+		.map(([n]) => n);
+	if (strict.length) return { state: "covered", by: strict.join("、") };
+	const loose = new RegExp(`(^|[^\\w$])${leaf}\\s*:`, "m").test(valuesSrc);
+	return loose ? { state: "maybe", by: "" } : { state: "none", by: "" };
+}
+const defaultChanges = [];
+{
+	const listed = git(["ls-tree", "-r", "--name-only", snapshot, "--", "src/config"], { allowFail: true });
+	const files = (listed || "")
+		.split("\n")
+		.map((s) => s.trim())
+		.filter((f) => f.endsWith(".ts") && !f.includes("/ours/"));
+	for (const file of files) {
+		const abs = path.join(CWD, file);
+		if (!fs.existsSync(abs)) continue; // 快照有、工作区已无 → 属"文件级变化"，由第五节清单体现
+		const oldSrc = git(["show", `${snapshot}:${file}`], { allowFail: true });
+		if (!oldSrc) continue;
+		const before = scalarPaths(oldSrc);
+		const after = scalarPaths(fs.readFileSync(abs, "utf8"));
+		for (const [dotPath, o] of before) {
+			const n = after.get(dotPath);
+			if (!n) continue;
+			if (n.val === o.val) continue;
+			const leaf = dotPath.split(".").pop();
+			const fromArray = o.fromArray || n.fromArray;
+			// 数组项一律不算"开关类"：它们本来就属已知误报，不能进 7.1 低噪音视图（否则噪音又回来了）
+			const isSwitch =
+				!fromArray && SWITCH_KEY_RE.test(leaf) && /^(true|false)$/.test(o.val) && /^(true|false)$/.test(n.val);
+			defaultChanges.push({
+				file,
+				key: dotPath,
+				old: o.val,
+				now: n.val,
+				isSwitch,
+				fromArray,
+				...coverageOf(file, dotPath),
+			});
+		}
+	}
+	// 开关类排前面：它们才是"功能被悄悄关掉"的高发区，方便一眼扫到
+	defaultChanges.sort((a, b) => (a.isSwitch === b.isSwitch ? a.key.localeCompare(b.key) : a.isSwitch ? -1 : 1));
+}
+const switchRows = defaultChanges.filter((r) => r.isSwitch);
+const switchUncovered = switchRows.filter((r) => r.state !== "covered");
+
 /* ── 5. 依赖版本变化 ─────────────────────────────────────────────── */
 function depsOf(ref) {
 	const txt = git(["show", `${ref}:package.json`], { allowFail: true });
@@ -348,7 +472,68 @@ if (depChanged.length) {
 	L.push(`- 版本变化：`);
 	for (const k of depChanged) L.push(`  - \`${k}\`：${depsBase[k]} → ${depsTarget[k]}`);
 }
+L.push(`## 七、默认值变化（快照 → 当前工作区）`);
 L.push("");
+L.push(`- 对比：\`${snapshot}\` (${snapshotShort}) **${snapshotHow}** → 当前工作区文件`);
+L.push(`  （比工作区而非 target：工作区才是"我现在实际用的值"；上游文件里的只是默认值）`);
+L.push(
+	`- 共 **${defaultChanges.length}** 处标量默认值变化，其中**开关类布尔键 ${switchRows.length} 处**（未确认覆盖 ${switchUncovered.length} 处＝未覆盖 ${switchRows.filter((r) => r.state === "none").length} + 疑似 ${switchRows.filter((r) => r.state === "maybe").length}）`,
+);
+L.push("");
+if (!defaultChanges.length) {
+	L.push("_（未检测到默认值变化）_");
+	L.push("");
+} else {
+	L.push("### 7.1 开关类布尔键（功能开关，最需要人工判断）");
+	L.push("");
+	if (!switchRows.length) {
+		L.push("_（无开关类默认值变化）_");
+		L.push("");
+	} else {
+		L.push("| 键（点路径） | 文件 | 旧 → 新 | 我方覆盖 | 建议 |");
+		L.push("|---|---|---|---|---|");
+		for (const r of switchRows) {
+			const cover = r.state === "covered" ? `✅ ${r.by}` : r.state === "maybe" ? "❓ 疑似覆盖（同名键，需确认）" : "❌ 未覆盖";
+			const advice =
+				r.state === "covered"
+					? "已固定在我方 → 上游再改也影响不到你（确认上游语义未变即可）"
+					: "**会跟随上游**：若这正是你要的行为则无需处理，否则写进 `src/config/ours/values.ts` 固定";
+			L.push(`| \`${r.key}\` | ${r.file} | \`${r.old}\` → \`${r.now}\` | ${cover} | ${advice} |`);
+		}
+		L.push("");
+	}
+	const others = defaultChanges.filter((r) => !r.isSwitch);
+	L.push("### 7.2 其它标量值变化（多为美化/文案，通常随上游即可）");
+	L.push("");
+	if (!others.length) {
+		L.push("_（无）_");
+		L.push("");
+	} else {
+		L.push(`共 ${others.length} 处，展开查看：`);
+		L.push("");
+		L.push("<details><summary>展开其它值变化</summary>");
+		L.push("");
+		L.push("| 键（点路径） | 文件 | 旧 → 新 | 我方覆盖 |");
+		L.push("|---|---|---|---|");
+		for (const r of others) {
+			const cover = r.state === "covered" ? `✅ ${r.by}` : r.state === "maybe" ? "❓ 疑似（同名键）" : "❌ 未覆盖";
+			// 数组项标记出来：本节的启发式会把数组项当键（已知误报），标了才不会被当成真变化
+			const arrMark = r.fromArray ? " ⚠️数组项(可能误报)" : "";
+			L.push(`| \`${r.key}\`${arrMark} | ${r.file} | \`${r.old}\` → \`${r.now}\` | ${cover} |`);
+		}
+		L.push("");
+		L.push("</details>");
+		L.push("");
+	}
+	L.push("### 7.3 本节的已知局限（务必知道，别当成「已全查」）");
+	L.push("");
+	L.push("- **会误报**：数组项会被当成键（如 `galleryConfig.albums.id`、`sidebarConfig.leftComponents.type`）；");
+	L.push("- **会漏报**：多行对象、模板字符串、`as` 类型断言等写法解析不到；");
+	L.push("- **覆盖不全**：只扫 `src/config/`，`src/constants/`（如自动生成的 `lqips.json`）等不在范围内；");
+	L.push("- 因此本节是**提示清单**、不是权威结论 → 拿不准就人工打开两个版本的文件对比。");
+	L.push("");
+}
+
 L.push("---");
 L.push("");
 L.push("## 下一步建议（固定动作）");
@@ -357,7 +542,10 @@ L.push("1. 先看【一】的 feat 段：逐条判断是否要开启/适配；�
 L.push("2. 看【四】失配项：把上游改名/删掉的键在 `src/config/ours/values.ts` 里改到新路径（**键搬家是历史高频坑**）。");
 L.push("3. 看【五】冲突预警：与我方同路径的改动，合并时一律保我方，再人工比对上游意图。");
 L.push("4. 看【六】：依赖大版本（major 变化）单独评估，别顺手升。");
-L.push("5. 合并后必跑：`pnpm exec astro check` + `pnpm run build`（改过 remark/rehype 插件要先删 `node_modules/.astro`）。");
+L.push(
+	"5. **看【七】7.1 开关类未覆盖项**：这是「上游改默认值把功能悄悄关掉」的高发区（曾导致播放器歌词按钮、设置面板消失）→ 逐条判断是否写进 `src/config/ours/values.ts` 固定。**只有写进 ours 才是免疫，本报告只负责提醒。**",
+);
+L.push("6. 合并后必跑：`pnpm exec astro check` + `pnpm run build`（改过 remark/rehype 插件要先删 `node_modules/.astro`）。");
 
 const md = L.join("\n");
 const outPath = opt("out", path.join(".backups", `upstream-report-${stamp}.md`));
@@ -374,4 +562,11 @@ const badOurs = oursHealth.filter((h) => !h.file || h.missing.length);
 if (badOurs.length) process.stdout.write(`⚠️ ours 覆盖失配 ${badOurs.length} 处：${badOurs.map((h) => h.name).join("、")}\n`);
 if (conflictRisk.length) process.stdout.write(`⚠️ 与我方同路径改动 ${conflictRisk.length} 个文件\n`);
 if (depAdded.length || depRemoved.length || depChanged.length) process.stdout.write(`依赖：+${depAdded.length} / -${depRemoved.length} / ~${depChanged.length}\n`);
+if (defaultChanges.length) {
+	const swNone = switchRows.filter((r) => r.state === "none").length;
+	const swMaybe = switchRows.filter((r) => r.state === "maybe").length;
+	process.stdout.write(
+		`⚠️ 默认值变化 ${defaultChanges.length} 处｜开关类 ${switchRows.length} 处（未覆盖 ${swNone} / 疑似 ${swMaybe}）→ 见报告第七节\n`,
+	);
+}
 process.stdout.write(`\n📄 完整报告：${outPath}\n`);
