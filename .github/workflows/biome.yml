@@ -1,10 +1,16 @@
 name: Code quality
 
 on:
+  # [OURS] 2026-09-18：发文（只改 src/content/**）时不必跑 lint ⇒ 跳过，减少无意义 CI ✓
+  # 注意 paths-ignore 语义：仅当**本次推送的全部变更文件**都匹配时才跳过 ✓（动了代码照样跑 ✓）
   push:
     branches: [ main ] # Adjust branches as needed
+    paths-ignore:
+      - 'src/content/**'
   pull_request:
     branches: [ main ] # Adjust branches as needed
+    paths-ignore:
+      - 'src/content/**'
 
 jobs:
   quality:

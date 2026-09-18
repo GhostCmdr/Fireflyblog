@@ -1,10 +1,11 @@
 name: Build and Check
 
 on:
-  push:
-    branches: [ main ] # Adjust branches as needed
+  # [OURS] 2026-09-18：去掉 push 触发 —— 它与 Deploy 的 install+build 高度重复（Deploy 已覆盖同等的构建验证 ✓），
+  # 每次提交/发文都白白多跑一遍 ⇒ 改为只在 PR 与手动触发时跑，检查能力不丢 ✓
   pull_request:
     branches: [ main ] # Adjust branches as needed
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
