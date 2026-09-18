@@ -310,9 +310,13 @@ function coverageOf(file, dotPath) {
 	const loose = new RegExp(`(^|[^\\w$])${leaf}\\s*:`, "m").test(valuesSrc);
 	return loose ? { state: "maybe", by: "" } : { state: "none", by: "" };
 }
-const defaultChanges = [];
+// 内部先收全集（含数组项），最后再按 --include-array-items 决定是否过滤 → 变量名用 allChanges 以免与最终的 defaultChanges 冲突
+const allChanges = [];
 {
-	const listed = git(["ls-tree", "-r", "--name-only", snapshot, "--", "src/config"], { allowFail: true });
+	// 覆盖范围：src/config/** + src/constants/**（后者以前没扫 ⇒ 属 §7.3 声明的"覆盖不全"，现补上 ✓）
+	const listed = git(["ls-tree", "-r", "--name-only", snapshot, "--", "src/config", "src/constants"], {
+		allowFail: true,
+	});
 	const files = (listed || "")
 		.split("\n")
 		.map((s) => s.trim())
@@ -324,16 +328,19 @@ const defaultChanges = [];
 		if (!oldSrc) continue;
 		const before = scalarPaths(oldSrc);
 		const after = scalarPaths(fs.readFileSync(abs, "utf8"));
+		// 比较用的归一化：去掉 TS 类型断言（如 `"bottom" as "meta" | "bottom"`）——
+		// 断言属类型层写法，不剥离会把"同一个值"误报成"上游改了这个值" ✗（展示仍保留原文 ✓）
+		const normVal = (s) => s.replace(/\s+as\s+.+$/, "").trim();
 		for (const [dotPath, o] of before) {
 			const n = after.get(dotPath);
 			if (!n) continue;
-			if (n.val === o.val) continue;
+			if (normVal(n.val) === normVal(o.val)) continue;
 			const leaf = dotPath.split(".").pop();
 			const fromArray = o.fromArray || n.fromArray;
 			// 数组项一律不算"开关类"：它们本来就属已知误报，不能进 7.1 低噪音视图（否则噪音又回来了）
 			const isSwitch =
 				!fromArray && SWITCH_KEY_RE.test(leaf) && /^(true|false)$/.test(o.val) && /^(true|false)$/.test(n.val);
-			defaultChanges.push({
+			allChanges.push({
 				file,
 				key: dotPath,
 				old: o.val,
@@ -345,8 +352,13 @@ const defaultChanges = [];
 		}
 	}
 	// 开关类排前面：它们才是"功能被悄悄关掉"的高发区，方便一眼扫到
-	defaultChanges.sort((a, b) => (a.isSwitch === b.isSwitch ? a.key.localeCompare(b.key) : a.isSwitch ? -1 : 1));
+	allChanges.sort((a, b) => (a.isSwitch === b.isSwitch ? a.key.localeCompare(b.key) : a.isSwitch ? -1 : 1));
 }
+// 数组项默认过滤：数组里的元素（如 `albums.id`、`leftComponents.type`）会被本启发式当成"键"，
+// 属已知误报 ✗（§7.3 有说明）⇒ 默认不列、避免淹没真正要紧的项；要看它们加 --include-array-items ✓
+const includeArrayItems = flag("include-array-items");
+const arrayItemCount = allChanges.filter((r) => r.fromArray).length;
+const defaultChanges = includeArrayItems ? allChanges : allChanges.filter((r) => !r.fromArray);
 const switchRows = defaultChanges.filter((r) => r.isSwitch);
 const switchUncovered = switchRows.filter((r) => r.state !== "covered");
 
@@ -605,12 +617,17 @@ if (!defaultChanges.length) {
 		L.push("</details>");
 		L.push("");
 	}
-	L.push("### 7.3 本节的已知局限（务必知道，别当成「已全查」）");
+	L.push("### 7.3 本节的口径与已知局限（务必知道，别当成「已全查」）");
 	L.push("");
-	L.push("- **会误报**：数组项会被当成键（如 `galleryConfig.albums.id`、`sidebarConfig.leftComponents.type`）；");
-	L.push("- **会漏报**：多行对象、模板字符串、`as` 类型断言等写法解析不到；");
-	L.push("- **覆盖不全**：只扫 `src/config/`，`src/constants/`（如自动生成的 `lqips.json`）等不在范围内；");
-	L.push("- 因此本节是**提示清单**、不是权威结论 → 拿不准就人工打开两个版本的文件对比。");
+	L.push("- 覆盖范围：`src/config/**` + `src/constants/**`（仅 `.ts`；`.astro` / `.svelte` / `.json` 不扫）；");
+	if (arrayItemCount) {
+		L.push(
+			`- **已默认过滤 ${arrayItemCount} 个「数组项」**（如 \`albums.*\`、\`leftComponents.*\` —— 数组元素会被本启发式当成键，属误报 ✗）；要看它们加 \`--include-array-items\`；`,
+		);
+	}
+	L.push("- **会漏报**：多行对象、跨行模板字符串、函数式赋值（`=>` / `mergeDeep` / `resolve*` 属有意跳过 ✓）；");
+	L.push("- **比较已归一化**：TS 类型断言（`as …`）只在比较时剥离，避免把同一个值误报成变化 ✓（展示仍保留原文）；");
+	L.push("- 因此本节是**提示清单**、不是权威结论 → 拿不准就人工打开两个版本的文件对比 ✓。");
 	L.push("");
 }
 
