@@ -78,19 +78,23 @@ jobs:
             exit 0
           fi
           TITLE="上游更新提醒"
-          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty') || NUM=""
-          FAIL_HINT="✖ 写入 Issue 失败。最常见原因：仓库未给 workflow 写权限。修复：Settings → Actions → General → Workflow permissions → 选 Read and write → Save，然后重跑本 workflow。"
+          # ⚠️ 为什么不用 gh issue create/comment：它们走 GraphQL，而 installation token（GITHUB_TOKEN）
+          #    在 GraphQL 的 createIssue 上会被拒（实测报 "Resource not accessible by integration" ✗，
+          #    同时 Set up job 里明确显示 `Issues: write` ✓ ⇒ 不是权限问题，是 GraphQL 路径问题 ✗）。
+          #    改走 REST（POST /repos/{repo}/issues）即可 ✓；jq 在 runner 上自带 ✓。
+          NUM=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" | jq -r --arg t "$TITLE" '.[] | select(.title==$t) | .number' | head -1)
+          FAIL_HINT="✖ 写入 Issue 失败（已确认 token 具备 Issues: write，故非权限问题）。请把上面的原始报错贴给助手；备用方案：自建 PAT 存为仓库 secret UPSTREAM_PAT 后重跑。"
           if [ -n "$NUM" ]; then
-            echo "已有 Issue #$NUM → 追加一条评论（保留历史）"
-            if ! OUT=$(gh issue comment "$NUM" --body-file upstream-report-full.md 2>&1); then
+            echo "已有 Issue #$NUM → 追加一条评论（REST）"
+            if ! OUT=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$NUM/comments" -F body=@upstream-report-full.md 2>&1); then
               echo "$OUT"
               echo ""
               echo "$FAIL_HINT"
               exit 1
             fi
           else
-            echo "创建新 Issue"
-            if ! OUT=$(gh issue create --title "$TITLE" --body-file upstream-report-full.md 2>&1); then
+            echo "创建新 Issue（REST）"
+            if ! OUT=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues" -f title="$TITLE" -F body=@upstream-report-full.md 2>&1); then
               echo "$OUT"
               echo ""
               echo "$FAIL_HINT"
