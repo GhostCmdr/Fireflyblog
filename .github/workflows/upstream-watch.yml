@@ -1,0 +1,100 @@
+name: Upstream Watch（上游更新体检）
+
+# 目的：让**仓库自己**定时去上游拉一次、跑体检，并在**有更新时**开/更新一个 Issue
+#      —— GitHub 会把 Issue 通知发到你的邮箱（无需本地电脑开机 ✗ 无需本机 AI ✗）。
+#
+# 为什么不是"严格的每两周"：GitHub Actions 的 cron **不支持"每两周"** ✗，
+# 所以用「每月 1 号与 15 号」近似（≈ 双周）。时间 = 09:00 北京时间（= 01:00 UTC）。
+#
+# ⚠️ 前置设置（一次性）：仓库 Settings → Actions → General → Workflow permissions
+#    改为 **Read and write**；否则本文件里 `issues: write` 会被忽略、创建 Issue 会失败 ✗
+#    （失败时日志里会有明显提示，见最后一步）。
+#
+# 本 workflow **只读仓库内容**：不提交、不推送、不改任何代码 ✓
+
+on:
+  schedule:
+    - cron: "0 1 1,15 * *"
+  workflow_dispatch:
+    inputs:
+      force_notify:
+        # 验收用：当前上游已合并完（提交数=0），若不强制就永远看不到 Issue 通知链路 ✓
+        description: "即使上游无新提交也发一次 Issue（用于验证通知链路）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read # 只读仓库内容
+  issues: write # 用于创建/更新「上游更新提醒」Issue
+
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout（需要完整历史与 tags，第七节的快照对比依赖它们）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 拉取上游（只 fetch，不合并）
+        run: |
+          git remote add upstream https://github.com/CuteLeaf/Firefly.git 2>/dev/null || true
+          git fetch upstream --tags
+
+      - name: 跑体检脚本（生成报告文件）
+        run: node scripts/ours/upstream-report.mjs --out upstream-report.md
+
+      - name: 汇总上游增量（写入报告头部，便于一眼看结论）
+        run: |
+          {
+            echo "## 📌 本次体检摘要"
+            echo ""
+            echo "- 运行时间（UTC）：$(date -u '+%Y-%m-%d %H:%M')"
+            echo "- 上游新提交（HEAD..upstream/master）：**$(git rev-list --count HEAD..upstream/master || echo 0)** 条"
+            echo "- 分支：\`${{ github.ref_name }}\`"
+            echo ""
+            echo "---"
+            echo ""
+            cat upstream-report.md
+          } > upstream-report-full.md
+
+      - name: 有更新才通知（创建/更新 Issue → GitHub 会邮件通知你）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW=$(git rev-list --count HEAD..upstream/master || echo 0)
+          echo "上游新提交数：$NEW"
+          if [ "$NEW" = "0" ] && [ "${{ inputs.force_notify }}" != "true" ]; then
+            echo "✅ 上游无新提交 → 不发通知（避免打扰）"
+            exit 0
+          fi
+          TITLE="上游更新提醒"
+          if ! gh issue list --limit 1 >/dev/null 2>&1; then
+            echo "✖ 无法访问 Issue（多为权限问题）：请到 Settings → Actions → General → Workflow permissions 改为 Read and write 后重跑本 workflow"
+            exit 1
+          fi
+          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$NUM" ]; then
+            echo "已有 Issue #$NUM → 追加一条评论（保留历史）"
+            gh issue comment "$NUM" --body-file upstream-report-full.md
+          else
+            echo "创建新 Issue"
+            gh issue create --title "$TITLE" --body-file upstream-report-full.md
+          fi
+
+      - name: 报告留档（Actions 页面可直接下载查看）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-report
+          path: upstream-report-full.md
+          retention-days: 90
