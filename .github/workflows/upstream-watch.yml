@@ -78,18 +78,26 @@ jobs:
             exit 0
           fi
           TITLE="上游更新提醒"
-          if ! gh issue list --limit 1 >/dev/null 2>&1; then
-            echo "✖ 无法访问 Issue（多为权限问题）：请到 Settings → Actions → General → Workflow permissions 改为 Read and write 后重跑本 workflow"
-            exit 1
-          fi
-          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty') || NUM=""
+          FAIL_HINT="✖ 写入 Issue 失败。最常见原因：仓库未给 workflow 写权限。修复：Settings → Actions → General → Workflow permissions → 选 Read and write → Save，然后重跑本 workflow。"
           if [ -n "$NUM" ]; then
             echo "已有 Issue #$NUM → 追加一条评论（保留历史）"
-            gh issue comment "$NUM" --body-file upstream-report-full.md
+            if ! OUT=$(gh issue comment "$NUM" --body-file upstream-report-full.md 2>&1); then
+              echo "$OUT"
+              echo ""
+              echo "$FAIL_HINT"
+              exit 1
+            fi
           else
             echo "创建新 Issue"
-            gh issue create --title "$TITLE" --body-file upstream-report-full.md
+            if ! OUT=$(gh issue create --title "$TITLE" --body-file upstream-report-full.md 2>&1); then
+              echo "$OUT"
+              echo ""
+              echo "$FAIL_HINT"
+              exit 1
+            fi
           fi
+          echo "✅ 通知已发出（GitHub 会给你发邮件）"
 
       - name: 报告留档（Actions 页面可直接下载查看）
         if: always()
