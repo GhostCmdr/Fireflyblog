@@ -464,7 +464,11 @@ function resetCardSettings() {
 
 function switchWallpaperMode(newMode: WALLPAPER_MODE) {
 	// [OURS] 编辑器内禁止切换到 横幅/全屏（会破坏编辑器布局；只允许 全屏透明/纯色）
-	if (isEditor && (newMode === WALLPAPER_BANNER || newMode === WALLPAPER_FULLSCREEN)) return;
+	if (
+		isEditor &&
+		(newMode === WALLPAPER_BANNER || newMode === WALLPAPER_FULLSCREEN)
+	)
+		return;
 	wallpaperMode = newMode;
 	setWallpaperMode(newMode);
 	window.scrollTo({ top: 0 });
@@ -490,7 +494,13 @@ onMount(() => {
 		return true;
 	};
 	if (!register()) {
-		document.addEventListener("swup:enable", () => { register(); }, { once: true });
+		document.addEventListener(
+			"swup:enable",
+			() => {
+				register();
+			},
+			{ once: true },
+		);
 	}
 	document.addEventListener("astro:page-load", checkIsEditor);
 });

@@ -14,16 +14,28 @@ type AnyObj = Record<string, any>;
 import type { BooknavGroup } from "../../types/booknavConfig";
 
 /** 深合并：对象合并、数组替换、undefined=删除键 */
-export function mergeDeep<T extends AnyObj>(base: T, override: AnyObj | undefined): T {
+export function mergeDeep<T extends AnyObj>(
+	base: T,
+	override: AnyObj | undefined,
+): T {
 	if (!override) return base;
-	const out: AnyObj = Array.isArray(base) ? [...(base as any)] : { ...(base as AnyObj) };
+	const out: AnyObj = Array.isArray(base)
+		? [...(base as any)]
+		: { ...(base as AnyObj) };
 	for (const [k, v] of Object.entries(override)) {
 		if (v === undefined) {
 			delete out[k];
 			continue;
 		}
 		const cur = out[k];
-		if (v && typeof v === "object" && !Array.isArray(v) && cur && typeof cur === "object" && !Array.isArray(cur)) {
+		if (
+			v &&
+			typeof v === "object" &&
+			!Array.isArray(v) &&
+			cur &&
+			typeof cur === "object" &&
+			!Array.isArray(cur)
+		) {
 			out[k] = mergeDeep(cur as AnyObj, v as AnyObj);
 		} else {
 			out[k] = v;
@@ -355,7 +367,12 @@ export const oursBooknavConfig: BooknavGroup[] = [
 export const oursSidebarConfig = {
 	leftComponents: [
 		{ type: "profile", enable: true, position: "top", showOnPostPage: true },
-		{ type: "announcement", enable: true, position: "top", showOnPostPage: false },
+		{
+			type: "announcement",
+			enable: true,
+			position: "top",
+			showOnPostPage: false,
+		},
 		{
 			type: "categories",
 			enable: true,
@@ -479,7 +496,11 @@ export const oursNavBarConfig = {
 			icon: "material-symbols:article",
 			children: [
 				{ name: "归档", url: "/archive/", icon: "material-symbols:archive" },
-				{ name: "分类", url: "/categories/", icon: "material-symbols:folder-open-rounded" },
+				{
+					name: "分类",
+					url: "/categories/",
+					icon: "material-symbols:folder-open-rounded",
+				},
 				{ name: "标签", url: "/tags/", icon: "material-symbols:tag-rounded" },
 				// [OURS] 系列（上游新增页面）：入口之前缺失。位置/名称/图标与上游 LinkPresets.Series 一致
 				// （上游把「系列」放在「文章」组里，紧跟「标签」）。上游该预设无 pageKey，故此处也不写。
@@ -493,8 +514,18 @@ export const oursNavBarConfig = {
 			url: "#",
 			icon: "material-symbols:group",
 			children: [
-				{ name: "友链", url: "/friends/", icon: "material-symbols:link-2-rounded", pageKey: "friends" },
-				{ name: "留言", url: "/guestbook/", icon: "material-symbols:chat", pageKey: "guestbook" },
+				{
+					name: "友链",
+					url: "/friends/",
+					icon: "material-symbols:link-2-rounded",
+					pageKey: "friends",
+				},
+				{
+					name: "留言",
+					url: "/guestbook/",
+					icon: "material-symbols:chat",
+					pageKey: "guestbook",
+				},
 			],
 		},
 		{
@@ -504,15 +535,45 @@ export const oursNavBarConfig = {
 			children: [
 				// [OURS] 动态（上游新增页面）：数据由 src/pages/api/dynamic.json.ts 从
 				// src/content/dynamic/*.md 生成，入口之前一直缺失（我方自定义导航没列它）
-				{ name: "动态", url: "/dynamic/", icon: "material-symbols:forum-rounded", pageKey: "dynamic" },
+				{
+					name: "动态",
+					url: "/dynamic/",
+					icon: "material-symbols:forum-rounded",
+					pageKey: "dynamic",
+				},
 				// [OURS] 项目展示（上游新增页面）：入口之前缺失；内容由 src/content/projects/*.md 提供
-				{ name: "项目", url: "/projects/", icon: "material-symbols:rocket-launch", pageKey: "projects" },
-				{ name: "相册", url: "/gallery/", icon: "material-symbols:photo-library", pageKey: "gallery" },
+				{
+					name: "项目",
+					url: "/projects/",
+					icon: "material-symbols:rocket-launch",
+					pageKey: "projects",
+				},
+				{
+					name: "相册",
+					url: "/gallery/",
+					icon: "material-symbols:photo-library",
+					pageKey: "gallery",
+				},
 				// [OURS] 上游已把 /anime/ 拆为 /bilibili/ 等页面；名称对齐上游预设「哔哩哔哩」（2026-09-16）
-				{ name: "哔哩哔哩", url: "/bilibili/", icon: "fa7-brands:bilibili", pageKey: "bilibili" },
-				{ name: "番组计划", url: "/bangumi/", icon: "material-symbols:movie", pageKey: "bangumi" },
+				{
+					name: "哔哩哔哩",
+					url: "/bilibili/",
+					icon: "fa7-brands:bilibili",
+					pageKey: "bilibili",
+				},
+				{
+					name: "番组计划",
+					url: "/bangumi/",
+					icon: "material-symbols:movie",
+					pageKey: "bangumi",
+				},
 				// [OURS] 书签导航（上游新增页面）：pageKey 会让该入口随 siteConfig.pages.booknav 自动显隐
-				{ name: "书签导航", url: "/booknav/", icon: "material-symbols:bookmarks", pageKey: "booknav" },
+				{
+					name: "书签导航",
+					url: "/booknav/",
+					icon: "material-symbols:bookmarks",
+					pageKey: "booknav",
+				},
 			],
 		},
 		{
@@ -520,7 +581,12 @@ export const oursNavBarConfig = {
 			url: "#",
 			icon: "material-symbols:info",
 			children: [
-				{ name: "打赏", url: "/sponsor/", icon: "material-symbols:favorite", pageKey: "sponsor" },
+				{
+					name: "打赏",
+					url: "/sponsor/",
+					icon: "material-symbols:favorite",
+					pageKey: "sponsor",
+				},
 				{ name: "关于我", url: "/about/", icon: "material-symbols:person" },
 			],
 		},
@@ -529,8 +595,18 @@ export const oursNavBarConfig = {
 			url: "#",
 			icon: "material-symbols:link",
 			children: [
-				{ name: "GitHub", url: "https://github.com/GhostCmdr", external: true, icon: "fa7-brands:github" },
-				{ name: "Gitee", url: "https://gitee.com/ghostwebdata", external: true, icon: "fa7-brands:gitee" },
+				{
+					name: "GitHub",
+					url: "https://github.com/GhostCmdr",
+					external: true,
+					icon: "fa7-brands:github",
+				},
+				{
+					name: "Gitee",
+					url: "https://gitee.com/ghostwebdata",
+					external: true,
+					icon: "fa7-brands:gitee",
+				},
 				{
 					name: "CSDN",
 					url: "https://blog.csdn.net/qq_49525131?type=blog",

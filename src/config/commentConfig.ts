@@ -88,4 +88,7 @@ const _base: CommentConfig = {
 };
 
 // [OURS] 导出 = 上游默认值 + 我方值（深合并；数组整体替换）
-export const commentConfig = mergeDeep(_base, oursCommentConfig) as CommentConfig;
+export const commentConfig = mergeDeep(
+	_base,
+	oursCommentConfig,
+) as CommentConfig;

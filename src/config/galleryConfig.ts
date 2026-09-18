@@ -43,4 +43,7 @@ const _base: GalleryConfig = {
 	columnWidth: 240,
 };
 
-export const galleryConfig = mergeDeep(_base, oursGalleryConfig) as GalleryConfig;
+export const galleryConfig = mergeDeep(
+	_base,
+	oursGalleryConfig,
+) as GalleryConfig;

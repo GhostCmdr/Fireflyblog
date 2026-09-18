@@ -50,4 +50,7 @@ const _base: ProfileConfig = {
 	],
 };
 
-export const profileConfig = mergeDeep(_base, oursProfileConfig) as ProfileConfig;
+export const profileConfig = mergeDeep(
+	_base,
+	oursProfileConfig,
+) as ProfileConfig;

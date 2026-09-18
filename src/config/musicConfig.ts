@@ -1,6 +1,7 @@
 // [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
-import { mergeDeep, oursMusicConfig } from "./ours/values";
+
 import type { MusicPlayerConfig } from "../types/musicConfig";
+import { mergeDeep, oursMusicConfig } from "./ours/values";
 
 // 音乐播放器配置
 const _base: MusicPlayerConfig = {
@@ -60,4 +61,7 @@ const _base: MusicPlayerConfig = {
 	},
 };
 
-export const musicPlayerConfig = mergeDeep(_base, oursMusicConfig) as MusicPlayerConfig;
+export const musicPlayerConfig = mergeDeep(
+	_base,
+	oursMusicConfig,
+) as MusicPlayerConfig;

@@ -1,6 +1,10 @@
 import type { FriendLink, FriendsPageConfig } from "../types/friendsConfig";
 // [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
-import { mergeDeep, oursFriendsConfig, oursFriendsPageConfig } from "./ours/values";
+import {
+	mergeDeep,
+	oursFriendsConfig,
+	oursFriendsPageConfig,
+} from "./ours/values";
 
 // 可以在src/content/spec/friends.md中编写友链页面下方的自定义内容
 
@@ -65,5 +69,8 @@ export const getEnabledFriends = (): FriendLink[] => {
 	return friends.sort((a, b) => b.weight - a.weight);
 };
 
-export const friendsPageConfig = mergeDeep(_basePage, oursFriendsPageConfig) as FriendsPageConfig;
+export const friendsPageConfig = mergeDeep(
+	_basePage,
+	oursFriendsPageConfig,
+) as FriendsPageConfig;
 export const friendsConfig: FriendLink[] = oursFriendsConfig as FriendLink[];

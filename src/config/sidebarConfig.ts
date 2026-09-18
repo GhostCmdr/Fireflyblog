@@ -1,6 +1,7 @@
 // [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
-import { mergeDeep, oursSidebarConfig } from "./ours/values";
+
 import type { SidebarLayoutConfig } from "../types/sidebarConfig";
+import { mergeDeep, oursSidebarConfig } from "./ours/values";
 
 /**
  * 侧边栏布局配置
@@ -319,4 +320,7 @@ const _base: SidebarLayoutConfig = {
 	],
 };
 
-export const sidebarLayoutConfig = mergeDeep(_base, oursSidebarConfig) as SidebarLayoutConfig;
+export const sidebarLayoutConfig = mergeDeep(
+	_base,
+	oursSidebarConfig,
+) as SidebarLayoutConfig;

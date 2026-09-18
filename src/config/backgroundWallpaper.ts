@@ -1,6 +1,7 @@
 // [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
-import { mergeDeep, oursBackgroundWallpaper } from "./ours/values";
+
 import type { BackgroundWallpaperConfig } from "@/types/backgroundWallpaper";
+import { mergeDeep, oursBackgroundWallpaper } from "./ours/values";
 
 const _base: BackgroundWallpaperConfig = {
 	// 壁纸模式："banner" 横幅壁纸，"fullscreen" 全屏壁纸，"overlay" 覆盖透明，"none" 纯色背景无壁纸
@@ -217,4 +218,7 @@ const _base: BackgroundWallpaperConfig = {
 	},
 };
 
-export const backgroundWallpaper = mergeDeep(_base, oursBackgroundWallpaper) as BackgroundWallpaperConfig;
+export const backgroundWallpaper = mergeDeep(
+	_base,
+	oursBackgroundWallpaper,
+) as BackgroundWallpaperConfig;

@@ -13,31 +13,36 @@
  *   - 不会处理：代码块（code/inlineCode 节点没有 children，本插件不进入）
  */
 export default function remarkHardBreaks() {
-  return (tree) => walk(tree);
+	return (tree) => walk(tree);
 }
 
 /** 把一个含 \n 的文本节点拆成 文本/break/文本… 序列 */
 function splitText(value) {
-  const out = [];
-  const lines = String(value).split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (i > 0) out.push({ type: 'break' });
-    if (lines[i] !== '') out.push({ type: 'text', value: lines[i] });
-  }
-  return out;
+	const out = [];
+	const lines = String(value).split("\n");
+	for (let i = 0; i < lines.length; i++) {
+		if (i > 0) out.push({ type: "break" });
+		if (lines[i] !== "") out.push({ type: "text", value: lines[i] });
+	}
+	return out;
 }
 
 /** 深度遍历，就地替换含 \n 的 text 节点 */
 function walk(node) {
-  if (!node || !Array.isArray(node.children)) return;
-  const next = [];
-  for (const child of node.children) {
-    if (child && child.type === 'text' && typeof child.value === 'string' && child.value.includes('\n')) {
-      next.push(...splitText(child.value));
-    } else {
-      walk(child);
-      next.push(child);
-    }
-  }
-  node.children = next;
+	if (!node || !Array.isArray(node.children)) return;
+	const next = [];
+	for (const child of node.children) {
+		if (
+			child &&
+			child.type === "text" &&
+			typeof child.value === "string" &&
+			child.value.includes("\n")
+		) {
+			next.push(...splitText(child.value));
+		} else {
+			walk(child);
+			next.push(child);
+		}
+	}
+	node.children = next;
 }

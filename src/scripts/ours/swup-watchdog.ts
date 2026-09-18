@@ -48,15 +48,18 @@ function arm(): void {
 		timer = null;
 		if (!hasTransitionClass()) return; // 正常结束，什么都不做
 		// 走到这里 = 过渡类超时未清 → 判定卡死：先留证，再自愈
-		console.warn("[OURS][watchdog] swup 过渡超时未结束，判定卡死并自动恢复。现场：", {
-			path: window.location.pathname,
-			htmlClass: document.documentElement.className,
-			bodyClass: document.body?.className ?? "",
-			swupContainerChildren:
-				document.getElementById("swup-container")?.children.length ?? -1,
-			hasSwup: !!(window as unknown as { swup?: unknown }).swup,
-			at: new Date().toISOString(),
-		});
+		console.warn(
+			"[OURS][watchdog] swup 过渡超时未结束，判定卡死并自动恢复。现场：",
+			{
+				path: window.location.pathname,
+				htmlClass: document.documentElement.className,
+				bodyClass: document.body?.className ?? "",
+				swupContainerChildren:
+					document.getElementById("swup-container")?.children.length ?? -1,
+				hasSwup: !!(window as unknown as { swup?: unknown }).swup,
+				at: new Date().toISOString(),
+			},
+		);
 		stripTransitionClasses();
 	}, TIMEOUT_MS);
 }

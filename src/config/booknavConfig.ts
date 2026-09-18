@@ -160,4 +160,5 @@ const _baseBooknav: BooknavGroup[] = [
 // [OURS] 书签导航：数组不做深合并 → 直接整体替换（与 friendsConfig 同一套做法）。
 // 数据在 src/config/ours/values.ts 的 oursBooknavConfig（我方完全掌控，上游新增的示例书签不会出现）。
 // 上面上游那份示例保留为 _baseBooknav 仅作参考（未使用）。
-export const booknavConfig: BooknavGroup[] = oursBooknavConfig as BooknavGroup[];
+export const booknavConfig: BooknavGroup[] =
+	oursBooknavConfig as BooknavGroup[];

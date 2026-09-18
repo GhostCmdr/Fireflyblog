@@ -1,11 +1,12 @@
 // [OURS] 我方配置值叠加（值见 ./ours/values.ts；上游更新时本文件只需保留 hook 行）
-import { mergeDeep, oursNavBarConfig } from "./ours/values";
+
 import {
 	type NavBarConfig,
 	type NavBarLink,
 	type NavBarSearchConfig,
 	NavBarSearchMethod,
 } from "../types/navBarConfig";
+import { mergeDeep, oursNavBarConfig } from "./ours/values";
 
 // ============================================================================
 // 导航栏配置 - 根据顺序动态生成导航栏链接
@@ -247,4 +248,7 @@ export const LinkPresets: Record<string, NavBarLink> = {
 
 const _base: NavBarConfig = getDynamicNavBarConfig();
 
-export const navBarConfig: NavBarConfig = mergeDeep(_base, oursNavBarConfig) as NavBarConfig;
+export const navBarConfig: NavBarConfig = mergeDeep(
+	_base,
+	oursNavBarConfig,
+) as NavBarConfig;

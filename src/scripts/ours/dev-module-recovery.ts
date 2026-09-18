@@ -101,15 +101,23 @@ function handle(reason: string, where: string): void {
 	} else {
 		// 反复失败：不再自动刷，避免死循环，交给用户强刷
 		showToast(HINT_FAIL);
-		console.error("[OURS][module-recovery] 自动刷新次数超出上限，请手动强刷（Ctrl+Shift+R）");
+		console.error(
+			"[OURS][module-recovery] 自动刷新次数超出上限，请手动强刷（Ctrl+Shift+R）",
+		);
 	}
 }
 
 /** 挂载（幂等；dev-only） */
 export function initDevModuleRecovery(): void {
 	if (!import.meta.env.DEV) return; // 生产不启用
-	if ((window as unknown as { __oursModuleRecovery?: boolean }).__oursModuleRecovery) return;
-	(window as unknown as { __oursModuleRecovery?: boolean }).__oursModuleRecovery = true;
+	if (
+		(window as unknown as { __oursModuleRecovery?: boolean })
+			.__oursModuleRecovery
+	)
+		return;
+	(
+		window as unknown as { __oursModuleRecovery?: boolean }
+	).__oursModuleRecovery = true;
 
 	// 1) 脚本/样式等资源加载失败（捕获阶段才能拿到 script.onerror）
 	window.addEventListener(
@@ -118,7 +126,10 @@ export function initDevModuleRecovery(): void {
 			const target = e.target as HTMLElement | null;
 			const tag = target?.tagName;
 			if (tag === "SCRIPT" || tag === "LINK") {
-				const url = (target as HTMLScriptElement).src || (target as HTMLLinkElement).href || "";
+				const url =
+					(target as HTMLScriptElement).src ||
+					(target as HTMLLinkElement).href ||
+					"";
 				handle(`resource load error: ${url}`, "resource");
 			} else if (e instanceof ErrorEvent) {
 				handle(e.message || "", "window.error");
