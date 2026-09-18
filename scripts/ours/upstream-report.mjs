@@ -417,6 +417,32 @@ L.push("");
 L.push(`- 生成时间：${new Date().toLocaleString("zh-CN")}`);
 L.push(`- 对比范围：\`${base}\` (${baseShort}) → \`${target}\` (${targetShort}，最后提交 ${targetDate})`);
 L.push(`- 上游提交数：**${commits.length}** 条（不含 merge 提交）`);
+// 上游"最新版本号"怎么取：⚠️ 实测**上游根本不打 tag**（`git describe --tags --abbrev=0 upstream/master`
+// 直接报 "No tags can describe …" ✗）⇒ 权威来源 = **上游仓库里 package.json 的 version** ✓
+// 与我方 package.json 一比 ⇒ 一眼看出"我落后几个版本"（比"提交数"直观：提交数多也可能只是同版本内小改 ✓）
+function versionOf(ref) {
+	const txt = git(["show", `${ref}:package.json`], { allowFail: true });
+	if (!txt) return "";
+	try {
+		return JSON.parse(txt).version || "";
+	} catch {
+		return "";
+	}
+}
+const upstreamVersion = versionOf(target);
+const ourVersion = versionOf("HEAD");
+// tag 只作补充展示：上游某天开始打 tag 时能顺带看到 ✓ 没有则注明"上游未打 tag" ✓
+const upstreamTag = git(["describe", "--tags", "--abbrev=0", target], { allowFail: true }) || "";
+if (upstreamVersion) {
+	const diff = ourVersion && upstreamVersion !== ourVersion;
+	L.push(
+		`- **上游版本（package.json）：\`${upstreamVersion}\`**；我方：\`${ourVersion || "?"}\`${
+			diff ? " ⚠️ **不同 → 可能已有新版可拉**" : ourVersion ? " ✓ 同版本" : ""
+		}${upstreamTag ? `（上游最近 tag：\`${upstreamTag}\`）` : "（上游未打 tag）"}`,
+	);
+} else {
+	L.push(`- 上游版本：未取到（\`git show ${target}:package.json\` 失败）`);
+}
 L.push(`- 说明：键位识别为启发式（行首 1 Tab 的 \`键:\`，深度一层），结论请人工确认。`);
 L.push("");
 // ⚠️ 常见误读（2026-09-17 实测踩到）：`base..target` **没有提交**、却**有文件差异** ⇒ 说明
@@ -645,6 +671,11 @@ if (defaultChanges.length) {
 		`⚠️ 默认值变化 ${defaultChanges.length} 处｜开关类 ${switchRows.length} 处（未覆盖 ${swNone} / 疑似 ${swMaybe}）→ 见报告第七节\n`,
 	);
 }
+process.stdout.write(
+	`上游版本：${upstreamVersion || "未取到"}（我方 ${ourVersion || "?"}）${
+		upstreamVersion && ourVersion && upstreamVersion !== ourVersion ? " ⚠️ 可能已有新版可拉" : " ✓"
+	}\n`,
+);
 process.stdout.write(
 	`Waline：声明 @${walineDeclared || "?"} → 解析 v${(walineResolved && walineResolved.version) || "?"}` +
 		(walineLatest ? `；npm 最新 v${walineLatest}${walineHasV4 ? "（已出 v4 ⚠️）" : ""}` : "；npm 最新未取到") +
