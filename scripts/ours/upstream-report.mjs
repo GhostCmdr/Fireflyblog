@@ -12,7 +12,7 @@
  *   --fetch    先 git fetch upstream --tags（报告会更准）
  *   --out      报告输出路径，默认 .backups/upstream-report-<时间戳>.md
  *
- * 报告内容（七节）：
+ * 报告内容（八节）：
  *   一、上游提交摘要（按 feat/fix/perf/refactor… 分组，带 hash/日期/作者）← 你要的"上游这次加了什么"
  *   二、新功能开关表（上游新增的配置键 → 是否已被我方 ours/ 覆盖 → 建议动作）
  *   三、配置文件键级变化（新增/删除，逐文件）
@@ -22,6 +22,9 @@
  *   七、默认值变化（快照 → 当前工作区）＝"上游悄悄改默认值"导致的静默回归
  *      （第三节只查"键新增/删除"，**查不到"键还在但值被改了"**；历史踩坑：musicConfig.showLyrics
  *       被上游由 true 改 false → 播放器歌词按钮消失；displaySettingsConfig.enable → 设置面板消失）
+ *   八、评论组件（Waline）检查＝SOP 约定"每次拉上游必须顺带检查"的三件事：CDN 声明解析到的版本、
+ *      是否已出 v4、上游该组件是否改动（我方 [OURS] wordLimit 是否仍成立）
+ *      （唯一需要联网的一节：取不到数据时只标注"未取到"，不影响其余章节）
  *
  * ⚠️ 说明：这是"启发式"报告工具（键提取按"行首 1 个 Tab 的 `键:`"识别，深度只到第一层；
  *    第七节按"缩进栈"还原点路径、只比标量值），用于**提示风险与待评估项**，不是精确 diff。
@@ -364,6 +367,48 @@ const depAdded = Object.keys(depsTarget).filter((k) => !(k in depsBase));
 const depRemoved = Object.keys(depsBase).filter((k) => !(k in depsTarget));
 const depChanged = Object.keys(depsTarget).filter((k) => k in depsBase && depsBase[k] !== depsTarget[k]);
 
+/* ── 5.5 评论组件（Waline）版本与上游改动（第八节数据）─────────────
+ * 为什么单独一节：SOP 约定「每次拉上游必须顺带检查」——
+ *   ① 我方组件里 `@waline/client@vX` 声明当前解析到什么版本 / 是否已出 v4（没法锁版本 ⇒ 必须人工盯）
+ *   ② 上游 `Waline.astro` 是否被改动（我方 `[OURS] wordLimit` 那行是否还成立）
+ * 这是全脚本**唯一联网**的一节：拿不到数据只标注"未取到"，绝不让整份报告失败。
+ */
+const WALINE_COMPONENT = "src/components/comment/Waline.astro";
+const walineLocalSrc = fs.existsSync(path.join(CWD, WALINE_COMPONENT))
+	? fs.readFileSync(path.join(CWD, WALINE_COMPONENT), "utf8")
+	: "";
+// 只取"版本/主版本"部分：组件里写的是 `@waline/client@v3/dist/waline.css`，
+// 旧正则会把 `/dist/waline.css` 一起吃进来（实测导致请求 404）→ 在数字/点号后立即停。
+const walineDeclared = (walineLocalSrc.match(/@waline\/client@(v?\d+(?:\.\d+)*)/) || [])[1] || "";
+const walineHasOurs = /\[OURS\]/.test(walineLocalSrc) && /wordLimit/.test(walineLocalSrc);
+// ⚠️ 不能用 `base..target` 判断"上游是否改了这个文件"：base 是**我方分支**（含我方改动）✗，
+// 且在"已合并"状态下同一提交还会互换语义。正确做法是取**我方与上游的共同祖先**
+// （= 上次合并进来的那个上游提交，其文件内容就是"上游原样"）再与 target 比 ✓
+const upstreamMergeBase = git(["merge-base", base, target], { allowFail: true }) || base;
+const walineUpstreamChanged =
+	git(["diff", "--name-only", `${upstreamMergeBase}..${target}`, "--", WALINE_COMPONENT], { allowFail: true }) || "";
+async function fetchJson(url) {
+	try {
+		const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+		if (!res.ok) return null;
+		return await res.json();
+	} catch {
+		return null;
+	}
+}
+const walineResolved = walineDeclared
+	? await fetchJson(`https://unpkg.com/@waline/client@${walineDeclared}/package.json`)
+	: null;
+const walineRegistry = await fetchJson("https://registry.npmjs.org/@waline/client");
+// npm registry 的完整包文档**没有顶层 `version`**（实测取到 undefined）→ 必须读 `dist-tags.latest`
+const walineLatest =
+	(walineRegistry && walineRegistry["dist-tags"] && walineRegistry["dist-tags"].latest) || "";
+const walineHasV4 = !!(
+	walineRegistry &&
+	walineRegistry.versions &&
+	Object.keys(walineRegistry.versions).some((v) => /^4\./.test(v))
+);
+
 /* ── 6. 汇总输出 ─────────────────────────────────────────────────── */
 const L = [];
 const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
@@ -374,6 +419,15 @@ L.push(`- 对比范围：\`${base}\` (${baseShort}) → \`${target}\` (${targetS
 L.push(`- 上游提交数：**${commits.length}** 条（不含 merge 提交）`);
 L.push(`- 说明：键位识别为启发式（行首 1 Tab 的 \`键:\`，深度一层），结论请人工确认。`);
 L.push("");
+// ⚠️ 常见误读（2026-09-17 实测踩到）：`base..target` **没有提交**、却**有文件差异** ⇒ 说明
+// 你已经把 target 合并进 base 了，此时一~六节展示的是"我方相对上游的定制差异"，**不是上游的新变化** ✗
+// 应在**拉上游之前**运行本脚本才有一~六节的意义；第七/第八节不受运行时机影响 ✓
+if (commits.length === 0 && fileChanges.length > 0) {
+	L.push("> ⚠️ **检测到 `target` 已包含在 `base` 中（说明你已合并过上游）**：");
+	L.push("> 一~六节展示的差异是**我方相对上游的定制**，**不代表上游有新变化** ✗ —— 一~六节请在**拉上游之前**运行；");
+	L.push("> **第七节（默认值变化）与第八节（Waline 检查）不受运行时机影响** ✓");
+	L.push("");
+}
 
 L.push(`## 一、上游提交摘要（按类型）`);
 L.push("");
@@ -536,6 +590,28 @@ if (!defaultChanges.length) {
 
 L.push("---");
 L.push("");
+L.push("## 八、评论组件（Waline）检查");
+L.push("");
+L.push(`- 我方组件：\`${WALINE_COMPONENT}\`；CDN 声明：${walineDeclared ? "`@" + walineDeclared + "`" : "**未识别到**"}`);
+if (walineResolved && walineResolved.version) {
+	L.push(`- 该声明**当前解析到 v${walineResolved.version}**（unpkg 实时取值）`);
+} else {
+	L.push("- ⚠️ 未能从 unpkg 取到解析版本（离线 / 网络受限 / 包名写法变化）");
+}
+if (walineLatest) {
+	L.push(
+		`- npm registry 最新版本：**v${walineLatest}**${walineHasV4 ? "；**已存在 v4** ⚠️ 需人工决定是否迁移（URL 里的 `@v3` 不会自动跟随）" : "（尚无 v4）"}`,
+	);
+} else {
+	L.push("- ⚠️ 未能从 npm registry 取到最新版本（离线 / 网络受限）");
+}
+L.push(`- 我方 \`[OURS] wordLimit\` 是否仍在：${walineHasOurs ? "✅ 在（英文单词评论不被拒）" : "⚠️ 未检出 —— 可能被上游覆盖，需人工检查"}`);
+L.push(
+	`- 上游本次是否改动该组件：${walineUpstreamChanged ? "⚠️ **有改动** → 合并时务必保住我方 `[OURS]` 那行（勿整文件取上游版）" : "无改动 ✓"}`,
+);
+L.push("");
+L.push("---");
+L.push("");
 L.push("## 下一步建议（固定动作）");
 L.push("");
 L.push("1. 先看【一】的 feat 段：逐条判断是否要开启/适配；对照【二】开关表给出结论。");
@@ -569,4 +645,11 @@ if (defaultChanges.length) {
 		`⚠️ 默认值变化 ${defaultChanges.length} 处｜开关类 ${switchRows.length} 处（未覆盖 ${swNone} / 疑似 ${swMaybe}）→ 见报告第七节\n`,
 	);
 }
+process.stdout.write(
+	`Waline：声明 @${walineDeclared || "?"} → 解析 v${(walineResolved && walineResolved.version) || "?"}` +
+		(walineLatest ? `；npm 最新 v${walineLatest}${walineHasV4 ? "（已出 v4 ⚠️）" : ""}` : "；npm 最新未取到") +
+		(walineHasOurs ? "；[OURS] wordLimit 在 ✓" : "；⚠️ [OURS] wordLimit 未检出") +
+		(walineUpstreamChanged ? "；上游改了该组件 ⚠️" : "") +
+		"\n",
+);
 process.stdout.write(`\n📄 完整报告：${outPath}\n`);
