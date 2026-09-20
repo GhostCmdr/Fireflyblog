@@ -1,9 +1,23 @@
+# [OURS] 2026-09-20：本文件基于上游原配置，**只新增了一行** `open-pull-requests-limit: 0`
+# ─────────────────────────────────────────────────────────────────────────────
+# 目的：让 Dependabot 只做「检查」，不再自动开 PR ⇒ 仓库里不再反复出现 `dependabot/*` 分支
+#   · **只对 Dependabot 生效**：不影响你或 AI 助手创建分支、不影响任何 workflow ✓
+#   · 想升级依赖时：本机 `pnpm update`（或 `pnpm up --latest`）自己提交 ✓（不产生分支）；
+#     需要它帮忙时，把下面的 `0` 临时改回 `5` → 它会开 PR（Merge/Close 后分支自动删除 ✓）
+#   · 安全漏洞提醒（Dependabot security updates）**不受本文件影响** ✓，有漏洞时仍会提醒 ✓
+#   · 若要彻底停掉：仓库 Settings → Code security → Dependabot version updates → Disable ✓
+# 备注：上游原本的分组（patch/minor 各合成一个 PR）与「忽略 major」规则**原样保留** ✓，
+#       这样将来临时放开 limit 时，上游那套策略依然生效 ✓
+
 version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "daily"
+    # [OURS] 关键一行：0 = 不开任何版本升级 PR（"有新版可用"的检测信息仍在，
+    #        可在仓库的 Insights → Dependency graph → Dependabot 页面查看 ✓）
+    open-pull-requests-limit: 0
     groups:
       patch-updates:
         patterns:
