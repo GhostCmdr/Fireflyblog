@@ -223,10 +223,9 @@ export const oursFriendsPageConfig = {
 export const oursFriendsConfig = [
 	{
 		title: "小埋团长",
-		// [OURS] 图标改用「本站高清图标」（192px，站内地址，不依赖外网 ✓）
-		// 以后新增友链：imgurl 填 `https://a.favicon.im/<对方域名>` 即可自动取对方站点图标 ✓
-		//（与书签导航页 booknavConfig.ts 用的是同一个服务 ✓）
-		imgurl: "https://xiaomaisos.me/favicon/favicon-light-192.png",
+		// [OURS] 图标 = 该网站真实的站点图标（用抓取服务，与书签导航 booknavConfig 同一服务 ✓）
+		// 以后新增友链：imgurl 填 `https://a.favicon.im/<对方域名>` 即可 ✓
+		imgurl: "https://a.favicon.im/xiaomaisos.me",
 		desc: "小埋团长的博客",
 		siteurl: "https://xiaomaisos.me",
 		tags: ["Blog"],
@@ -235,8 +234,8 @@ export const oursFriendsConfig = [
 	},
 	{
 		title: "GitHub",
-		imgurl:
-			"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+		// [OURS] 同样改用真实站点图标（服务返回 SVG，矢量清晰 ✓）
+		imgurl: "https://a.favicon.im/github.com",
 		desc: "小埋团长的主页",
 		siteurl: "https://github.com/GhostCmdr",
 		tags: ["Web"],
