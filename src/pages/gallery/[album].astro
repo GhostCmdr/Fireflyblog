@@ -307,7 +307,8 @@ const coverLqipProps = cover
           </div>
         </div>
         <div>
-          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签</label>
+          {/* [OURS] 用法说明：自定义标签支持多个，用逗号分隔，中英文逗号都可以（见文件内 split(/[,，]/)） */}
+          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签（多个用逗号分隔，中英文都行）</label>
           <div class="grid grid-cols-4 gap-3">
             <input id="edit-album-tag1" type="text" placeholder="标签1"
               class="px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />

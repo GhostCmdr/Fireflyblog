@@ -49,7 +49,7 @@ const initialJson = JSON.stringify(items);
 	<div
 		id="fe-mask"
 		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity duration-200 sm:p-6"
-		style="background: rgba(0, 0, 0, 0.45);"
+		style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
 		role="dialog"
 		aria-modal="true"
 		aria-label="编辑友链"
@@ -101,7 +101,11 @@ const initialJson = JSON.stringify(items);
 			</div>
 
 			<!-- 列表（独立滚动） -->
-			<div id="fe-body" class="min-h-0 grow overflow-y-auto px-5 py-4">
+			<div
+				id="fe-body"
+				class="fe-scroll min-h-0 grow overflow-y-auto px-5 py-4"
+				style="overscroll-behavior: contain;"
+			>
 				<div id="fe-list" class="flex flex-col gap-3"></div>
 				<div
 					id="fe-empty"
@@ -154,6 +158,99 @@ const initialJson = JSON.stringify(items);
 		</div>
 	</div>
 </div>
+
+<!-- [OURS] 站内风格确认框：替代原生 window.confirm（否则会弹出「localhost:4321 显示」这种浏览器弹窗） -->
+<div
+	id="fe-confirm"
+	class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
+	style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
+	role="alertdialog"
+	aria-modal="true"
+	aria-labelledby="fe-confirm-title"
+>
+	<div
+		id="fe-confirm-panel"
+		class="card-base w-full max-w-[380px] overflow-hidden shadow-2xl transition-all duration-200"
+		style="transform: translateY(6px) scale(0.98); opacity: 0;"
+	>
+		<div class="px-5 pt-5 pb-4">
+			<div class="flex items-start gap-3">
+				<span
+					id="fe-confirm-icon"
+					class="mt-0.5 shrink-0 rounded-full p-1.5"
+					style="background: rgba(217, 119, 6, 0.12); color: #B45309;"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="18"
+						height="18"
+						fill="currentColor"
+						aria-hidden="true"
+						><path d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"></path></svg
+					>
+				</span>
+				<div class="min-w-0">
+					<div
+						id="fe-confirm-title"
+						class="text-base font-bold text-neutral-900 dark:text-neutral-100"
+					>
+						请确认
+					</div>
+					<div
+						id="fe-confirm-text"
+						class="mt-1.5 text-sm leading-relaxed break-words text-neutral-600 dark:text-neutral-400"
+					>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div
+			class="flex items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3"
+		>
+			<button
+				id="fe-confirm-cancel"
+				type="button"
+				class="rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+			>
+				取消
+			</button>
+			<button
+				id="fe-confirm-ok"
+				type="button"
+				class="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110"
+			>
+				确定
+			</button>
+		</div>
+	</div>
+</div>
+
+<style>
+	/* 弹窗内滚动条美化：纯 CSS 绘制层，不参与布局、无 JS、无渲染负担。
+	   Chrome/Edge/Safari 走 ::-webkit-scrollbar；Firefox 走 scrollbar-width/scrollbar-color。 */
+	.fe-scroll {
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklab, var(--primary) 40%, transparent) transparent;
+	}
+	.fe-scroll::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	.fe-scroll::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	.fe-scroll::-webkit-scrollbar-thumb {
+		background: color-mix(in oklab, var(--primary) 35%, transparent);
+		background-clip: content-box;
+		border: 2px solid transparent;
+		border-radius: 999px;
+	}
+	.fe-scroll::-webkit-scrollbar-thumb:hover {
+		background: color-mix(in oklab, var(--primary) 65%, transparent);
+		background-clip: content-box;
+	}
+</style>
 
 <script is:inline>
 	(function () {
@@ -433,7 +530,7 @@ const initialJson = JSON.stringify(items);
 			imgurl: "图标地址",
 			desc: "描述",
 			siteurl: "站点地址",
-			tags: "标签（逗号分隔）",
+			tags: "标签（逗号分隔，中英文都行）",
 		};
 
 		function fieldHtml(name, value, placeholder, extra) {
@@ -658,9 +755,11 @@ const initialJson = JSON.stringify(items);
 		}
 
 		function openModal() {
+			var wasHidden = mask.classList.contains("hidden");
 			mask.classList.remove("hidden");
 			mask.classList.add("flex");
-			// 刻意不锁根滚动条：与相册页弹窗一致，避免出现"弹窗关闭后网页无法滚动"的问题
+			// 只在"从关闭变打开"时记录并加锁：反复打开时若把已锁值记下来，关闭后就恢复不回去
+			if (wasHidden) lockScroll();
 			requestAnimationFrame(function () {
 				panel.style.transform = "translateY(0) scale(1)";
 				panel.style.opacity = "1";
@@ -678,17 +777,85 @@ const initialJson = JSON.stringify(items);
 			loadFromRemote();
 		}
 
-		function closeModal(force) {
-			if (state.dirty && !force) {
-				if (!window.confirm("有未保存的修改，确定关闭吗？")) return;
-			}
+		// 真正执行关闭：无条件解锁滚动，避免出现"关掉弹窗后网页滚不动"
+		function doClose() {
 			panel.style.transform = "translateY(8px) scale(0.98)";
 			panel.style.opacity = "0";
+			state.dirty = false;
+			unlockScroll();
 			window.setTimeout(function () {
 				mask.classList.add("hidden");
 				mask.classList.remove("flex");
 			}, 180);
-			state.dirty = false;
+		}
+
+		function closeModal(force) {
+			if (state.dirty && !force) {
+				askConfirm("关闭后这些改动会丢失（还没提交到 GitHub）。", {
+					title: "放弃未保存的修改？",
+					okText: "放弃并关闭",
+					cancelText: "继续编辑",
+				}).then(function (ok) {
+					if (ok) doClose();
+				});
+				return;
+			}
+			doClose();
+		}
+
+		/* ───────────── 站内确认框（替代 window.confirm，避免浏览器原生弹窗） ───────────── */
+
+		var confirmEl = document.getElementById("fe-confirm");
+		var confirmPanel = document.getElementById("fe-confirm-panel");
+		var confirmTitleEl = document.getElementById("fe-confirm-title");
+		var confirmTextEl = document.getElementById("fe-confirm-text");
+		var confirmOkBtn = document.getElementById("fe-confirm-ok");
+		var confirmCancelBtn = document.getElementById("fe-confirm-cancel");
+		var confirmResolve = null;
+
+		// 返回 Promise<boolean>：true = 确定，false = 取消
+		function askConfirm(text, opts) {
+			opts = opts || {};
+			confirmTitleEl.textContent = opts.title || "请确认";
+			confirmTextEl.textContent = text;
+			confirmOkBtn.textContent = opts.okText || "确定";
+			confirmCancelBtn.textContent = opts.cancelText || "取消";
+			confirmOkBtn.style.backgroundColor = opts.danger === false ? "var(--primary)" : "#DC2626";
+			confirmEl.classList.remove("hidden");
+			confirmEl.classList.add("flex");
+			requestAnimationFrame(function () {
+				confirmPanel.style.transform = "translateY(0) scale(1)";
+				confirmPanel.style.opacity = "1";
+			});
+			return new Promise(function (resolve) {
+				confirmResolve = resolve;
+			});
+		}
+
+		function settleConfirm(result) {
+			if (!confirmResolve) return;
+			var resolve = confirmResolve;
+			confirmResolve = null;
+			confirmPanel.style.transform = "translateY(6px) scale(0.98)";
+			confirmPanel.style.opacity = "0";
+			window.setTimeout(function () {
+				confirmEl.classList.add("hidden");
+				confirmEl.classList.remove("flex");
+			}, 160);
+			resolve(result);
+		}
+
+		/* ───────────── 滚动锁（修滚动穿透；任何关闭路径都可靠恢复） ───────────── */
+
+		var savedRootOverflow = "";
+
+		function lockScroll() {
+			savedRootOverflow = document.documentElement.style.overflow || "";
+			document.documentElement.style.overflow = "hidden";
+		}
+
+		function unlockScroll() {
+			document.documentElement.style.overflow = savedRootOverflow;
 		}
 
 		/* ───────────── 事件绑定 ───────────── */
@@ -698,6 +865,7 @@ const initialJson = JSON.stringify(items);
 		// 这会让 position:fixed 相对"该祖先"而不是视口定位（弹窗被卡在卡片里、位置错乱）。
 		// 挂到 body 后 fixed 才真正相对视口（相册页的弹窗是直接写在卡片外层的，同理）。
 		if (mask.parentNode !== document.body) document.body.appendChild(mask);
+		if (confirmEl.parentNode !== document.body) document.body.appendChild(confirmEl);
 
 		// 入口按钮可见性：有 Token（或 ?manage=1 兜底）才显示
 		(function initVisibility() {
@@ -718,8 +886,23 @@ const initialJson = JSON.stringify(items);
 		mask.addEventListener("click", function (e) {
 			if (e.target === mask) closeModal(false);
 		});
+		confirmOkBtn.addEventListener("click", function () {
+			settleConfirm(true);
+		});
+		confirmCancelBtn.addEventListener("click", function () {
+			settleConfirm(false);
+		});
+		confirmEl.addEventListener("click", function (e) {
+			if (e.target === confirmEl) settleConfirm(false);
+		});
 		document.addEventListener("keydown", function (e) {
-			if (e.key === "Escape" && !mask.classList.contains("hidden")) closeModal(false);
+			if (e.key !== "Escape") return;
+			// 确认框优先：它开着时 Esc 只关它，不要连带把编辑弹窗也关掉
+			if (!confirmEl.classList.contains("hidden")) {
+				settleConfirm(false);
+				return;
+			}
+			if (!mask.classList.contains("hidden")) closeModal(false);
 		});
 
 		btnAdd.addEventListener("click", function () {
@@ -745,10 +928,15 @@ const initialJson = JSON.stringify(items);
 			if (act === "del") {
 				var t = card.querySelector('[data-f="title"]');
 				var name = t && t.value ? t.value : "这一条";
-				if (!window.confirm("确定删除「" + name + "」吗？保存后线上才会生效。")) return;
-				card.parentNode.removeChild(card);
-				state.dirty = true;
-				setSubtitle();
+				askConfirm("确定删除「" + name + "」吗？保存后线上才会生效。", {
+					title: "删除这条友链？",
+					okText: "删除",
+				}).then(function (ok) {
+					if (!ok) return;
+					card.parentNode.removeChild(card);
+					state.dirty = true;
+					setSubtitle();
+				});
 				return;
 			}
 			if (act === "up" || act === "down") {
@@ -764,17 +952,7 @@ const initialJson = JSON.stringify(items);
 			state.dirty = true;
 		});
 
-		btnSave.addEventListener("click", function () {
-			if (state.busy) return;
-			var items = collect();
-			var err = validate(items);
-			if (err) {
-				showMsg(err, "warn");
-				return;
-			}
-			var dup = dupWarning(items);
-			if (dup && !window.confirm(dup)) return;
-
+		function doSave(items) {
 			var c = cfg();
 			if (!c.token) {
 				showMsg("未检测到 GitHub Token，请先在编辑器页面配置。", "error");
@@ -795,10 +973,7 @@ const initialJson = JSON.stringify(items);
 					state.sha = "";
 					state.dirty = false;
 					render();
-					showMsg(
-						"已提交 ✓ 线上约 2~3 分钟后生效（CI 正在重建）。",
-						"success",
-					);
+					showMsg("已提交 ✓ 线上约 2~3 分钟后生效（CI 正在重建）。", "success");
 				})
 				.catch(function (e) {
 					showMsg(e.message || "保存失败，请重试。", "error");
@@ -806,6 +981,26 @@ const initialJson = JSON.stringify(items);
 				.then(function () {
 					setBusy(false);
 				});
+		}
+
+		btnSave.addEventListener("click", function () {
+			if (state.busy) return;
+			var items = collect();
+			var err = validate(items);
+			if (err) {
+				showMsg(err, "warn");
+				return;
+			}
+			var dup = dupWarning(items);
+			if (dup) {
+				askConfirm(dup, { title: "检测到重复", okText: "仍要保存", danger: false }).then(
+					function (ok) {
+						if (ok) doSave(items);
+					},
+				);
+				return;
+			}
+			doSave(items);
 		});
 
 		// 尊重"减少动态效果"偏好
