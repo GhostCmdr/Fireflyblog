@@ -248,7 +248,8 @@ export const oursFriendsConfig: FriendLink[] = [
 	},
 	{
 		title: "测试专用1",
-		imgurl: "https://ubi-static-website-hosting-prod.ubisoft.com/account-components/prod/_next/static/media/logo.827aa40f.svg",
+		imgurl:
+			"https://ubi-static-website-hosting-prod.ubisoft.com/account-components/prod/_next/static/media/logo.827aa40f.svg",
 		desc: "测试",
 		siteurl: "https://www.ubisoft.com/en-gb/account/account-information",
 		tags: ["大大", "哒哒哒", "大大", "dada1", "dadda1"],
@@ -266,9 +267,11 @@ export const oursFriendsConfig: FriendLink[] = [
 	},
 	{
 		title: "测试关闭",
-		imgurl: "https://wx.mail.qq.com/info/geticon?addr=2528639663%40qq.com&type=0",
+		imgurl:
+			"https://wx.mail.qq.com/info/geticon?addr=2528639663%40qq.com&type=0",
 		desc: "大大",
-		siteurl: "https://wx.mail.qq.com/home/index?sid=za9keYz6bkUut3YzAJZHdQAA#/list/1",
+		siteurl:
+			"https://wx.mail.qq.com/home/index?sid=za9keYz6bkUut3YzAJZHdQAA#/list/1",
 		tags: ["哒哒哒", "大大", "大"],
 		weight: 1,
 		enabled: false,

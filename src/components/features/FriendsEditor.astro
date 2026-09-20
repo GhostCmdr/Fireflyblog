@@ -326,8 +326,78 @@ const initialJson = JSON.stringify(items);
 
 		/* ───────────── 生成数组体文本 ───────────── */
 
+		// ── 与 Biome 的 formatter 对齐（否则 biome ci 会判 format error，用户每次保存都会让 CI 变红）──
+		// 依据 biome.json：formatter.indentStyle = tab，未设 indentWidth（默认 2），lineWidth 默认 80
+		// 实测探针结论：`imgurl: "值",` 在 65 字符值时可放单行（65+15=80），66 字符必须换行；
+		//              超宽的数组则每个元素独占一行并带尾随逗号。
+		var LINE_WIDTH = 80;
+		var INDENT_WIDTH = 2;
+
+		// Biome 用 unicode-width 计算行宽：CJK / 全角 / emoji 等宽字符按 2 计
+		function charWidth(cp) {
+			if (
+				cp >= 0x1100 &&
+				(cp <= 0x115f ||
+					cp === 0x2329 ||
+					cp === 0x232a ||
+					(cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
+					(cp >= 0xac00 && cp <= 0xd7a3) ||
+					(cp >= 0xf900 && cp <= 0xfaff) ||
+					(cp >= 0xfe30 && cp <= 0xfe6f) ||
+					(cp >= 0xff00 && cp <= 0xff60) ||
+					(cp >= 0xffe0 && cp <= 0xffe6) ||
+					(cp >= 0x1f300 && cp <= 0x1faff) ||
+					(cp >= 0x20000 && cp <= 0x3fffd))
+			)
+				return 2;
+			return 1;
+		}
+
+		function textWidth(s) {
+			var w = 0;
+			for (var i = 0; i < s.length; i++) {
+				var cp = s.codePointAt(i);
+				if (cp > 0xffff) i++;
+				w += charWidth(cp);
+			}
+			return w;
+		}
+
+		// Biome 的 quoteStyle 是 double，但字符串内含双引号、且不含单引号时改用单引号（减少转义）
 		function quote(s) {
-			return '"' + String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+			var v = String(s == null ? "" : s);
+			if (v.indexOf('"') !== -1 && v.indexOf("'") === -1) {
+				return "'" + v.replace(/\\/g, "\\\\") + "'";
+			}
+			return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+		}
+
+		function tabs(n) {
+			var s = "";
+			for (var i = 0; i < n; i++) s += "\t";
+			return s;
+		}
+
+		function fits(tabCount, text) {
+			return tabCount * INDENT_WIDTH + textWidth(text) <= LINE_WIDTH;
+		}
+
+		// 标量字段：放不下时把值换到下一行并多缩进一级（Biome 行为）
+		function scalarField(tabCount, key, valueText) {
+			var oneLine = key + ": " + valueText + ",";
+			if (fits(tabCount, oneLine)) return tabs(tabCount) + oneLine + "\n";
+			return tabs(tabCount) + key + ":\n" + tabs(tabCount + 1) + valueText + ",\n";
+		}
+
+		// 数组字段：放不下时每个元素独占一行
+		function arrayField(tabCount, key, valueTexts) {
+			var oneLine = key + ": [" + valueTexts.join(", ") + "],";
+			if (fits(tabCount, oneLine)) return tabs(tabCount) + oneLine + "\n";
+			var out = tabs(tabCount) + key + ": [\n";
+			for (var i = 0; i < valueTexts.length; i++) {
+				out += tabs(tabCount + 1) + valueTexts[i] + ",\n";
+			}
+			return out + tabs(tabCount) + "],\n";
 		}
 
 		function buildArrayBody(items) {
@@ -336,22 +406,21 @@ const initialJson = JSON.stringify(items);
 			for (var i = 0; i < total; i++) {
 				var it = items[i];
 				out += "\t{\n";
-				out += "\t\ttitle: " + quote(it.title) + ",\n";
-				out += "\t\timgurl: " + quote(it.imgurl) + ",\n";
-				out += "\t\tdesc: " + quote(it.desc) + ",\n";
-				out += "\t\tsiteurl: " + quote(it.siteurl) + ",\n";
+				out += scalarField(2, "title", quote(it.title));
+				out += scalarField(2, "imgurl", quote(it.imgurl));
+				out += scalarField(2, "desc", quote(it.desc));
+				out += scalarField(2, "siteurl", quote(it.siteurl));
 				if (it.tags && it.tags.length) {
-					out +=
-						"\t\ttags: [" +
-						it.tags
-							.map(function (t) {
-								return quote(t);
-							})
-							.join(", ") +
-						"],\n";
+					out += arrayField(
+						2,
+						"tags",
+						it.tags.map(function (t) {
+							return quote(t);
+						}),
+					);
 				}
-				out += "\t\tweight: " + (total - i) + ",\n";
-				out += "\t\tenabled: " + (it.enabled === false ? "false" : "true") + ",\n";
+				out += scalarField(2, "weight", String(total - i));
+				out += scalarField(2, "enabled", it.enabled === false ? "false" : "true");
 				out += "\t},\n";
 			}
 			return out;
