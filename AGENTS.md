@@ -4,6 +4,16 @@
 
 Firefly is an Astro 7 site with Svelte islands and TypeScript configuration. Main source code lives in `src/`: routes in `src/pages`, layouts in `src/layouts`, reusable UI in `src/components`, styles in `src/styles`, content in `src/content`, helpers in `src/utils`, and Markdown/HTML plugins in `src/plugins`. Site configuration is split across `src/config` with matching type definitions in `src/types`; prefer imports from `@/config` when available. Static files served directly belong in `public`, source-managed images in `src/assets`, docs in `docs` and `Firefly-Docs`, and automation in `scripts`.
 
+## Repository-Specific Conventions
+
+This repository tracks the upstream Firefly theme, so local customization lives in a thin override layer instead of being edited into upstream files in place.
+
+- Configuration overrides live in `src/config/ours/values.ts` (marked `[OURS]`). Upstream `src/config/*.ts` files keep their stock default values and only keep a small `mergeDeep` hook near the end (about 2-3 lines each). Never change an upstream default value in place: add the override to `src/config/ours/values.ts` and leave the hook line untouched.
+- `mergeDeep` semantics (see `src/config/ours/values.ts`): objects are merged deeply (our keys win, other upstream defaults survive), arrays are replaced wholesale (keywords, nav items, sidebar widgets, friend links, ...), and a key set to `undefined` deletes that upstream key.
+- The `[OURS]` comment marker flags every line that diverges from upstream. Keep the marker when editing so future upstream diffs stay easy to review.
+- Content-level customization is written directly in the content files (for example `src/content/spec/friends.mdx`). Upstream treats these as templates meant to be rewritten, so they need no override layer.
+- Shared external services are declared in config: `https://a.favicon.im/{domain}` is the upstream favicon API used by the bookmark navigation page and reused for friend-link icons. Prefer reusing these configured services over hardcoding service URLs elsewhere.
+
 ## Build, Test, and Development Commands
 
 Use `pnpm`; the `preinstall` script enforces it.
