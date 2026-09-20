@@ -12,6 +12,13 @@ type AnyObj = Record<string, any>;
 
 // 仅类型导入（无运行时代价）：给下面的数组加显式类型，确保结构写错时 astro check 能报出来
 import type { BooknavGroup } from "../../types/booknavConfig";
+import type { FriendLink } from "../../types/friendsConfig";
+import type { ProfileConfig } from "../../types/profileConfig";
+
+// 【isolatedDeclarations / TS9017】本文件导出的对象里，数组字面量必须写 `as const`：
+// 该修饰只在类型层生效，编译后不留痕迹，运行时行为完全不变。
+// 若该导出本身能引用上游类型（如 oursFriendsConfig / oursBooknavConfig），
+// 则优先用显式类型标注（顺带让 astro check 校验结构），无需 as const。
 
 /** 深合并：对象合并、数组替换、undefined=删除键 */
 export function mergeDeep<T extends AnyObj>(
@@ -50,12 +57,12 @@ export const oursSiteConfig = {
 	subtitle: "埋学研究员",
 	site_url: "https://xiaomaisos.me",
 	description: "本站致力于研究生活中的埋学事件",
-	keywords: ["SOS团长", "地球Online资深玩家", "独狼玩家", "埋学生活"],
+	keywords: ["SOS团长", "地球Online资深玩家", "独狼玩家", "埋学生活"] as const,
 	// 标签页图标（浏览器窗口左上角）：合并上游 6.16.x 时该键被上游默认值覆盖成 /favicon/firefly-32.png，
 	// 而我方原图标 public/favicon/favicon.ico 一直没被动过（blob 与合并前一致）→ 这里显式指回。
 	// 数组 → 整体替换（mergeDeep 语义），写一项即可，不依赖上游数组内容。
 	// 注：Layout.astro 对以 "/" 开头的 src 会走 url() 加 basePath，请勿改成 src/assets 相对路径。
-	favicon: [{ src: "/favicon/favicon.ico" }],
+	favicon: [{ src: "/favicon/favicon.ico" }] as const,
 	navbar: {
 		// 站点图标（src 目录，构建时自动优化）
 		logo: { value: "assets/images/xiaomai.png" },
@@ -105,7 +112,7 @@ export const oursCommentConfig = {
 			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_antic.png",
 			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_think.png",
 			"https://unpkg.com/@waline/emojis@1.4.0/bilibili/bb_spit_blodd.png",
-		],
+		] as const,
 		locale: {
 			reactionTitle: "(๑˃ᴗ˂)ﻭ 求一连！投个币嘛~",
 			reaction0: "求",
@@ -132,7 +139,10 @@ export const oursMusicConfig = {
 };
 
 /* ────────────────────────── 共用链接常量 ────────────────────────── */
-// QQ 群分享链接较长且在两处使用（侧栏个人资料 links + 首页横幅 links），集中一处便于维护
+// QQ 群分享链接（供侧栏个人资料 links 使用），集中一处便于维护。
+// 注：首页横幅 common.homeText.links 因所在数组必须写 `as const`（isolatedDeclarations，
+//     且该处无法用上游类型标注 —— BackgroundWallpaperConfig 的 mode/src/homeText.enable 均必填），
+//     `as const` 数组内不能引用任何标识符 ⇒ 那里内联了同一个 URL。改链接时请同时更新两处。
 const QQ_GROUP_URL =
 	"https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0%3D&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info";
 
@@ -146,7 +156,7 @@ export const oursBackgroundWallpaper = {
 				"研究埋学事件，探索埋学世界",
 				"地球Online资深独狼玩家",
 				"享受生活，享受埋学",
-			],
+			] as const,
 			// 首页横幅标题下方的链接按钮（数组 → 整体替换）。
 			// ⚠️ 上游 6.16.x 新增了这个 links 数组且默认指向 CuteLeaf（GitHub / Email / Sponsor / RSS），
 			//    合并时我方没有覆盖它 → 点开全是上游地址（2026-09-16 修）。
@@ -161,7 +171,7 @@ export const oursBackgroundWallpaper = {
 				{
 					name: "QQ群",
 					icon: "fa7-brands:qq",
-					url: QQ_GROUP_URL,
+					url: "https://qun.qq.com/universal-share/share?ac=1&authKey=6xUUPggAwydgR5HmPw88VpNvuT4IEfJUqTPneDfVeVOPS0eXKNIkmcQSdNhW%2BIdH&busi_data=eyJncm91cENvZGUiOiI4OTc0NTAwNzYiLCJ0b2tlbiI6ImpPaFZtaFdHOG91Y1JIRnNjVWdjbGVvaHBVaWFqeUtIU3hNeVZUMlNqSmNsMWFRSXNSNnVFOGVvelE2WG9qNWoiLCJ1aW4iOiIyNTI4NjM5NjYzIn0%3D&data=oK3veCc2W6Fd28QQJnEwKFlvlHhdZuuT0xpF4vvNCs0eGTYVDehw23dKD-JBBPvAw0wNy4Z6fm-j1dZrgHYeQA&svctype=4&tempid=h5_group_info",
 				},
 				{
 					name: "Bilibili",
@@ -173,14 +183,14 @@ export const oursBackgroundWallpaper = {
 					icon: "fa7-solid:rss",
 					url: "/rss/",
 				},
-			],
+			] as const,
 		},
 	},
 };
 
 /* ────────────────────────── profileConfig ────────────────────────── */
 // 注意：links 为数组 → 整体替换（我方完全掌控；上游新增的默认链接不会出现）
-export const oursProfileConfig = {
+export const oursProfileConfig: ProfileConfig = {
 	name: "小埋SOS团长",
 	bio: "地球Online资深独狼玩家",
 	// ⚠️ 数组顺序 = 侧栏个人资料里图标的显示顺序（从左到右）
@@ -220,7 +230,7 @@ export const oursFriendsPageConfig = {
 };
 
 // 数组 → 整体替换
-export const oursFriendsConfig = [
+export const oursFriendsConfig: FriendLink[] = [
 	{
 		title: "小埋团长",
 		// [OURS] 图标 = 该网站真实的站点图标（用抓取服务，与书签导航 booknavConfig 同一服务 ✓）
@@ -390,7 +400,7 @@ export const oursSidebarConfig = {
 			specificConfig: { collapseThreshold: 10 },
 		},
 		{ type: "stats", enable: true, position: "sticky", showOnPostPage: false },
-	],
+	] as const,
 	rightComponents: [
 		// [OURS] 最新动态（上游新增侧栏组件，2026-09-16 启用）：右栏第一块、在音乐播放器上方。
 		// position: "top" = 不吸附（随页面滚动看，滚上去就离开视口）；默认显示最近 3 条
@@ -457,7 +467,7 @@ export const oursSidebarConfig = {
 				},
 			},
 		},
-	],
+	] as const,
 	mobileBottomComponents: [
 		// [OURS] 最新动态：与桌面右栏一致放到最前（移动端底部栏没有 position 字段）
 		{ type: "dynamic", enable: true, showOnPostPage: true },
@@ -483,7 +493,7 @@ export const oursSidebarConfig = {
 			showOnPostPage: true,
 			specificConfig: { siteInfo: { unknownBuildPlatform: "Unknown CI" } },
 		},
-	],
+	] as const,
 };
 
 /* ────────────────────────── navBarConfig ────────────────────────── */
@@ -623,7 +633,7 @@ export const oursNavBarConfig = {
 				},
 			],
 		},
-	],
+	] as const,
 };
 
 /* ────────────────────────── Fancybox（图片灯箱）选项 ────────────────────────── */
@@ -632,8 +642,9 @@ export const oursFancyboxOptions = {
 	Thumbs: { autoStart: false, showOnStart: "no" },
 	Toolbar: {
 		display: {
-			middle: ["zoomIn", "zoomOut", "toggle1to1"],
-			right: ["close"],
+			// isolatedDeclarations 下的导出对象：数组字面量须 as const（纯类型层，运行时不变）
+			middle: ["zoomIn", "zoomOut", "toggle1to1"] as const,
+			right: ["close"] as const,
 		},
 	},
 	zoomEffect: false, // 禁用缩略图→全屏的缩放动画
@@ -681,7 +692,7 @@ export const oursGalleryConfig = {
 			date: "2026-07-23",
 			tags: ["测试", "封面", "时间", "设置"],
 		},
-	],
+	] as const, // isolatedDeclarations 下的导出对象：数组字面量须 as const（纯类型层，运行时不变）
 };
 
 /* ────────────────────────── displaySettingsConfig ────────────────────────── */
