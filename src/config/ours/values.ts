@@ -234,8 +234,9 @@ export const oursFriendsConfig = [
 	},
 	{
 		title: "GitHub",
-		// [OURS] 同样改用真实站点图标（服务返回 SVG，矢量清晰 ✓）
-		imgurl: "https://a.favicon.im/github.com",
+		// [OURS] 这里是你本人的 GitHub（siteurl = github.com/GhostCmdr）⇒ 图标用**你的 GitHub 头像** ✓
+		// 不带 size 参数 ⇒ GitHub 返回原图（高清，卡片 64px 下清晰不糊 ✓）
+		imgurl: "https://avatars.githubusercontent.com/u/115412785?v=4",
 		desc: "小埋团长的主页",
 		siteurl: "https://github.com/GhostCmdr",
 		tags: ["Web"],
