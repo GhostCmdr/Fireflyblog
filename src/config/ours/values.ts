@@ -230,11 +230,15 @@ export const oursFriendsPageConfig = {
 };
 
 // 数组 → 整体替换
+// [OURS] 本数组支持「网站端就地编辑」：在 /friends/ 页面配置 GitHub Token 后会出现「编辑友链」按钮。
+// ⚠️ 编辑器会**整块重写方括号内的内容** ⇒ 注释一律写在数组外部，方括号内保持纯数据。
+//    字段顺序固定：title → imgurl → desc → siteurl → tags → weight → enabled（weight 由编辑器按顺序自动生成）。
+//    声明行必须保留 `: FriendLink[]` 显式类型标注（isolatedDeclarations 要求，见文件顶部说明）。
+// 图标填法：站点图标用 `https://a.favicon.im/<对方域名>`（与书签导航 booknavConfig 同一服务 ✓）；
+//          若友链是某个人的主页（如 GitHub），也可直接填其头像地址 ✓
 export const oursFriendsConfig: FriendLink[] = [
 	{
 		title: "小埋团长",
-		// [OURS] 图标 = 该网站真实的站点图标（用抓取服务，与书签导航 booknavConfig 同一服务 ✓）
-		// 以后新增友链：imgurl 填 `https://a.favicon.im/<对方域名>` 即可 ✓
 		imgurl: "https://a.favicon.im/xiaomaisos.me",
 		desc: "小埋团长的博客",
 		siteurl: "https://xiaomaisos.me",
@@ -244,8 +248,6 @@ export const oursFriendsConfig: FriendLink[] = [
 	},
 	{
 		title: "GitHub",
-		// [OURS] 这里是你本人的 GitHub（siteurl = github.com/GhostCmdr）⇒ 图标用**你的 GitHub 头像** ✓
-		// 不带 size 参数 ⇒ GitHub 返回原图（高清，卡片 64px 下清晰不糊 ✓）
 		imgurl: "https://avatars.githubusercontent.com/u/115412785?v=4",
 		desc: "小埋团长的主页",
 		siteurl: "https://github.com/GhostCmdr",

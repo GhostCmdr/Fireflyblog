@@ -1,0 +1,743 @@
+---
+// [OURS] 友链就地编辑器（/friends/ 页面）
+//
+// 用途：配置过 GitHub Token 的浏览器里，友链页标题行右侧会出现「编辑友链」按钮；
+//      点开弹窗即可直接增删改友链，保存时由浏览器用 GitHub Contents API
+//      整块重写 src/config/ours/values.ts 里的 oursFriendsConfig 数组。
+//
+// 设计约定（与 AGENTS.md 的 Repository-Specific Conventions 一致）：
+//   - 只重写方括号内的数组体，文件其余部分字节级不动
+//   - 字段顺序固定 title → imgurl → desc → siteurl → tags → weight → enabled
+//   - weight 由列表顺序自动生成（首条最大），用户不必手填
+//   - 生成为纯数据（无注释），所以 values.ts 的注释必须写在数组外部
+//   - 无前端框架、无新依赖，缩进 tab、字符串双引号
+import type { FriendLink } from "@/types/friendsConfig";
+
+interface Props {
+	/** 当前全部友链（含 enabled: false 的，便于重新启用）；顺序按 weight 降序 */
+	items?: FriendLink[];
+}
+
+const { items = [] } = Astro.props;
+const initialJson = JSON.stringify(items);
+---
+
+<div id="fe-root" data-items={initialJson}>
+	<!-- 编辑入口：默认隐藏，脚本判定通过后才显示（无 Token 的访客完全看不到） -->
+	<button
+		id="fe-open"
+		type="button"
+		class="ml-auto hidden shrink-0 items-center gap-1.5 rounded-full border border-(--primary)/45 px-3 py-1.5 text-sm font-medium text-(--primary) transition-all duration-200 hover:-translate-y-0.5 hover:bg-(--primary)/10 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none active:translate-y-0"
+		aria-label="编辑友链"
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			width="16"
+			height="16"
+			fill="currentColor"
+			aria-hidden="true"
+		>
+			<path
+				d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+			></path>
+		</svg>
+		<span class="hidden sm:inline">编辑友链</span>
+	</button>
+
+	<!-- 弹窗 -->
+	<div
+		id="fe-mask"
+		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity duration-200 sm:p-6"
+		style="background: rgba(0, 0, 0, 0.45);"
+		role="dialog"
+		aria-modal="true"
+		aria-label="编辑友链"
+	>
+		<div
+			id="fe-panel"
+			class="card-base flex max-h-[92vh] w-full max-w-[720px] flex-col overflow-hidden shadow-2xl transition-all duration-200 sm:max-h-[85vh]"
+			style="transform: translateY(8px) scale(0.98); opacity: 0;"
+		>
+			<!-- 头部（固定） -->
+			<div
+				class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-4"
+			>
+				<div class="min-w-0">
+					<div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+						编辑友链
+					</div>
+					<div id="fe-subtitle" class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+						列表顺序 = 页面显示顺序（保存时自动生成权重）
+					</div>
+				</div>
+				<button
+					id="fe-close"
+					type="button"
+					class="shrink-0 rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+					aria-label="关闭"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="20"
+						height="20"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+						></path></svg
+					>
+				</button>
+			</div>
+
+			<!-- 状态提示条（按需显示） -->
+			<div
+				id="fe-msg"
+				class="hidden shrink-0 px-5 py-2.5 text-sm"
+				role="status"
+				aria-live="polite"
+			>
+			</div>
+
+			<!-- 列表（独立滚动） -->
+			<div id="fe-body" class="min-h-0 grow overflow-y-auto px-5 py-4">
+				<div id="fe-list" class="flex flex-col gap-3"></div>
+				<div
+					id="fe-empty"
+					class="hidden flex-col items-center justify-center py-10 text-center text-sm text-neutral-400 dark:text-neutral-500"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="36"
+						height="36"
+						fill="currentColor"
+						aria-hidden="true"
+						class="mb-2 opacity-60"
+						><path
+							d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+						></path></svg
+					>
+					还没有友链，点下方「新增一条友链」开始。
+				</div>
+			</div>
+
+			<!-- 底部操作条（固定） -->
+			<div
+				class="flex shrink-0 flex-col gap-2 border-t border-(--line-divider) px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+			>
+				<button
+					id="fe-add"
+					type="button"
+					class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
+				>
+					+ 新增一条友链
+				</button>
+				<div class="flex items-center gap-2">
+					<button
+						id="fe-cancel"
+						type="button"
+						class="flex-1 rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700 sm:flex-none"
+					>
+						取消
+					</button>
+					<button
+						id="fe-save"
+						type="button"
+						class="flex-1 rounded-xl bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+					>
+						保存到 GitHub
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script is:inline>
+	(function () {
+		"use strict";
+
+		var root = document.getElementById("fe-root");
+		if (!root) return;
+
+		var btnOpen = document.getElementById("fe-open");
+		var mask = document.getElementById("fe-mask");
+		var panel = document.getElementById("fe-panel");
+		var listEl = document.getElementById("fe-list");
+		var emptyEl = document.getElementById("fe-empty");
+		var msgEl = document.getElementById("fe-msg");
+		var subtitleEl = document.getElementById("fe-subtitle");
+		var btnAdd = document.getElementById("fe-add");
+		var btnSave = document.getElementById("fe-save");
+		var btnCancel = document.getElementById("fe-cancel");
+		var btnClose = document.getElementById("fe-close");
+
+		// 编辑器维护的数据文件（与 values.ts 中 oursFriendsConfig 的位置一致）
+		var FILE_PATH = "src/config/ours/values.ts";
+		var MARKER = "export const oursFriendsConfig";
+		var DEFAULT_REPO = "GhostCmdr/Fireflyblog";
+
+		var state = {
+			items: [],
+			sha: "",
+			dirty: false,
+			busy: false,
+		};
+
+		/* ───────────── 小工具 ───────────── */
+
+		function cfg() {
+			var ls = window.localStorage;
+			return {
+				token: ls.getItem("gh-token") || ls.getItem("gh-editor-token") || "",
+				repo: ls.getItem("gh-repo") || ls.getItem("gh-editor-repo") || DEFAULT_REPO,
+				branch: ls.getItem("gh-branch") || "main",
+			};
+		}
+
+		function escHtml(s) {
+			return String(s == null ? "" : s)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+
+		function showMsg(text, kind) {
+			var palette = {
+				info: "background: rgba(59,130,246,0.10); color: #2563EB;",
+				success: "background: rgba(22,163,74,0.12); color: #15803D;",
+				warn: "background: rgba(217,119,6,0.12); color: #B45309;",
+				error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
+			};
+			msgEl.style.cssText = palette[kind] || palette.info;
+			msgEl.textContent = text;
+			msgEl.classList.remove("hidden");
+		}
+
+		function hideMsg() {
+			msgEl.classList.add("hidden");
+		}
+
+		function setBusy(on, label) {
+			state.busy = !!on;
+			btnSave.disabled = !!on;
+			btnSave.textContent = on ? "提交中…" : "保存到 GitHub";
+			if (on && label) showMsg(label, "info");
+		}
+
+		function setSubtitle() {
+			subtitleEl.textContent =
+				"共 " + state.items.length + " 条 · 列表顺序 = 页面显示顺序（保存时自动生成权重）";
+			emptyEl.classList.toggle("hidden", state.items.length > 0);
+			emptyEl.classList.toggle("flex", state.items.length === 0);
+		}
+
+		/* ───────────── 解析 values.ts ───────────── */
+
+		// 定位 oursFriendsConfig 数组体：
+		//   起点 —— 必须锁定 "= ["，不能用第一个 "["
+		//          （声明行是 `... : FriendLink[] = [`，第一个 [ 属于类型标注，会拼坏文件）
+		//   终点 —— 向下找「行首的 ];」（数组内存在 tags: ["Blog"] 这类内容，不能用第一个 ] 判断）
+		//   区间 —— body 以换行开头、以逗号结尾（即 [ 与 行首]; 之间的原文）
+		function locateArrayBody(src) {
+			var decl = src.indexOf(MARKER);
+			if (decl === -1) return null;
+			var eq = src.indexOf("= [", decl);
+			if (eq === -1) return null;
+			var open = eq + 2;
+			var close = src.indexOf("\n];", open);
+			if (close === -1) return null;
+			return { open: open, close: close, body: src.slice(open + 1, close) };
+		}
+
+		function parseValue(raw) {
+			var v = raw.trim().replace(/,$/, "").trim();
+			if (v.charAt(0) === '"' && v.lastIndexOf('"') > 0) {
+				var inner = v.slice(1, v.lastIndexOf('"'));
+				return inner.replace(/\\(["\\])/g, "$1");
+			}
+			if (v.charAt(0) === "[") {
+				var last = v.lastIndexOf("]");
+				var inside = last > 0 ? v.slice(1, last) : "";
+				if (!inside.trim()) return [];
+				return inside
+					.split(",")
+					.map(function (x) {
+						return parseValue(x);
+					})
+					.filter(function (x) {
+						return x !== "";
+					});
+			}
+			if (v === "true") return true;
+			if (v === "false") return false;
+			if (v !== "" && !isNaN(Number(v))) return Number(v);
+			return v;
+		}
+
+		// 逐行解析数组体（格式由本编辑器与项目约定固定，无嵌套对象）
+		function parseArrayBody(body) {
+			var out = [];
+			var cur = null;
+			var lines = body.split("\n");
+			for (var i = 0; i < lines.length; i++) {
+				var line = lines[i].trim();
+				if (!line || line.indexOf("//") === 0) continue;
+				if (line.charAt(0) === "{") {
+					cur = {};
+					continue;
+				}
+				if (line.charAt(0) === "}") {
+					if (cur) {
+						out.push(cur);
+						cur = null;
+					}
+					continue;
+				}
+				if (!cur) continue;
+				var m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\s\S]*)$/);
+				if (!m) continue;
+				cur[m[1]] = parseValue(m[2]);
+			}
+			return out;
+		}
+
+		function normalize(raw) {
+			return {
+				title: String(raw.title == null ? "" : raw.title),
+				imgurl: String(raw.imgurl == null ? "" : raw.imgurl),
+				desc: String(raw.desc == null ? "" : raw.desc),
+				siteurl: String(raw.siteurl == null ? "" : raw.siteurl),
+				tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
+				weight: Number(raw.weight) || 0,
+				enabled: raw.enabled !== false,
+			};
+		}
+
+		function sortByWeight(arr) {
+			return arr.slice().sort(function (a, b) {
+				return (Number(b.weight) || 0) - (Number(a.weight) || 0);
+			});
+		}
+
+		/* ───────────── 生成数组体文本 ───────────── */
+
+		function quote(s) {
+			return '"' + String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+		}
+
+		function buildArrayBody(items) {
+			var total = items.length;
+			var out = "\n";
+			for (var i = 0; i < total; i++) {
+				var it = items[i];
+				out += "\t{\n";
+				out += "\t\ttitle: " + quote(it.title) + ",\n";
+				out += "\t\timgurl: " + quote(it.imgurl) + ",\n";
+				out += "\t\tdesc: " + quote(it.desc) + ",\n";
+				out += "\t\tsiteurl: " + quote(it.siteurl) + ",\n";
+				if (it.tags && it.tags.length) {
+					out +=
+						"\t\ttags: [" +
+						it.tags
+							.map(function (t) {
+								return quote(t);
+							})
+							.join(", ") +
+						"],\n";
+				}
+				out += "\t\tweight: " + (total - i) + ",\n";
+				out += "\t\tenabled: " + (it.enabled === false ? "false" : "true") + ",\n";
+				out += "\t},\n";
+			}
+			return out;
+		}
+
+		/* ───────────── 渲染 ───────────── */
+
+		var FIELD_LABELS = {
+			title: "标题",
+			imgurl: "图标地址",
+			desc: "描述",
+			siteurl: "站点地址",
+			tags: "标签（逗号分隔）",
+		};
+
+		function fieldHtml(name, value, placeholder, extra) {
+			return (
+				'<label class="flex min-w-0 flex-col gap-1">' +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">' +
+				escHtml(FIELD_LABELS[name] || name) +
+				"</span>" +
+				'<div class="flex items-center gap-2">' +
+				'<input data-f="' +
+				name +
+				'" type="text" value="' +
+				escHtml(value) +
+				'" placeholder="' +
+				escHtml(placeholder || "") +
+				'" class="min-w-0 grow rounded-lg border border-(--line-divider) bg-transparent px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100" />' +
+				(extra || "") +
+				"</div>" +
+				"</label>"
+			);
+		}
+
+		function itemHtml(it, index) {
+			var thumb =
+				'<img data-f="thumb" src="' +
+				escHtml(it.imgurl) +
+				'" alt="" class="h-9 w-9 shrink-0 rounded-md border border-(--line-divider) object-cover" onerror="this.style.visibility=&#39;hidden&#39;" />';
+			return (
+				'<div class="fe-item card-base relative rounded-xl border border-(--line-divider) p-3" data-idx="' +
+				index +
+				'">' +
+				'<div class="flex items-start gap-2">' +
+				// 排序按钮
+				'<div class="flex shrink-0 flex-col gap-1 pt-4">' +
+				'<button type="button" data-act="up" title="上移" aria-label="上移" class="rounded-md border border-(--line-divider) px-1.5 text-[11px] leading-5 text-neutral-500 transition-colors hover:border-(--primary)/50 hover:text-(--primary)">▲</button>' +
+				'<button type="button" data-act="down" title="下移" aria-label="下移" class="rounded-md border border-(--line-divider) px-1.5 text-[11px] leading-5 text-neutral-500 transition-colors hover:border-(--primary)/50 hover:text-(--primary)">▼</button>' +
+				"</div>" +
+				// 字段区
+				'<div class="grid min-w-0 grow grid-cols-1 gap-2 sm:grid-cols-2">' +
+				fieldHtml("title", it.title, "友链名称") +
+				fieldHtml("siteurl", it.siteurl, "https://example.com") +
+				fieldHtml("imgurl", it.imgurl, "https://a.favicon.im/example.com", thumb) +
+				fieldHtml("desc", it.desc, "一句话描述") +
+				fieldHtml("tags", (it.tags || []).join(", "), "Blog, 技术") +
+				// 启用开关
+				'<label class="flex items-center gap-2 self-end pb-1">' +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">启用</span>' +
+				'<span class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">' +
+				'<input data-f="enabled" type="checkbox" class="peer sr-only" ' +
+				(it.enabled === false ? "" : "checked") +
+				" />" +
+				'<span class="absolute inset-0 rounded-full bg-neutral-300 transition-colors peer-checked:bg-(--primary) dark:bg-neutral-600"></span>' +
+				'<span class="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span>' +
+				"</span>" +
+				"</label>" +
+				"</div>" +
+				// 删除
+				'<button type="button" data-act="del" title="删除" aria-label="删除" class="mt-4 shrink-0 rounded-lg border border-red-500/40 p-1.5 text-red-500 transition-colors hover:bg-red-500/10">' +
+				'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M9 3v1H4v2h16V4h-5V3H9zM6 8v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8H6zm3 2h2v9H9v-9zm4 0h2v9h-2v-9z"></path></svg>' +
+				"</button>" +
+				"</div>" +
+				"</div>"
+			);
+		}
+
+		function defaultItem() {
+			return { title: "", imgurl: "", desc: "", siteurl: "", tags: [], enabled: true };
+		}
+
+		function render() {
+			listEl.innerHTML = state.items.map(itemHtml).join("");
+			setSubtitle();
+		}
+
+		/* ───────────── 从 DOM 收集 ───────────── */
+
+		function collect() {
+			var nodes = listEl.querySelectorAll(".fe-item");
+			var out = [];
+			for (var i = 0; i < nodes.length; i++) {
+				var n = nodes[i];
+				var get = function (f) {
+					var el = n.querySelector('[data-f="' + f + '"]');
+					return el ? el.value : "";
+				};
+				out.push({
+					title: get("title").trim(),
+					imgurl: get("imgurl").trim(),
+					desc: get("desc").trim(),
+					siteurl: get("siteurl").trim(),
+					tags: get("tags")
+						.split(/[,，]/)
+						.map(function (t) {
+							return t.trim();
+						})
+						.filter(Boolean),
+					enabled: !!n.querySelector('[data-f="enabled"]').checked,
+				});
+			}
+			return out;
+		}
+
+		function validate(items) {
+			for (var i = 0; i < items.length; i++) {
+				var n = i + 1;
+				if (!items[i].title) return "请先修正：第 " + n + " 条的「标题」不能为空";
+				if (!items[i].imgurl) return "请先修正：第 " + n + " 条的「图标地址」不能为空";
+				if (!items[i].siteurl) return "请先修正：第 " + n + " 条的「站点地址」不能为空";
+				if (!/^https?:\/\//i.test(items[i].siteurl))
+					return "请先修正：第 " + n + " 条的「站点地址」需以 http(s):// 开头";
+				if (items[i].imgurl && !/^(https?:\/\/|\/)/i.test(items[i].imgurl))
+					return "请先修正：第 " + n + " 条的「图标地址」需为 http(s):// 或 / 开头的地址";
+			}
+			return "";
+		}
+
+		function dupWarning(items) {
+			var seenT = {};
+			var seenU = {};
+			for (var i = 0; i < items.length; i++) {
+				var t = items[i].title;
+				var u = items[i].siteurl;
+				if (seenT[t]) return "第 " + seenT[t] + " 条与第 " + (i + 1) + " 条的「标题」相同，确定要继续吗？";
+				if (seenU[u]) return "第 " + seenU[u] + " 条与第 " + (i + 1) + " 条的「站点地址」相同，确定要继续吗？";
+				seenT[t] = i + 1;
+				seenU[u] = i + 1;
+			}
+			return "";
+		}
+
+		/* ───────────── GitHub 读写 ───────────── */
+
+		function apiHeaders(token) {
+			var h = { Accept: "application/vnd.github.v3+json" };
+			if (token) h.Authorization = "token " + token;
+			return h;
+		}
+
+		function contentsUrl(repo, path) {
+			return (
+				"https://api.github.com/repos/" +
+				repo +
+				"/contents/" +
+				path.split("/").map(encodeURIComponent).join("/")
+			);
+		}
+
+		function readRemote() {
+			var c = cfg();
+			if (!c.token) throw new Error("未检测到 GitHub Token，请先在编辑器页面配置。");
+			showMsg("正在从 GitHub 读取当前友链…", "info");
+			return fetch(contentsUrl(c.repo, FILE_PATH) + "?ref=" + encodeURIComponent(c.branch), {
+				headers: apiHeaders(c.token),
+			}).then(function (res) {
+				if (res.status === 401) throw new Error("Token 无效或已过期，请到编辑器页更新后再试。");
+				if (res.status === 403) throw new Error("Token 权限不足（需要该仓库的 Contents 读写权限）。");
+				if (res.status === 404) throw new Error("仓库或文件不存在：" + c.repo + "/" + FILE_PATH);
+				if (!res.ok) throw new Error("读取失败（HTTP " + res.status + "）");
+				return res.json().then(function (data) {
+					var text = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+					return { text: text, sha: data.sha };
+				});
+			});
+		}
+
+		function writeRemote(newText, sha) {
+			var c = cfg();
+			return fetch(contentsUrl(c.repo, FILE_PATH), {
+				method: "PUT",
+				headers: Object.assign(apiHeaders(c.token), { "Content-Type": "application/json" }),
+				body: JSON.stringify({
+					message:
+						"feat(friends): 网站端更新友链列表（" + state.items.length + " 条）",
+					content: btoa(unescape(encodeURIComponent(newText))),
+					sha: sha,
+					branch: c.branch,
+				}),
+			}).then(function (res) {
+				if (res.status === 409 || res.status === 422)
+					throw new Error("文件已被改动，请点「重新读取」后再保存。");
+				if (!res.ok) {
+					return res.json().then(
+						function (err) {
+							throw new Error("提交失败：" + (err.message || "HTTP " + res.status));
+						},
+						function () {
+							throw new Error("提交失败（HTTP " + res.status + "）");
+						},
+					);
+				}
+				return res.json();
+			});
+		}
+
+		/* ───────────── 主流程 ───────────── */
+
+		function loadFromRemote() {
+			readRemote()
+				.then(function (r) {
+					var loc = locateArrayBody(r.text);
+					if (!loc) throw new Error("未能在 " + FILE_PATH + " 中定位 oursFriendsConfig 数组。");
+					state.sha = r.sha;
+					state.items = sortByWeight(parseArrayBody(loc.body).map(normalize));
+					state.dirty = false;
+					render();
+					hideMsg();
+				})
+				.catch(function (e) {
+					// 读取失败时退回页面初始数据，仍可编辑、可重试
+					if (!state.items.length) {
+						try {
+							state.items = sortByWeight(
+								JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
+							);
+							render();
+						} catch (err) {
+							/* ignore */
+						}
+					}
+					showMsg(e.message || "读取失败，请重试。", "error");
+				});
+		}
+
+		function openModal() {
+			mask.classList.remove("hidden");
+			mask.classList.add("flex");
+			document.documentElement.style.overflow = "hidden";
+			requestAnimationFrame(function () {
+				panel.style.transform = "translateY(0) scale(1)";
+				panel.style.opacity = "1";
+			});
+			if (!state.items.length) {
+				try {
+					state.items = sortByWeight(
+						JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
+					);
+					render();
+				} catch (e) {
+					/* ignore */
+				}
+			}
+			loadFromRemote();
+		}
+
+		function closeModal(force) {
+			if (state.dirty && !force) {
+				if (!window.confirm("有未保存的修改，确定关闭吗？")) return;
+			}
+			panel.style.transform = "translateY(8px) scale(0.98)";
+			panel.style.opacity = "0";
+			window.setTimeout(function () {
+				mask.classList.add("hidden");
+				mask.classList.remove("flex");
+				document.documentElement.style.overflow = "";
+			}, 180);
+			state.dirty = false;
+		}
+
+		/* ───────────── 事件绑定 ───────────── */
+
+		// 入口按钮可见性：有 Token（或 ?manage=1 兜底）才显示
+		(function initVisibility() {
+			var hasToken = !!cfg().token;
+			var force = /[?&]manage=1\b/.test(window.location.search);
+			if (!hasToken && !force) return;
+			btnOpen.classList.remove("hidden");
+			btnOpen.classList.add("inline-flex");
+		})();
+
+		btnOpen.addEventListener("click", openModal);
+		btnClose.addEventListener("click", function () {
+			closeModal(false);
+		});
+		btnCancel.addEventListener("click", function () {
+			closeModal(false);
+		});
+		mask.addEventListener("click", function (e) {
+			if (e.target === mask) closeModal(false);
+		});
+		document.addEventListener("keydown", function (e) {
+			if (e.key === "Escape" && !mask.classList.contains("hidden")) closeModal(false);
+		});
+
+		btnAdd.addEventListener("click", function () {
+			state.items.push(defaultItem());
+			state.dirty = true;
+			render();
+			var items = listEl.querySelectorAll(".fe-item");
+			var last = items[items.length - 1];
+			if (last) {
+				last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+				var first = last.querySelector('[data-f="title"]');
+				if (first) first.focus();
+			}
+		});
+
+		listEl.addEventListener("click", function (e) {
+			var btn = e.target.closest ? e.target.closest("[data-act]") : null;
+			if (!btn) return;
+			var card = btn.closest(".fe-item");
+			if (!card) return;
+			var act = btn.getAttribute("data-act");
+
+			if (act === "del") {
+				var t = card.querySelector('[data-f="title"]');
+				var name = t && t.value ? t.value : "这一条";
+				if (!window.confirm("确定删除「" + name + "」吗？保存后线上才会生效。")) return;
+				card.parentNode.removeChild(card);
+				state.dirty = true;
+				setSubtitle();
+				return;
+			}
+			if (act === "up" || act === "down") {
+				var prev = act === "up" ? card.previousElementSibling : card.nextElementSibling;
+				if (!prev || !prev.classList || !prev.classList.contains("fe-item")) return;
+				if (act === "up") card.parentNode.insertBefore(card, prev);
+				else card.parentNode.insertBefore(prev, card);
+				state.dirty = true;
+			}
+		});
+
+		listEl.addEventListener("input", function () {
+			state.dirty = true;
+		});
+
+		btnSave.addEventListener("click", function () {
+			if (state.busy) return;
+			var items = collect();
+			var err = validate(items);
+			if (err) {
+				showMsg(err, "warn");
+				return;
+			}
+			var dup = dupWarning(items);
+			if (dup && !window.confirm(dup)) return;
+
+			var c = cfg();
+			if (!c.token) {
+				showMsg("未检测到 GitHub Token，请先在编辑器页面配置。", "error");
+				return;
+			}
+
+			setBusy(true, "正在提交到 GitHub…");
+			readRemote()
+				.then(function (r) {
+					var loc = locateArrayBody(r.text);
+					if (!loc) throw new Error("未能在 " + FILE_PATH + " 中定位 oursFriendsConfig 数组。");
+					var newText =
+						r.text.slice(0, loc.open + 1) + buildArrayBody(items) + r.text.slice(loc.close + 1);
+					return writeRemote(newText, r.sha);
+				})
+				.then(function () {
+					state.items = items.slice();
+					state.sha = "";
+					state.dirty = false;
+					render();
+					showMsg(
+						"已提交 ✓ 线上约 2~3 分钟后生效（CI 正在重建）。",
+						"success",
+					);
+				})
+				.catch(function (e) {
+					showMsg(e.message || "保存失败，请重试。", "error");
+				})
+				.then(function () {
+					setBusy(false);
+				});
+		});
+
+		// 尊重"减少动态效果"偏好
+		if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			panel.style.transition = "none";
+			mask.style.transition = "none";
+		}
+	})();
+</script>

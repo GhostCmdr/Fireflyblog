@@ -13,6 +13,7 @@ This repository tracks the upstream Firefly theme, so local customization lives 
 - The `[OURS]` comment marker flags every line that diverges from upstream. Keep the marker when editing so future upstream diffs stay easy to review.
 - Content-level customization is written directly in the content files (for example `src/content/spec/friends.mdx`). Upstream treats these as templates meant to be rewritten, so they need no override layer.
 - Shared external services are declared in config: `https://a.favicon.im/{domain}` is the upstream favicon API used by the bookmark navigation page and reused for friend-link icons. Prefer reusing these configured services over hardcoding service URLs elsewhere.
+- Friend links live in `oursFriendsConfig` inside `src/config/ours/values.ts` and are editable in place on the site: once a GitHub token is stored in `localStorage`, an "编辑友链" button appears on `/friends/` and opens a modal that rewrites the whole array body via the GitHub Contents API. Keep that array in a machine-rewritable shape: **all comments above the declaration, pure data between the brackets**, the explicit `: FriendLink[]` annotation preserved, and the field order fixed as `title, imgurl, desc, siteurl, tags, weight, enabled` (`weight` is regenerated from list order on save). Related code: `src/components/features/FriendsEditor.astro`.
 
 ## Build, Test, and Development Commands
 

@@ -9,6 +9,9 @@ import {
 	getEnabledFriends,
 	siteConfig,
 } from "@/config";
+// 注意：friendsConfig 未由 @/config/index.ts 转出（上游文件，不去改它），故直接从模块导入
+import { friendsConfig } from "@/config/friendsConfig";
+import FriendsEditor from "@components/features/FriendsEditor.astro";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
@@ -58,7 +61,9 @@ const description =
           <div class="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
             {title}
           </div>
-        </div>
+          {/* [OURS] 友链就地编辑入口：仅当浏览器已配置 GitHub Token 时显示（支持 ?manage=1 兜底） */}
+          <FriendsEditor items={friendsConfig} />
+          </div>
         {
           description && (
             <p class="text-base text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4">
