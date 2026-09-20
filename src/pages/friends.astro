@@ -2,6 +2,7 @@
 import { getEntry, render } from "astro:content";
 import Comment from "@components/comment/index.astro";
 import Markdown from "@components/common/Markdown.astro";
+import FriendsEditor from "@components/features/FriendsEditor.astro";
 import { Icon } from "astro-icon/components";
 import {
 	commentConfig,
@@ -11,7 +12,6 @@ import {
 } from "@/config";
 // 注意：friendsConfig 未由 @/config/index.ts 转出（上游文件，不去改它），故直接从模块导入
 import { friendsConfig } from "@/config/friendsConfig";
-import FriendsEditor from "@components/features/FriendsEditor.astro";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
