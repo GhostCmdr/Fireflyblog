@@ -12,7 +12,7 @@
  *   --fetch    先 git fetch upstream --tags（报告会更准）
  *   --out      报告输出路径，默认 .backups/upstream-report-<时间戳>.md
  *
- * 报告内容（八节）：
+ * 报告内容（九节）：
  *   一、上游提交摘要（按 feat/fix/perf/refactor… 分组，带 hash/日期/作者）← 你要的"上游这次加了什么"
  *   二、新功能开关表（上游新增的配置键 → 是否已被我方 ours/ 覆盖 → 建议动作）
  *   三、配置文件键级变化（新增/删除，逐文件）
@@ -24,7 +24,10 @@
  *       被上游由 true 改 false → 播放器歌词按钮消失；displaySettingsConfig.enable → 设置面板消失）
  *   八、评论组件（Waline）检查＝SOP 约定"每次拉上游必须顺带检查"的三件事：CDN 声明解析到的版本、
  *      是否已出 v4、上游该组件是否改动（我方 [OURS] wordLimit 是否仍成立）
- *      （唯一需要联网的一节：取不到数据时只标注"未取到"，不影响其余章节）
+ *      （需要联网：取不到数据时只标注"未取到"，不影响其余章节）
+ *   九、依赖版本检查＝把"依赖有新版本"也纳入定期提醒（原先靠 dependabot PR，现已改为
+ *      `open-pull-requests-limit: 0` 不再自动开 PR ⇒ 由本节在双周体检里提示 ✓）
+ *      只列"有更新"的包，并突出 **major 升级** 与 **关键包**（避免 40+ 依赖啰嗦 ✓）
  *
  * ⚠️ 说明：这是"启发式"报告工具（键提取按"行首 1 个 Tab 的 `键:`"识别，深度只到第一层；
  *    第七节按"缩进栈"还原点路径、只比标量值），用于**提示风险与待评估项**，不是精确 diff。
@@ -421,6 +424,93 @@ const walineHasV4 = !!(
 	Object.keys(walineRegistry.versions).some((v) => /^4\./.test(v))
 );
 
+/* ── 5.6 依赖版本检查（第九节数据）────────────────────────────────
+ * 目的：把"依赖有新版本"纳入定期提醒 —— 原先靠 dependabot 的 PR，现改为
+ *   `.github/dependabot.yml` 里 `open-pull-requests-limit: 0`（不再自动开 PR ⇒ 也不再有
+ *   dependabot/* 分支 ✗），所以这份双周体检负责提醒 ✓
+ * 规则：只列出"有更新"的包，并突出两类 ——
+ *   ① **major 升级**（主版本号变大 ⇒ 可能有破坏性 ✓ 必看）
+ *   ② **关键包**白名单内的任何升级（与本站核心功能相关 ✓）
+ * 当前版本：优先取 node_modules 里**实际安装**的版本 ✓（本地跑最准）；CI 无 node_modules 时
+ *   回退到 package.json 声明的范围下限 ✓ 并在报告里注明来源 ✓
+ * 网络失败/查不到 ⇒ 跳过该包，绝不让整份报告失败 ✓（并发限 8，避免一次 40+ 请求）
+ */
+const KEY_DEPS = [
+	"astro",
+	"@astrojs/",
+	"mermaid",
+	"@mermaid-js/",
+	"astro-expressive-code",
+	"tailwindcss",
+	"pagefind",
+	"sharp",
+];
+function isKeyDep(name) {
+	return KEY_DEPS.some((p) => (p.endsWith("/") ? name.startsWith(p) : name === p || name.startsWith(p + "/")));
+}
+function cleanVersion(v) {
+	return String(v || "")
+		.replace(/^[\^~>=<\s]+/, "")
+		.trim();
+}
+function installedVersionOf(name) {
+	try {
+		const p = path.join(CWD, "node_modules", ...name.split("/"), "package.json");
+		if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8")).version || "";
+	} catch {
+		/* 读不到就当没安装 */
+	}
+	return "";
+}
+function majorOf(v) {
+	const m = String(v || "").match(/^(\d+)/);
+	return m ? Number(m[1]) : null;
+}
+const projectPkg = (() => {
+	try {
+		return JSON.parse(fs.readFileSync(path.join(CWD, "package.json"), "utf8"));
+	} catch {
+		return {};
+	}
+})();
+const depEntries = Object.entries({ ...(projectPkg.dependencies || {}), ...(projectPkg.devDependencies || {}) })
+	// 评论组件已在第八节专门检查 ✓ 这里不重复列
+	.filter(([name]) => name !== "@waline/client");
+const depResults = [];
+{
+	const queue = depEntries.slice();
+	const worker = async () => {
+		while (queue.length) {
+			const [name, range] = queue.shift();
+			const data = await fetchJson(`https://registry.npmjs.org/${name.replace("/", "%2F")}`);
+			const latest = (data && data["dist-tags"] && data["dist-tags"].latest) || "";
+			if (!latest) continue; // 查不到就跳过 ✓
+			const installed = installedVersionOf(name);
+			const cur = installed || cleanVersion(range);
+			if (!cur || cur === latest) continue; // 没更新就不列 ✓
+			const mCur = majorOf(cur);
+			const mLatest = majorOf(latest);
+			depResults.push({
+				name,
+				cur,
+				latest,
+				source: installed ? "已安装" : "package.json",
+				isMajor: mCur !== null && mLatest !== null && mLatest > mCur,
+				isKey: isKeyDep(name),
+			});
+		}
+	};
+	await Promise.all(Array.from({ length: 8 }, worker));
+	// 排序：major → 关键包 → 其它（各自内按包名）
+	depResults.sort((a, b) => {
+		if (a.isMajor !== b.isMajor) return a.isMajor ? -1 : 1;
+		if (a.isKey !== b.isKey) return a.isKey ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
+}
+const depMajorCount = depResults.filter((r) => r.isMajor).length;
+const depKeyCount = depResults.filter((r) => r.isKey).length;
+
 /* ── 6. 汇总输出 ─────────────────────────────────────────────────── */
 const L = [];
 const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
@@ -655,6 +745,32 @@ L.push(
 L.push("");
 L.push("---");
 L.push("");
+L.push("## 九、依赖版本检查（npm 最新版对比）");
+L.push("");
+L.push("- 当前版本优先取本地**已安装**版本 ✓（CI 环境无 node_modules 时回退 `package.json` 声明值，见「来源」列）；");
+L.push("- 只列**有更新**的包，并突出 **major 升级**（可能有破坏性）与 **关键包**（与本站核心功能相关）✓；评论组件见第八节；");
+L.push("");
+if (!depResults.length) {
+	L.push("_（未查到可更新项，或网络受限导致查询失败）_");
+	L.push("");
+} else {
+	L.push(`共 **${depResults.length}** 个包有更新：**major ${depMajorCount} 个**、关键包 ${depKeyCount} 个（按 重大 → 关键 → 其它 排序）：`);
+	L.push("");
+	L.push("| 包 | 当前 | 最新 | 类型 | 来源 |");
+	L.push("|---|---|---|---|---|");
+	for (const r of depResults) {
+		const tag = r.isMajor ? "⚠️ **major**" : r.isKey ? "关键包" : "minor/patch";
+		L.push(`| \`${r.name}\` | ${r.cur} | ${r.latest} | ${tag} | ${r.source} |`);
+	}
+	L.push("");
+	L.push("- 升级方式：本机 `pnpm update <包名>`（或 `pnpm up --latest`）后提交 ✓；");
+	L.push("  或临时把 `.github/dependabot.yml` 的 `open-pull-requests-limit` 改回 `5` 让机器人开 PR ✓（Merge/Close 后分支会自动删除 ✓）；");
+	L.push("- **major 升级有破坏性风险** ⇒ 升完必须跑 `pnpm exec astro check` + `pnpm build`，并复测相关功能 ✓。");
+	L.push("");
+}
+
+L.push("---");
+L.push("");
 L.push("## 下一步建议（固定动作）");
 L.push("");
 L.push("1. 先看【一】的 feat 段：逐条判断是否要开启/适配；对照【二】开关表给出结论。");
@@ -693,6 +809,11 @@ process.stdout.write(
 		upstreamVersion && ourVersion && upstreamVersion !== ourVersion ? " ⚠️ 可能已有新版可拉" : " ✓"
 	}\n`,
 );
+if (depResults.length) {
+	process.stdout.write(
+		`依赖：${depResults.length} 个包有更新（major ${depMajorCount} / 关键包 ${depKeyCount}）→ 见第九节\n`,
+	);
+}
 process.stdout.write(
 	`Waline：声明 @${walineDeclared || "?"} → 解析 v${(walineResolved && walineResolved.version) || "?"}` +
 		(walineLatest ? `；npm 最新 v${walineLatest}${walineHasV4 ? "（已出 v4 ⚠️）" : ""}` : "；npm 最新未取到") +
