@@ -466,6 +466,13 @@ function majorOf(v) {
 	const m = String(v || "").match(/^(\d+)/);
 	return m ? Number(m[1]) : null;
 }
+// 预发布版本判定（如 0.8.0-alpha.3 / 2.0.0-beta.1 / 1.0.0-rc.2）——
+// 为什么不列为"升级建议"：预发布随时可能移除/改动 API ✗
+// 真实案例：`@mermanjs/web 0.8.0-alpha.6` 移除了 `assertSafeSvgForDom` 导出 ⇒ 一升构建就失败 ✗
+// （2026-09-20 实测那个 dependabot PR 的 CI 就是这么挂的 ✓）
+function isPrerelease(v) {
+	return /-[0-9A-Za-z]/.test(String(v || "").split("+")[0]);
+}
 const projectPkg = (() => {
 	try {
 		return JSON.parse(fs.readFileSync(path.join(CWD, "package.json"), "utf8"));
@@ -477,6 +484,7 @@ const depEntries = Object.entries({ ...(projectPkg.dependencies || {}), ...(proj
 	// 评论组件已在第八节专门检查 ✓ 这里不重复列
 	.filter(([name]) => name !== "@waline/client");
 const depResults = [];
+let prereleaseSkipped = 0;
 {
 	const queue = depEntries.slice();
 	const worker = async () => {
@@ -488,6 +496,11 @@ const depResults = [];
 			const installed = installedVersionOf(name);
 			const cur = installed || cleanVersion(range);
 			if (!cur || cur === latest) continue; // 没更新就不列 ✓
+			// 预发布版本（-alpha/-beta/-rc 等）**不列为升级建议** ✓（见 isPrerelease 注释；只计数，便于报告里说明）
+			if (isPrerelease(cur) || isPrerelease(latest)) {
+				prereleaseSkipped++;
+				continue;
+			}
 			const mCur = majorOf(cur);
 			const mLatest = majorOf(latest);
 			depResults.push({
@@ -749,6 +762,11 @@ L.push("## 九、依赖版本检查（npm 最新版对比）");
 L.push("");
 L.push("- 当前版本优先取本地**已安装**版本 ✓（CI 环境无 node_modules 时回退 `package.json` 声明值，见「来源」列）；");
 L.push("- 只列**有更新**的包，并突出 **major 升级**（可能有破坏性）与 **关键包**（与本站核心功能相关）✓；评论组件见第八节；");
+if (prereleaseSkipped) {
+	L.push(
+		`- **已跳过 ${prereleaseSkipped} 个预发布版本**（\`-alpha\` / \`-beta\` / \`-rc\` 等）—— 预发布随时可能改动 API，**不列为升级建议** ✓（真实案例：\`@mermanjs/web 0.8.0-alpha.6\` 移除 \`assertSafeSvgForDom\` ⇒ 一升就构建失败 ✗）；`,
+	);
+}
 L.push("");
 if (!depResults.length) {
 	L.push("_（未查到可更新项，或网络受限导致查询失败）_");
