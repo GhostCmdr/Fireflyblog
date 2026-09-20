@@ -223,8 +223,10 @@ export const oursFriendsPageConfig = {
 export const oursFriendsConfig = [
 	{
 		title: "小埋团长",
-		imgurl:
-			"https://weavatar.com/avatar/d252655d40d6874417a720bad0a6c5f77f8f6a1fd2f882f8f338402dc37e4190?s=640",
+		// [OURS] 图标改用「本站高清图标」（192px，站内地址，不依赖外网 ✓）
+		// 以后新增友链：imgurl 填 `https://a.favicon.im/<对方域名>` 即可自动取对方站点图标 ✓
+		//（与书签导航页 booknavConfig.ts 用的是同一个服务 ✓）
+		imgurl: "https://xiaomaisos.me/favicon/favicon-light-192.png",
 		desc: "小埋团长的博客",
 		siteurl: "https://xiaomaisos.me",
 		tags: ["Blog"],
