@@ -1,0 +1,45 @@
+---
+/**
+ * [OURS] 图标 sprite 锚点（全站固定渲染）
+ *
+ * 为什么需要：
+ *   astro-icon 对每个图标只输出**一份** `<symbol id="ai:xxx">` 定义，其余位置都是
+ *   `<use href="#ai:xxx">` 引用；而这份定义会落在"第一个渲染该图标的组件"里。
+ *   构建产物实测：**同一个图标的定义位置随页面而变**，有时落在 `#swup-container`
+ *   （swup 的替换容器）内 —— 一旦如此，切页时定义被替换掉，而导航栏里的 `<use>` 引用还在，
+ *   图标就会变空白（表现为"导航栏图标时有时无、点一下别的菜单又回来"）。
+ *
+ * 解决办法：
+ *   把"固定区域（导航栏等）会用到的图标"在这里抢先渲染一遍，让它们的定义固定落在这个
+ *   位于 `<slot />` 之前（即 #swup-container 之外）的锚点里 —— 这个位置不会被 swup 替换。
+ *
+ * 维护说明：
+ *   清单从 `oursNavBarConfig` 自动提取（含下拉子项），新增导航项无需改本文件。
+ */
+import { Icon } from "astro-icon/components";
+import { oursNavBarConfig } from "@/config/ours/values";
+
+type IconNode = { icon?: string; children?: IconNode[] };
+
+/** 递归收集导航配置里的全部图标名（含下拉子项），去重 + 排序保证产物稳定 */
+function collectIcons(
+	nodes: readonly IconNode[],
+	out: Set<string> = new Set(),
+): Set<string> {
+	for (const node of nodes || []) {
+		if (node && typeof node.icon === "string" && node.icon.trim())
+			out.add(node.icon.trim());
+		if (node && Array.isArray(node.children)) collectIcons(node.children, out);
+	}
+	return out;
+}
+
+const iconNames = [
+	...collectIcons(oursNavBarConfig.links as unknown as IconNode[]),
+].sort();
+---
+
+<!-- 只用于固定图标定义：不可见、不占位、不参与交互 -->
+<div hidden aria-hidden="true" data-icon-sprite-anchor>
+	{iconNames.map((name) => <Icon name={name} />)}
+</div>

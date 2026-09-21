@@ -12,6 +12,8 @@ import MusicPlayerView from "@components/features/MusicPlayerView.astro";
 import SakuraEffect from "@components/features/SakuraEffect.astro";
 import WavesEffect from "@components/features/WavesEffect.astro";
 import ConfigCarrier from "@components/layout/ConfigCarrier.astro";
+// [OURS] 图标 sprite 锚点（把导航图标的 <symbol> 定义固定在 #swup-container 之外）
+import IconSpriteAnchor from "@components/ours/IconSpriteAnchor.astro";
 
 import {
 	analyticsConfig,
@@ -564,6 +566,10 @@ import "@/styles/ours/editor-shell.css";
       })();
     </script>
 
+    <!-- [OURS] 图标 sprite 锚点：必须在 <slot /> 之前、#swup-container 之外。
+         否则导航图标的 <symbol> 定义可能被投放进 swup 的替换容器内，切页后定义被换走，
+         而导航栏的 <use href="#ai:..."> 引用还在 ⇒ 图标变空白（导航图标"时有时无"的根因）。 -->
+    <IconSpriteAnchor />
     <!-- 页面顶部渐变高光效果 - 只在full和semifull模式下显示 -->
     {shouldShowTopHighlight && <div class="top-gradient-highlight" />}
     <ConfigCarrier />
