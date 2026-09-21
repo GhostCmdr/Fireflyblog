@@ -375,9 +375,11 @@ const seriesData = await getSeriesPosts(entry);
                         before:absolute before:top-3 before:-left-4.5"
             >
               {entry.data.title}
+              {/* [OURS] 站长专属「编辑此文」入口：放在标题文字末尾（流内排列）⇒ 标题再长也不会被遮挡，
+                  也不会让标题提前换行；按钮自带 data-pagefind-ignore，避免「编辑」二字被 Pagefind 计入文章标题。
+                  （实现见 src/components/ours/EditPostButton.astro） */}
+              <EditPostButton slug={(entry.filePath || entry.id).split('/').pop() || ''} />
             </div>
-            <!-- [OURS] 站长专属「编辑此文」入口（实现见 src/components/ours/EditPostButton.astro） -->
-            <EditPostButton slug={(entry.filePath || entry.id).split('/').pop() || ''} />
           </div>
         )
       }
