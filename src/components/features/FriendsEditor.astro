@@ -22,33 +22,35 @@ const { items = [] } = Astro.props;
 const initialJson = JSON.stringify(items);
 ---
 
-<div id="fe-root" data-items={initialJson}>
+<div id="fe-root" class="ml-auto flex shrink-0 items-center" data-items={initialJson}>
 	<!-- 编辑入口：默认隐藏，脚本判定通过后才显示（无 Token 的访客完全看不到） -->
 	<button
 		id="fe-open"
 		type="button"
-		class="ml-auto hidden shrink-0 items-center gap-1.5 rounded-full border border-(--primary)/45 px-3 py-1.5 text-sm font-medium text-(--primary) transition-all duration-200 hover:-translate-y-0.5 hover:bg-(--primary)/10 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none active:translate-y-0"
+		class="ml-auto hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
 		aria-label="编辑友链"
-	>
+		>
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
 			viewBox="0 0 24 24"
 			width="16"
 			height="16"
-			fill="currentColor"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
 			aria-hidden="true"
+			><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path
+				d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg
 		>
-			<path
-				d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
-			></path>
-		</svg>
-		<span class="hidden sm:inline">编辑友链</span>
-	</button>
+		<span class="hidden sm:inline">编辑</span>
+		</button>
 
 	<!-- 弹窗 -->
 	<div
 		id="fe-mask"
-		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity duration-200 sm:p-6"
+		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm sm:p-6"
 		style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
 		role="dialog"
 		aria-modal="true"
@@ -56,8 +58,7 @@ const initialJson = JSON.stringify(items);
 	>
 		<div
 			id="fe-panel"
-			class="card-base flex max-h-[92vh] w-full max-w-[720px] flex-col overflow-hidden shadow-2xl transition-all duration-200 sm:max-h-[85vh]"
-			style="transform: translateY(8px) scale(0.98); opacity: 0;"
+			class="card-base relative flex max-h-[92vh] w-full max-w-[720px] flex-col shadow-2xl sm:max-h-[85vh]"
 		>
 			<!-- 头部（固定） -->
 			<div
@@ -91,13 +92,36 @@ const initialJson = JSON.stringify(items);
 				</button>
 			</div>
 
-			<!-- 状态提示条（按需显示） -->
+			<!-- 状态提示条（按需显示）：
+			     外观与原来完全一致（同 padding、同字号、同语义色），只把定位改为浮层 ——
+			     absolute 脱离文档流后，它出现/消失不再把列表推下再弹回（实测 33px 位移）。
+			     位置＝头部正下方（即它原本的视觉位置），因此会盖住列表第一行上沿，这是"不占位"的代价。
+			     top 的 4.875rem 等于头部实测高度（约 70.2px @root14.4），头部改版需同步此值。 -->
 			<div
 				id="fe-msg"
-				class="hidden shrink-0 px-5 py-2.5 text-sm"
+				class="absolute inset-x-0 top-[4.875rem] z-10 hidden px-5 py-2.5 pr-11 text-sm"
 				role="status"
 				aria-live="polite"
 			>
+				<span id="fe-msg-text"></span>
+				<button
+					id="fe-msg-close"
+					type="button"
+					class="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-lg opacity-70 transition-opacity hover:opacity-100"
+					aria-label="关闭提示"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="1em"
+						height="1em"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+						></path></svg
+					>
+				</button>
 			</div>
 
 			<!-- 列表（独立滚动） -->
@@ -163,62 +187,84 @@ const initialJson = JSON.stringify(items);
 <div
 	id="fe-confirm"
 	class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
-	style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
+	style="overscroll-behavior: contain;"
 	role="alertdialog"
 	aria-modal="true"
 	aria-labelledby="fe-confirm-title"
 >
 	<div
 		id="fe-confirm-panel"
-		class="card-base w-full max-w-[380px] overflow-hidden shadow-2xl transition-all duration-200"
-		style="transform: translateY(6px) scale(0.98); opacity: 0;"
+		class="card-base w-full max-w-[380px] border border-(--line-divider) shadow-2xl backdrop-blur-sm"
 	>
 		<div class="px-5 pt-5 pb-4">
 			<div class="flex items-start gap-3">
-				<span
-					id="fe-confirm-icon"
-					class="mt-0.5 shrink-0 rounded-full p-1.5"
-					style="background: rgba(217, 119, 6, 0.12); color: #B45309;"
-				>
+				<span id="fe-confirm-icon" class="shrink-0" style="color: #DC2626;">
 					<svg
+						data-kind="danger"
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 24 24"
-						width="18"
-						height="18"
+						width="24"
+						height="24"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+						></path></svg
+					>
+					<svg
+						data-kind="warning"
+						class="hidden"
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="24"
+						height="24"
 						fill="currentColor"
 						aria-hidden="true"
 						><path d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"></path></svg
 					>
+					<svg
+						data-kind="info"
+						class="hidden"
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="24"
+						height="24"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
+						></path></svg
+					>
 				</span>
-				<div class="min-w-0">
+				<div class="min-w-0 flex-1">
 					<div
 						id="fe-confirm-title"
-						class="text-base font-bold text-neutral-900 dark:text-neutral-100"
+						class="text-[1.0625rem] leading-6 font-bold text-neutral-900 dark:text-neutral-100"
 					>
 						请确认
 					</div>
 					<div
 						id="fe-confirm-text"
-						class="mt-1.5 text-sm leading-relaxed break-words text-neutral-600 dark:text-neutral-400"
+						class="mt-1.5 text-sm leading-6 break-words text-neutral-600 dark:text-neutral-400"
 					>
 					</div>
 				</div>
 			</div>
 		</div>
 		<div
-			class="flex items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3"
+			class="flex items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3.5"
 		>
 			<button
 				id="fe-confirm-cancel"
 				type="button"
-				class="rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+				class="rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
 			>
 				取消
 			</button>
 			<button
 				id="fe-confirm-ok"
 				type="button"
-				class="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110"
+				class="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:brightness-110"
 			>
 				确定
 			</button>
@@ -227,11 +273,16 @@ const initialJson = JSON.stringify(items);
 </div>
 
 <style>
-	/* 弹窗内滚动条美化：纯 CSS 绘制层，不参与布局、无 JS、无渲染负担。
+	/* 弹窗内滚动条：保留"细 + 圆角"的形状，颜色用接近系统默认的灰（不再跟随主色）。
+	   纯 CSS 绘制层，不参与布局、无 JS、无渲染负担。
 	   Chrome/Edge/Safari 走 ::-webkit-scrollbar；Firefox 走 scrollbar-width/scrollbar-color。 */
 	.fe-scroll {
 		scrollbar-width: thin;
-		scrollbar-color: color-mix(in oklab, var(--primary) 40%, transparent) transparent;
+		scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+	}
+	/* 深色主题下用浅灰，贴近系统默认观感 */
+	:global(.dark) .fe-scroll {
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 	}
 	.fe-scroll::-webkit-scrollbar {
 		width: 8px;
@@ -241,20 +292,55 @@ const initialJson = JSON.stringify(items);
 		background: transparent;
 	}
 	.fe-scroll::-webkit-scrollbar-thumb {
-		background: color-mix(in oklab, var(--primary) 35%, transparent);
+		background: rgba(0, 0, 0, 0.3);
 		background-clip: content-box;
 		border: 2px solid transparent;
 		border-radius: 999px;
 	}
 	.fe-scroll::-webkit-scrollbar-thumb:hover {
-		background: color-mix(in oklab, var(--primary) 65%, transparent);
+		background: rgba(0, 0, 0, 0.45);
 		background-clip: content-box;
+	}
+	:global(.dark) .fe-scroll::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.28);
+		background-clip: content-box;
+	}
+	:global(.dark) .fe-scroll::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.42);
+		background-clip: content-box;
+	}
+
+	/* 弹窗列表：始终预留滚动条槽位。
+	   否则"内容没撑满（无滚动条）→ 撑出滚动条"会让列表可用宽度瞬间变化（实测 720 → 710），
+	   表现为打开弹窗时卡片横向"弹"一下。只作用于本容器，不影响页面根滚动条与 vw。 */
+	#fe-body {
+		scrollbar-gutter: stable;
+	}
+
+	/* 弹窗内所有按钮都用手型光标（<button> 浏览器默认不给 pointer） */
+	#fe-open,
+	#fe-root > button,
+	#fe-panel button,
+	#fe-confirm-panel button {
+		cursor: pointer;
 	}
 </style>
 
 <script is:inline>
 	(function () {
 		"use strict";
+
+		// 【swup 重入】本站点 @swup/scripts-plugin 会在 content:replace 时**重新执行全文档内联脚本**
+		// （无头浏览器打点实测：一次切页里出现两次 `script exec`，其间一次 `cleanup called`）。
+		// 因此本组件每次切回友链页都会重放，重放前先执行上一次登记的清理 —— 移除上一轮的 keydown
+		// 监听与 body 上那份旧弹窗，避免监听器与 DOM 累积（重复绑定会让「保存」被触发多次）。
+		// ⚠️ 切勿移除该插件或给本脚本加豁免：那时脚本不再重放，切页后入口按钮会失效（按钮已被换成
+		// 新元素，而绑定只发生在首屏）。重入的正式处理见文件末尾的 adoptDialog / attachEntry。
+		try {
+			if (typeof window.__feCleanup === "function") window.__feCleanup();
+		} catch (e) {
+			/* 清理失败不得阻断本次初始化 */
+		}
 
 		var root = document.getElementById("fe-root");
 		if (!root) return;
@@ -270,6 +356,8 @@ const initialJson = JSON.stringify(items);
 		var btnSave = document.getElementById("fe-save");
 		var btnCancel = document.getElementById("fe-cancel");
 		var btnClose = document.getElementById("fe-close");
+		var msgCloseBtn = document.getElementById("fe-msg-close");
+		var msgTextEl = document.getElementById("fe-msg-text");
 
 		// 编辑器维护的数据文件（与 values.ts 中 oursFriendsConfig 的位置一致）
 		var FILE_PATH = "src/config/ours/values.ts";
@@ -278,7 +366,7 @@ const initialJson = JSON.stringify(items);
 
 		var state = {
 			items: [],
-			sha: "",
+			saved: null, // "已保存"快照：放弃修改 / 重新打开弹窗时回滚用
 			dirty: false,
 			busy: false,
 		};
@@ -304,6 +392,9 @@ const initialJson = JSON.stringify(items);
 		}
 
 		function showMsg(text, kind) {
+			// 底色恢复为占位版的原始取值（半透明 10~12% 语义色），逐字与历史一致：
+			// 它靠与背后底色（面板的 --card-bg，壁纸透明模式下是 --card-bg-transparent）叠加呈现淡彩，
+			// 因此观感与占位时期完全相同。cssText 只写 background/color，不影响 class 上的定位与显隐。
 			var palette = {
 				info: "background: rgba(59,130,246,0.10); color: #2563EB;",
 				success: "background: rgba(22,163,74,0.12); color: #15803D;",
@@ -311,7 +402,10 @@ const initialJson = JSON.stringify(items);
 				error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
 			};
 			msgEl.style.cssText = palette[kind] || palette.info;
-			msgEl.textContent = text;
+			// 注意：必须写进 #fe-msg-text 而不是 #fe-msg —— 对父元素赋 textContent 会清空所有子节点，
+			// 把里面的关闭按钮一起抹掉（这条坑踩过一次）。
+			if (msgTextEl) msgTextEl.textContent = text;
+			else msgEl.textContent = text;
 			msgEl.classList.remove("hidden");
 		}
 
@@ -351,18 +445,52 @@ const initialJson = JSON.stringify(items);
 			return { open: open, close: close, body: src.slice(open + 1, close) };
 		}
 
+		// 按顶层逗号切分（跳过引号内的逗号）：单行 / 多行标签数组都能拆成一项一项
+		function splitTopLevel(s) {
+			var out = [];
+			var buf = "";
+			var quote = "";
+			for (var i = 0; i < s.length; i++) {
+				var ch = s.charAt(i);
+				if (quote) {
+					buf += ch;
+					if (ch === "\\") {
+						buf += s.charAt(i + 1) || "";
+						i++;
+						continue;
+					}
+					if (ch === quote) quote = "";
+					continue;
+				}
+				if (ch === '"' || ch === "'") {
+					quote = ch;
+					buf += ch;
+					continue;
+				}
+				if (ch === ",") {
+					out.push(buf);
+					buf = "";
+					continue;
+				}
+				buf += ch;
+			}
+			out.push(buf);
+			return out;
+		}
+
+		// 与生成侧对称：两种引号都认（quote() 在"值含双引号"时会改用单引号），并按 Biome 规则反转义
 		function parseValue(raw) {
 			var v = raw.trim().replace(/,$/, "").trim();
-			if (v.charAt(0) === '"' && v.lastIndexOf('"') > 0) {
-				var inner = v.slice(1, v.lastIndexOf('"'));
-				return inner.replace(/\\(["\\])/g, "$1");
+			var first = v.charAt(0);
+			if (first === '"' || first === "'") {
+				var end = v.lastIndexOf(first);
+				if (end > 0) return v.slice(1, end).replace(/\\(["'\\])/g, "$1");
 			}
-			if (v.charAt(0) === "[") {
+			if (first === "[") {
 				var last = v.lastIndexOf("]");
 				var inside = last > 0 ? v.slice(1, last) : "";
 				if (!inside.trim()) return [];
-				return inside
-					.split(",")
+				return splitTopLevel(inside)
 					.map(function (x) {
 						return parseValue(x);
 					})
@@ -376,30 +504,47 @@ const initialJson = JSON.stringify(items);
 			return v;
 		}
 
-		// 逐行解析数组体（格式由本编辑器与项目约定固定，无嵌套对象）
+		// 解析数组体（格式由本编辑器与项目约定固定，无嵌套对象）：
+		// 先按 `{` / `}` 切块，块内以「key:」为分段起点、把后续行拼回同一个值 ——
+		// 这样 Biome 生成的"超宽值换行"（key: 换行 + 缩进值）与"多行数组"都能正确读回。
 		function parseArrayBody(body) {
 			var out = [];
 			var cur = null;
+			var key = null;
+			var buffer = "";
+			function flushValue() {
+				if (!cur || key == null) return;
+				cur[key] = parseValue(buffer);
+				key = null;
+				buffer = "";
+			}
 			var lines = body.split("\n");
 			for (var i = 0; i < lines.length; i++) {
 				var line = lines[i].trim();
 				if (!line || line.indexOf("//") === 0) continue;
-				if (line.charAt(0) === "{") {
+				if (line === "{" || line === "{,") {
+					flushValue();
 					cur = {};
 					continue;
 				}
-				if (line.charAt(0) === "}") {
-					if (cur) {
-						out.push(cur);
-						cur = null;
-					}
+				if (line === "}" || line === "},") {
+					flushValue();
+					if (cur) out.push(cur);
+					cur = null;
 					continue;
 				}
 				if (!cur) continue;
 				var m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\s\S]*)$/);
-				if (!m) continue;
-				cur[m[1]] = parseValue(m[2]);
+				if (m) {
+					flushValue();
+					key = m[1];
+					buffer = m[2];
+					continue;
+				}
+				// 续行：上一个键的值还没写完（超宽标量的下一行 / 多行数组的元素行）
+				if (key != null) buffer += " " + line;
 			}
+			flushValue();
 			return out;
 		}
 
@@ -553,15 +698,13 @@ const initialJson = JSON.stringify(items);
 			);
 		}
 
-		function itemHtml(it, index) {
+		function itemHtml(it) {
 			var thumb =
 				'<img data-f="thumb" src="' +
 				escHtml(it.imgurl) +
 				'" alt="" class="h-9 w-9 shrink-0 rounded-md border border-(--line-divider) object-cover" onerror="this.style.visibility=&#39;hidden&#39;" />';
 			return (
-				'<div class="fe-item card-base relative rounded-xl border border-(--line-divider) p-3" data-idx="' +
-				index +
-				'">' +
+				'<div class="fe-item card-base relative rounded-xl border border-(--line-divider) p-3">' +
 				'<div class="flex items-start gap-2">' +
 				// 排序按钮
 				'<div class="flex shrink-0 flex-col gap-1 pt-4">' +
@@ -641,7 +784,7 @@ const initialJson = JSON.stringify(items);
 				if (!items[i].siteurl) return "请先修正：第 " + n + " 条的「站点地址」不能为空";
 				if (!/^https?:\/\//i.test(items[i].siteurl))
 					return "请先修正：第 " + n + " 条的「站点地址」需以 http(s):// 开头";
-				if (items[i].imgurl && !/^(https?:\/\/|\/)/i.test(items[i].imgurl))
+				if (!/^(https?:\/\/|\/)/i.test(items[i].imgurl))
 					return "请先修正：第 " + n + " 条的「图标地址」需为 http(s):// 或 / 开头的地址";
 			}
 			return "";
@@ -653,8 +796,8 @@ const initialJson = JSON.stringify(items);
 			for (var i = 0; i < items.length; i++) {
 				var t = items[i].title;
 				var u = items[i].siteurl;
-				if (seenT[t]) return "第 " + seenT[t] + " 条与第 " + (i + 1) + " 条的「标题」相同，确定要继续吗？";
-				if (seenU[u]) return "第 " + seenU[u] + " 条与第 " + (i + 1) + " 条的「站点地址」相同，确定要继续吗？";
+				if (seenT[t]) return "第 " + seenT[t] + " 条与第 " + (i + 1) + " 条的「标题」相同。";
+				if (seenU[u]) return "第 " + seenU[u] + " 条与第 " + (i + 1) + " 条的「站点地址」相同。";
 				seenT[t] = i + 1;
 				seenU[u] = i + 1;
 			}
@@ -680,8 +823,12 @@ const initialJson = JSON.stringify(items);
 
 		function readRemote() {
 			var c = cfg();
-			if (!c.token) throw new Error("未检测到 GitHub Token，请先在编辑器页面配置。");
-			showMsg("正在从 GitHub 读取当前友链…", "info");
+			// 用 Promise.reject 而不是同步 throw：调用方是 readRemote().then(...).catch(...)，
+			// 同步异常会在 Promise 链建立之前抛出，catch 永远接不到（界面无提示、控制台报错）。
+			if (!c.token)
+				return Promise.reject(new Error("未检测到 GitHub Token，请先在编辑器页面配置。"));
+			// 此处**故意不显示**"正在读取…"：消息条在文档流里，出现/消失会把列表整体推下再弹回
+			// （实测 36px），打开弹窗时看起来就是内容"从下往上移动"了一下。
 			return fetch(contentsUrl(c.repo, FILE_PATH) + "?ref=" + encodeURIComponent(c.branch), {
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
@@ -727,15 +874,35 @@ const initialJson = JSON.stringify(items);
 
 		/* ───────────── 主流程 ───────────── */
 
+		// 记下"已保存"快照（读取成功 / 提交成功时）。放弃修改、重新打开弹窗都回滚到这里，
+		// 否则上一次未提交的改动（开关、输入、增删、排序）会残留在内存与 DOM 里，
+		// 表现为"关掉开关 → 放弃关闭 → 再打开还是关的"。
+		function markSaved() {
+			state.saved = state.items.map(normalize);
+			state.dirty = false;
+		}
+
+		function restoreSaved() {
+			if (!state.saved) return;
+			state.items = state.saved.map(normalize);
+			state.dirty = false;
+			render();
+		}
+
 		function loadFromRemote() {
 			readRemote()
 				.then(function (r) {
 					var loc = locateArrayBody(r.text);
 					if (!loc) throw new Error("未能在 " + FILE_PATH + " 中定位 oursFriendsConfig 数组。");
-					state.sha = r.sha;
-					state.items = sortByWeight(parseArrayBody(loc.body).map(normalize));
-					state.dirty = false;
-					render();
+					// 用户在等待期间已开始编辑 ⇒ 不要用远端数据覆盖，避免吞掉刚落下的改动
+					if (state.dirty) return;
+					var pulled = sortByWeight(parseArrayBody(loc.body).map(normalize));
+					// 与当前列表一致时不再重绘：首次打开已用页面快照渲染过，
+					// 这次多余的整体重建会让列表瞬时空一帧（也是"打开时弹一下"的加重因素）。
+					var changed = JSON.stringify(pulled) !== JSON.stringify(state.items);
+					state.items = pulled;
+					markSaved();
+					if (changed) render();
 					hideMsg();
 				})
 				.catch(function (e) {
@@ -745,6 +912,7 @@ const initialJson = JSON.stringify(items);
 							state.items = sortByWeight(
 								JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
 							);
+							markSaved();
 							render();
 						} catch (err) {
 							/* ignore */
@@ -755,20 +923,20 @@ const initialJson = JSON.stringify(items);
 		}
 
 		function openModal() {
-			var wasHidden = mask.classList.contains("hidden");
+			hideMsg(); // 先清掉上一次残留的提示（否则旧错误消息会带进本次打开的弹窗）
 			mask.classList.remove("hidden");
 			mask.classList.add("flex");
-			// 只在"从关闭变打开"时记录并加锁：反复打开时若把已锁值记下来，关闭后就恢复不回去
-			if (wasHidden) lockScroll();
-			requestAnimationFrame(function () {
-				panel.style.transform = "translateY(0) scale(1)";
-				panel.style.opacity = "1";
-			});
-			if (!state.items.length) {
+			// 焦点落到关闭按钮：键盘用户不必 Tab 穿越整份列表；preventScroll 避免顺带滚动页面
+			btnClose.focus({ preventScroll: true });
+			if (state.saved) {
+				// 每次打开都回到"已保存"状态：上一次未提交的改动不会带进来
+				restoreSaved();
+			} else if (!state.items.length) {
 				try {
 					state.items = sortByWeight(
 						JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
 					);
+					markSaved();
 					render();
 				} catch (e) {
 					/* ignore */
@@ -777,26 +945,25 @@ const initialJson = JSON.stringify(items);
 			loadFromRemote();
 		}
 
-		// 真正执行关闭：无条件解锁滚动，避免出现"关掉弹窗后网页滚不动"
+		// 直接关闭：无动画（不做位移/缩放过渡，也不延迟隐藏）
 		function doClose() {
-			panel.style.transform = "translateY(8px) scale(0.98)";
-			panel.style.opacity = "0";
 			state.dirty = false;
-			unlockScroll();
-			window.setTimeout(function () {
-				mask.classList.add("hidden");
-				mask.classList.remove("flex");
-			}, 180);
+			mask.classList.add("hidden");
+			mask.classList.remove("flex");
 		}
 
 		function closeModal(force) {
 			if (state.dirty && !force) {
-				askConfirm("关闭后这些改动会丢失（还没提交到 GitHub）。", {
+				askConfirm("改动还没提交到 GitHub，关闭后会丢失。", {
 					title: "放弃未保存的修改？",
 					okText: "放弃并关闭",
 					cancelText: "继续编辑",
+					kind: "warning",
 				}).then(function (ok) {
-					if (ok) doClose();
+					if (ok) {
+						restoreSaved();
+						doClose();
+					}
 				});
 				return;
 			}
@@ -806,27 +973,42 @@ const initialJson = JSON.stringify(items);
 		/* ───────────── 站内确认框（替代 window.confirm，避免浏览器原生弹窗） ───────────── */
 
 		var confirmEl = document.getElementById("fe-confirm");
-		var confirmPanel = document.getElementById("fe-confirm-panel");
 		var confirmTitleEl = document.getElementById("fe-confirm-title");
 		var confirmTextEl = document.getElementById("fe-confirm-text");
 		var confirmOkBtn = document.getElementById("fe-confirm-ok");
 		var confirmCancelBtn = document.getElementById("fe-confirm-cancel");
+		var confirmIconEl = document.getElementById("fe-confirm-icon");
+		var confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
 		var confirmResolve = null;
 
 		// 返回 Promise<boolean>：true = 确定，false = 取消
+		// 三种语义：danger=删除/破坏性操作（红）、warning=会丢改动的操作（橙）、info=提醒类（主色）
+		var CONFIRM_SKINS = {
+			danger: { fg: "#DC2626", btn: "#DC2626" },
+			warning: { fg: "#B45309", btn: "#DC2626" },
+			info: { fg: "var(--primary)", btn: "var(--primary)" },
+		};
+
 		function askConfirm(text, opts) {
 			opts = opts || {};
+			var kind = opts.kind || (opts.danger === false ? "info" : "danger");
+			var skin = CONFIRM_SKINS[kind] || CONFIRM_SKINS.danger;
 			confirmTitleEl.textContent = opts.title || "请确认";
 			confirmTextEl.textContent = text;
 			confirmOkBtn.textContent = opts.okText || "确定";
 			confirmCancelBtn.textContent = opts.cancelText || "取消";
-			confirmOkBtn.style.backgroundColor = opts.danger === false ? "var(--primary)" : "#DC2626";
+			confirmOkBtn.style.backgroundColor = skin.btn;
+			confirmIconEl.style.color = skin.fg;
+			for (var i = 0; i < confirmIcons.length; i++) {
+				confirmIcons[i].classList.toggle(
+					"hidden",
+					confirmIcons[i].getAttribute("data-kind") !== kind,
+				);
+			}
 			confirmEl.classList.remove("hidden");
 			confirmEl.classList.add("flex");
-			requestAnimationFrame(function () {
-				confirmPanel.style.transform = "translateY(0) scale(1)";
-				confirmPanel.style.opacity = "1";
-			});
+			// 默认焦点给「取消」：破坏性操作不该让回车直接落到确认键上
+			confirmCancelBtn.focus({ preventScroll: true });
 			return new Promise(function (resolve) {
 				confirmResolve = resolve;
 			});
@@ -836,27 +1018,16 @@ const initialJson = JSON.stringify(items);
 			if (!confirmResolve) return;
 			var resolve = confirmResolve;
 			confirmResolve = null;
-			confirmPanel.style.transform = "translateY(6px) scale(0.98)";
-			confirmPanel.style.opacity = "0";
-			window.setTimeout(function () {
-				confirmEl.classList.add("hidden");
-				confirmEl.classList.remove("flex");
-			}, 160);
+			confirmEl.classList.add("hidden");
+			confirmEl.classList.remove("flex");
 			resolve(result);
 		}
 
-		/* ───────────── 滚动锁（修滚动穿透；任何关闭路径都可靠恢复） ───────────── */
-
-		var savedRootOverflow = "";
-
-		function lockScroll() {
-			savedRootOverflow = document.documentElement.style.overflow || "";
-			document.documentElement.style.overflow = "hidden";
-		}
-
-		function unlockScroll() {
-			document.documentElement.style.overflow = savedRootOverflow;
-		}
+		/* 滚动策略：不锁根滚动 ⇒ 网页滚动条始终正常显示（不会消失、不会跳位）。
+		   弹窗内滚动不带动网页，靠两点实现：
+		     1) #fe-body / #fe-mask 上的 overscroll-behavior: contain（纯 CSS，阻断滚动链）
+		     2) 面板空白处的 wheel 兜底（见 initPanelWheelGuard，只做 preventDefault，无 DOM 操作）
+		   鼠标在遮罩空白处滚动时仍放行给网页，符合预期。 */
 
 		/* ───────────── 事件绑定 ───────────── */
 
@@ -867,16 +1038,49 @@ const initialJson = JSON.stringify(items);
 		if (mask.parentNode !== document.body) document.body.appendChild(mask);
 		if (confirmEl.parentNode !== document.body) document.body.appendChild(confirmEl);
 
-		// 入口按钮可见性：有 Token（或 ?manage=1 兜底）才显示
-		(function initVisibility() {
+		// 面板空白处滚动的兜底：鼠标位于面板内但不在列表滚动容器上（头部/底部/卡片间隙）时，
+		// 阻止滚动链传给网页；列表区内正常滚动；遮罩空白处不拦截（放行给网页滚动）。
+		// 无 DOM 操作、无布局读取，开销可忽略。
+		(function initPanelWheelGuard() {
+			panel.addEventListener(
+				"wheel",
+				function (e) {
+					if (e.target.closest && e.target.closest("#fe-body")) return;
+					e.preventDefault();
+				},
+				{ passive: false },
+			);
+		})();
+
+		// 入口按钮可见性：有 Token（或 ?manage=1 兜底）才显示。
+		// 提成具名函数：swup 切页后入口按钮是新元素，需要重新判断一次可见性。
+		function initVisibility() {
+			if (!btnOpen) return;
 			var hasToken = !!cfg().token;
 			var force = /[?&]manage=1\b/.test(window.location.search);
 			if (!hasToken && !force) return;
 			btnOpen.classList.remove("hidden");
 			btnOpen.classList.add("inline-flex");
-		})();
+		}
+		initVisibility();
 
-		btnOpen.addEventListener("click", openModal);
+		// 入口按钮的绑定必须幂等：swup 重放的新闭包与 swup 钩子（attachEntry）都会尝试绑它，
+		// 不加保护会每次切页 +1（实测 1 → 2），多个 handler 会让 openModal 被重复调用。
+		// 标记写在元素上 ⇒ 跨闭包可见 ⇒ 无论两者谁先执行，最终都只有一次绑定。
+		function bindOpen() {
+			if (!btnOpen || btnOpen.__feOpenBound) return;
+			btnOpen.__feOpenBound = true;
+			btnOpen.addEventListener("click", openModal);
+		}
+		bindOpen();
+
+		// 提示条右侧的关闭按钮：同样用元素级标记做幂等（切页会换成新元素，标记写在新元素上）
+		function bindMsgClose() {
+			if (!msgCloseBtn || msgCloseBtn.__feBound) return;
+			msgCloseBtn.__feBound = true;
+			msgCloseBtn.addEventListener("click", hideMsg);
+		}
+		bindMsgClose();
 		btnClose.addEventListener("click", function () {
 			closeModal(false);
 		});
@@ -895,7 +1099,8 @@ const initialJson = JSON.stringify(items);
 		confirmEl.addEventListener("click", function (e) {
 			if (e.target === confirmEl) settleConfirm(false);
 		});
-		document.addEventListener("keydown", function (e) {
+		// 具名函数：swup 重跑时需要能从 document 上精确移除（匿名函数无法移除）
+		function onKeydown(e) {
 			if (e.key !== "Escape") return;
 			// 确认框优先：它开着时 Esc 只关它，不要连带把编辑弹窗也关掉
 			if (!confirmEl.classList.contains("hidden")) {
@@ -903,7 +1108,15 @@ const initialJson = JSON.stringify(items);
 				return;
 			}
 			if (!mask.classList.contains("hidden")) closeModal(false);
-		});
+		}
+		// 监听器只注册一次：swup 换页不会重跑脚本，但清理函数（或将来启用脚本重放）可能把它摘掉，
+		// 所以这里做成"保证存在"，切页钩子每次都会再确认一次
+		function ensureKeydown() {
+			if (window.__feKeydownBound) return;
+			document.addEventListener("keydown", onKeydown);
+			window.__feKeydownBound = true;
+		}
+		ensureKeydown();
 
 		btnAdd.addEventListener("click", function () {
 			state.items.push(defaultItem());
@@ -928,7 +1141,7 @@ const initialJson = JSON.stringify(items);
 			if (act === "del") {
 				var t = card.querySelector('[data-f="title"]');
 				var name = t && t.value ? t.value : "这一条";
-				askConfirm("确定删除「" + name + "」吗？保存后线上才会生效。", {
+				askConfirm("「" + name + "」将被删除，保存后才会在线上生效。", {
 					title: "删除这条友链？",
 					okText: "删除",
 				}).then(function (ok) {
@@ -959,7 +1172,40 @@ const initialJson = JSON.stringify(items);
 				return;
 			}
 
-			setBusy(true, "正在提交到 GitHub…");
+			// 保存前自检：把即将写入的文本解析回来，逐字段与内存数据比对 ——
+			// 宁可阻止保存，也不把"读回来会变形/丢字段"的内容写进仓库。
+			// （weight 由列表顺序重算，不参与比对。）
+			var rtItems = parseArrayBody(buildArrayBody(items)).map(normalize);
+			var RT_LABELS = {
+				title: "标题",
+				imgurl: "图标地址",
+				desc: "描述",
+				siteurl: "站点地址",
+				tags: "标签",
+				enabled: "启用开关",
+			};
+			var RT_FIELDS = ["title", "imgurl", "desc", "siteurl", "tags", "enabled"];
+			var rtBad = rtItems.length === items.length ? "" : "条数";
+			for (var ri = 0; !rtBad && ri < items.length; ri++) {
+				var rtWant = normalize(items[ri]);
+				var rtGot = rtItems[ri];
+				for (var fi = 0; fi < RT_FIELDS.length; fi++) {
+					var rtKey = RT_FIELDS[fi];
+					var rtA = rtWant[rtKey] == null ? null : rtWant[rtKey];
+					var rtB = rtGot[rtKey] == null ? null : rtGot[rtKey];
+					if (JSON.stringify(rtA) !== JSON.stringify(rtB)) {
+						rtBad = "第 " + (ri + 1) + " 条的「" + RT_LABELS[rtKey] + "」";
+						break;
+					}
+				}
+			}
+			if (rtBad) {
+				showMsg("保存前自检未通过：" + rtBad + "读回后与填写不一致，已阻止提交。", "error");
+				return;
+			}
+
+			// 进度反馈用按钮上的"提交中…"：不占用消息条，避免列表被推下 36px（纵向跳动）
+			setBusy(true);
 			readRemote()
 				.then(function (r) {
 					var loc = locateArrayBody(r.text);
@@ -970,8 +1216,7 @@ const initialJson = JSON.stringify(items);
 				})
 				.then(function () {
 					state.items = items.slice();
-					state.sha = "";
-					state.dirty = false;
+					markSaved();
 					render();
 					showMsg("已提交 ✓ 线上约 2~3 分钟后生效（CI 正在重建）。", "success");
 				})
@@ -1003,10 +1248,111 @@ const initialJson = JSON.stringify(items);
 			doSave(items);
 		});
 
-		// 尊重"减少动态效果"偏好
-		if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-			panel.style.transition = "none";
-			mask.style.transition = "none";
+		// 登记清理入口（供脚本重放时兜底，见文件开头）
+		window.__feCleanup = function () {
+			window.__feKeydownBound = false;
+			try {
+				document.removeEventListener("keydown", onKeydown);
+			} catch (e) {
+				/* ignore */
+			}
+			["fe-mask", "fe-confirm"].forEach(function (id) {
+				var el = document.getElementById(id);
+				if (el && el.parentNode === document.body) el.parentNode.removeChild(el);
+			});
+		};
+
+		// 【swup 重入 · 正式处理】两步：
+		//   ① adoptDialog：接管"当前文档里最新的那份弹窗"。重放会在容器里带来新的一份 DOM，而闭包
+		//      里的引用可能已被移出文档（表现成"页面读到的弹窗可见、handler 里的 mask 却是 hidden"）。
+		//      接管最新那份 + 删掉重复 + 移入 body（fixed 定位才相对视口），引用便与文档一致。
+		//   ② attachEntry：重新取入口按钮引用并重绑，并确认 keydown 监听存在。
+		function adoptDialog() {
+			var masks = document.querySelectorAll("#fe-mask");
+			var confs = document.querySelectorAll("#fe-confirm");
+			var m = masks.length ? masks[masks.length - 1] : null;
+			var c = confs.length ? confs[confs.length - 1] : null;
+			var i;
+			for (i = 0; i < masks.length - 1; i++) {
+				if (masks[i].parentNode) masks[i].parentNode.removeChild(masks[i]);
+			}
+			for (i = 0; i < confs.length - 1; i++) {
+				if (confs[i].parentNode) confs[i].parentNode.removeChild(confs[i]);
+			}
+			if (m && m.parentNode !== document.body) document.body.appendChild(m);
+			if (c && c.parentNode !== document.body) document.body.appendChild(c);
+			if (m) mask = m;
+			if (c) confirmEl = c;
+			refreshRefs();
 		}
+
+		function attachEntry() {
+			adoptDialog();
+			root = document.getElementById("fe-root") || root;
+			btnOpen = document.getElementById("fe-open");
+			if (!root) return;
+			initVisibility();
+			bindOpen(); // 幂等：只有新元素才会真正绑定（重放闭包已绑过则跳过）
+			bindMsgClose();
+			ensureKeydown();
+		}
+
+		// 刷新元素引用：swup 换页后入口按钮是新的；万一弹窗 DOM 也被换掉（例如将来启用脚本重放），
+		// 这里把弹窗内部引用一并指回当前文档中的那份。取不到时保留原引用，避免把引用清成 null。
+		function refreshRefs() {
+			root = document.getElementById("fe-root") || root;
+			btnOpen = document.getElementById("fe-open") || btnOpen;
+			mask = document.getElementById("fe-mask") || mask;
+			confirmEl = document.getElementById("fe-confirm") || confirmEl;
+			if (mask) {
+				panel = mask.querySelector("#fe-panel") || panel;
+				listEl = mask.querySelector("#fe-list") || listEl;
+				emptyEl = mask.querySelector("#fe-empty") || emptyEl;
+				msgEl = mask.querySelector("#fe-msg") || msgEl;
+				subtitleEl = mask.querySelector("#fe-subtitle") || subtitleEl;
+				btnAdd = mask.querySelector("#fe-add") || btnAdd;
+				btnSave = mask.querySelector("#fe-save") || btnSave;
+				btnCancel = mask.querySelector("#fe-cancel") || btnCancel;
+				btnClose = mask.querySelector("#fe-close") || btnClose;
+				msgCloseBtn = mask.querySelector("#fe-msg-close") || msgCloseBtn;
+				msgTextEl = mask.querySelector("#fe-msg-text") || msgTextEl;
+			}
+			if (confirmEl) {
+				confirmTitleEl = confirmEl.querySelector("#fe-confirm-title") || confirmTitleEl;
+				confirmTextEl = confirmEl.querySelector("#fe-confirm-text") || confirmTextEl;
+				confirmOkBtn = confirmEl.querySelector("#fe-confirm-ok") || confirmOkBtn;
+				confirmCancelBtn = confirmEl.querySelector("#fe-confirm-cancel") || confirmCancelBtn;
+				confirmIconEl = confirmEl.querySelector("#fe-confirm-icon") || confirmIconEl;
+				confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+			}
+		}
+
+		// window.swup 可能晚于本脚本就绪，用 swup:enable 兜底（与站内 Navbar 同款做法）
+		function bindSwupHooks() {
+			// 脚本若被重放会存在多个闭包；钩子只保留最早那个（它的引用由 adoptDialog 持续刷新）
+			if (window.__feSwupHooked) return true;
+			if (!window.swup || !window.swup.hooks) return false;
+			window.swup.hooks.on("content:replace", function () {
+				adoptDialog(); // 先接管文档里最新的那份弹窗（并删掉重复），保证引用一致
+				// 切到没有本组件的页面时，只需把弹窗关掉，不必重绑入口
+				if (!document.getElementById("fe-root")) {
+					doClose();
+					return;
+				}
+				attachEntry();
+			});
+			window.__feSwupHooked = true;
+			return true;
+		}
+		if (!bindSwupHooks()) {
+			document.addEventListener(
+				"swup:enable",
+				function () {
+					bindSwupHooks();
+				},
+				{ once: true },
+			);
+		}
+
 	})();
 </script>
