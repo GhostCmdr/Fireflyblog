@@ -147,7 +147,7 @@ const initialJson = JSON.stringify(items);
 							d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
 						></path></svg
 					>
-					还没有友链，点下方「新增一条友链」开始。
+					还没有友链，点下方「+ 添加友链」开始。
 				</div>
 			</div>
 
@@ -160,7 +160,7 @@ const initialJson = JSON.stringify(items);
 					type="button"
 					class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
 				>
-					+ 新增一条友链
+					+ 添加友链
 				</button>
 				<div class="flex items-center gap-2">
 					<button
@@ -175,7 +175,7 @@ const initialJson = JSON.stringify(items);
 						type="button"
 						class="flex-1 rounded-xl bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
 					>
-						保存到 GitHub
+						提交到云端
 					</button>
 				</div>
 			</div>
@@ -252,7 +252,7 @@ const initialJson = JSON.stringify(items);
 			</div>
 		</div>
 		<div
-			class="flex items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3.5"
+			class="flex items-center justify-end gap-2 px-5 py-3.5"
 		>
 			<button
 				id="fe-confirm-cancel"
@@ -324,6 +324,14 @@ const initialJson = JSON.stringify(items);
 	#fe-confirm-panel button {
 		cursor: pointer;
 	}
+
+	/* ── 确认框内的按钮不显示键盘焦点环 ──
+	   原因同动态编辑器：askConfirm() 会程序化聚焦「取消」，按 Esc（键盘）唤出确认框时
+	   命中全站 :focus-visible 基线，画出一圈橙框。纯 CSS、零运行时开销。 */
+	#fe-confirm button:focus,
+	#fe-confirm button:focus-visible {
+		outline: none;
+	}
 </style>
 
 <script is:inline>
@@ -391,6 +399,18 @@ const initialJson = JSON.stringify(items);
 				.replace(/'/g, "&#39;");
 		}
 
+		// 幂等绑定：本站点 @swup/scripts-plugin 会在切页时**重新执行全文档内联脚本**，同一元素会被
+		// 多个闭包反复 addEventListener。副作用：切换类操作会被"开 + 关"互相抵消，提交 / 删除类
+		// 会被重复触发（实测 `#fe-open` 的监听器数量会随切页累积）。标记写在元素上 ⇒ 跨闭包可见
+		// ⇒ 每个「元素 + 事件」只绑一次；元素换新时会自动重新绑定。
+		function bindOnce(el, type, fn) {
+			if (!el || !el.addEventListener) return;
+			var flag = "__feBound_" + type;
+			if (el[flag]) return;
+			el[flag] = true;
+			el.addEventListener(type, fn);
+		}
+
 		function showMsg(text, kind) {
 			// 底色恢复为占位版的原始取值（半透明 10~12% 语义色），逐字与历史一致：
 			// 它靠与背后底色（面板的 --card-bg，壁纸透明模式下是 --card-bg-transparent）叠加呈现淡彩，
@@ -416,7 +436,7 @@ const initialJson = JSON.stringify(items);
 		function setBusy(on, label) {
 			state.busy = !!on;
 			btnSave.disabled = !!on;
-			btnSave.textContent = on ? "提交中…" : "保存到 GitHub";
+			btnSave.textContent = on ? "提交中…" : "提交到云端";
 			if (on && label) showMsg(label, "info");
 		}
 
@@ -884,7 +904,14 @@ const initialJson = JSON.stringify(items);
 
 		function restoreSaved() {
 			if (!state.saved) return;
-			state.items = state.saved.map(normalize);
+			var restored = state.saved.map(normalize);
+			// 与当前内容一致时不重绘：整体 innerHTML 重建会造成瞬时空帧，
+			// 打开弹窗时这次调用（内容本来没变）会被看成"闪一下"。
+			if (JSON.stringify(restored) === JSON.stringify(state.items)) {
+				state.dirty = false;
+				return;
+			}
+			state.items = restored;
 			state.dirty = false;
 			render();
 		}
@@ -954,10 +981,10 @@ const initialJson = JSON.stringify(items);
 
 		function closeModal(force) {
 			if (state.dirty && !force) {
-				askConfirm("改动还没提交到 GitHub，关闭后会丢失。", {
-					title: "放弃未保存的修改？",
-					okText: "放弃并关闭",
-					cancelText: "继续编辑",
+				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					okText: "确定",
+					cancelText: "取消",
 					kind: "warning",
 				}).then(function (ok) {
 					if (ok) {
@@ -989,6 +1016,51 @@ const initialJson = JSON.stringify(items);
 			info: { fg: "var(--primary)", btn: "var(--primary)" },
 		};
 
+		/* ───────────── 二次确认框期间的滚动拦截 ─────────────
+		   主弹窗**不锁**根滚动（滚动条常显、鼠标移出弹窗才滚网页）。
+		   确认框是模态决策：出现期间**不隐藏滚动条** —— 用 overflow:hidden 会让滚动条消失、
+		   页面内容横向跳动（用户明确反馈过），改为在捕获阶段拦截"滚动类输入"：
+		   滚轮 / 触摸滑动 / 方向键·翻页键·空格 ⇒ 滚动条始终可见、页面内容不动。
+		   本实现与 DynamicEditor.astro 的同名实现逐字一致（两个页面行为必须相同）。 */
+		var scrollLockCount = 0;
+		var SCROLL_KEYS = {
+			ArrowUp: 1,
+			ArrowDown: 1,
+			PageUp: 1,
+			PageDown: 1,
+			Home: 1,
+			End: 1,
+			" ": 1,
+		};
+
+		function preventScrollInput(e) {
+			if (scrollLockCount > 0) e.preventDefault();
+		}
+
+		function preventScrollKey(e) {
+			if (scrollLockCount > 0 && SCROLL_KEYS[e.key]) e.preventDefault();
+		}
+
+		function lockPageScroll() {
+			scrollLockCount++;
+			if (scrollLockCount > 1) return;
+			window.addEventListener("wheel", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("touchmove", preventScrollInput, {
+				passive: false,
+				capture: true,
+			});
+			window.addEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
+		function unlockPageScroll() {
+			if (scrollLockCount > 0) scrollLockCount--;
+			if (scrollLockCount > 0) return;
+			scrollLockCount = 0;
+			window.removeEventListener("wheel", preventScrollInput, { capture: true });
+			window.removeEventListener("touchmove", preventScrollInput, { capture: true });
+			window.removeEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
 		function askConfirm(text, opts) {
 			opts = opts || {};
 			var kind = opts.kind || (opts.danger === false ? "info" : "danger");
@@ -1007,6 +1079,7 @@ const initialJson = JSON.stringify(items);
 			}
 			confirmEl.classList.remove("hidden");
 			confirmEl.classList.add("flex");
+			lockPageScroll();
 			// 默认焦点给「取消」：破坏性操作不该让回车直接落到确认键上
 			confirmCancelBtn.focus({ preventScroll: true });
 			return new Promise(function (resolve) {
@@ -1020,6 +1093,7 @@ const initialJson = JSON.stringify(items);
 			confirmResolve = null;
 			confirmEl.classList.add("hidden");
 			confirmEl.classList.remove("flex");
+			unlockPageScroll(); // 无条件解锁
 			resolve(result);
 		}
 
@@ -1042,6 +1116,8 @@ const initialJson = JSON.stringify(items);
 		// 阻止滚动链传给网页；列表区内正常滚动；遮罩空白处不拦截（放行给网页滚动）。
 		// 无 DOM 操作、无布局读取，开销可忽略。
 		(function initPanelWheelGuard() {
+			if (panel.__feWheelBound) return; // 脚本重放时不要重复绑
+			panel.__feWheelBound = true;
 			panel.addEventListener(
 				"wheel",
 				function (e) {
@@ -1081,22 +1157,22 @@ const initialJson = JSON.stringify(items);
 			msgCloseBtn.addEventListener("click", hideMsg);
 		}
 		bindMsgClose();
-		btnClose.addEventListener("click", function () {
+		bindOnce(btnClose, "click", function () {
 			closeModal(false);
 		});
-		btnCancel.addEventListener("click", function () {
+		bindOnce(btnCancel, "click", function () {
 			closeModal(false);
 		});
-		mask.addEventListener("click", function (e) {
+		bindOnce(mask, "click", function (e) {
 			if (e.target === mask) closeModal(false);
 		});
-		confirmOkBtn.addEventListener("click", function () {
+		bindOnce(confirmOkBtn, "click", function () {
 			settleConfirm(true);
 		});
-		confirmCancelBtn.addEventListener("click", function () {
+		bindOnce(confirmCancelBtn, "click", function () {
 			settleConfirm(false);
 		});
-		confirmEl.addEventListener("click", function (e) {
+		bindOnce(confirmEl, "click", function (e) {
 			if (e.target === confirmEl) settleConfirm(false);
 		});
 		// 具名函数：swup 重跑时需要能从 document 上精确移除（匿名函数无法移除）
@@ -1118,7 +1194,27 @@ const initialJson = JSON.stringify(items);
 		}
 		ensureKeydown();
 
-		btnAdd.addEventListener("click", function () {
+		// 首屏快照：立刻用页面内嵌的 data-items 渲染一次，让弹窗打开那一帧就是终态。
+		// 背景（2026-09-21 实测）：打开时会"列表从空 → N 条撑出滚动条"⇒ 内容宽度瞬跳 10px、
+		// 高度也跳，表现为打开时抖一下。当日解法之一就是"首次用页面快照渲染"；
+		// 后来为了修"放弃修改后重开仍保留旧值"改成了只在数组为空时才画，这条机制被意外丢掉，现补回。
+		// 远端读取成功后若数据一致则跳过重绘（见 loadFromRemote 的比较）。
+		(function bootstrapFromSnapshot() {
+			try {
+				var seed = sortByWeight(
+					JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
+				);
+				if (!seed.length) return;
+				state.items = seed;
+				markSaved();
+				render();
+			} catch (e) {
+				/* 快照不可用时忽略，等远端数据 */
+			}
+		})();
+
+		// 具名 handler：抽出后 attachEntry（swup 换页）才能简洁地重绑同一份逻辑
+		function onAddClick() {
 			state.items.push(defaultItem());
 			state.dirty = true;
 			render();
@@ -1129,9 +1225,10 @@ const initialJson = JSON.stringify(items);
 				var first = last.querySelector('[data-f="title"]');
 				if (first) first.focus();
 			}
-		});
+		}
+		bindOnce(btnAdd, "click", onAddClick);
 
-		listEl.addEventListener("click", function (e) {
+		function onListClick(e) {
 			var btn = e.target.closest ? e.target.closest("[data-act]") : null;
 			if (!btn) return;
 			var card = btn.closest(".fe-item");
@@ -1141,9 +1238,9 @@ const initialJson = JSON.stringify(items);
 			if (act === "del") {
 				var t = card.querySelector('[data-f="title"]');
 				var name = t && t.value ? t.value : "这一条";
-				askConfirm("「" + name + "」将被删除，保存后才会在线上生效。", {
+				askConfirm("「" + name + "」这条友链将被删除。", {
 					title: "删除这条友链？",
-					okText: "删除",
+					okText: "确定",
 				}).then(function (ok) {
 					if (!ok) return;
 					card.parentNode.removeChild(card);
@@ -1159,11 +1256,13 @@ const initialJson = JSON.stringify(items);
 				else card.parentNode.insertBefore(prev, card);
 				state.dirty = true;
 			}
-		});
+		}
+		bindOnce(listEl, "click", onListClick);
 
-		listEl.addEventListener("input", function () {
+		function onListInput() {
 			state.dirty = true;
-		});
+		}
+		bindOnce(listEl, "input", onListInput);
 
 		function doSave(items) {
 			var c = cfg();
@@ -1218,7 +1317,7 @@ const initialJson = JSON.stringify(items);
 					state.items = items.slice();
 					markSaved();
 					render();
-					showMsg("已提交 ✓ 线上约 2~3 分钟后生效（CI 正在重建）。", "success");
+					showMsg("已提交 ✓", "success");
 				})
 				.catch(function (e) {
 					showMsg(e.message || "保存失败，请重试。", "error");
@@ -1228,7 +1327,7 @@ const initialJson = JSON.stringify(items);
 				});
 		}
 
-		btnSave.addEventListener("click", function () {
+		function onSaveClick() {
 			if (state.busy) return;
 			var items = collect();
 			var err = validate(items);
@@ -1246,7 +1345,8 @@ const initialJson = JSON.stringify(items);
 				return;
 			}
 			doSave(items);
-		});
+		}
+		bindOnce(btnSave, "click", onSaveClick);
 
 		// 登记清理入口（供脚本重放时兜底，见文件开头）
 		window.__feCleanup = function () {
@@ -1260,6 +1360,8 @@ const initialJson = JSON.stringify(items);
 				var el = document.getElementById(id);
 				if (el && el.parentNode === document.body) el.parentNode.removeChild(el);
 			});
+			// 复位滚动拦截：避免上一次脚本重放把监听器留在 window 上
+			while (scrollLockCount > 0) unlockPageScroll();
 		};
 
 		// 【swup 重入 · 正式处理】两步：
@@ -1294,6 +1396,30 @@ const initialJson = JSON.stringify(items);
 			initVisibility();
 			bindOpen(); // 幂等：只有新元素才会真正绑定（重放闭包已绑过则跳过）
 			bindMsgClose();
+			// swup 换页后弹窗 DOM 可能是新的 ⇒ 把弹窗内部绑定再走一遍
+			// （bindOnce 是元素级幂等：旧元素已绑则跳过，新元素才会真正绑上）
+			bindOnce(btnClose, "click", function () {
+				closeModal(false);
+			});
+			bindOnce(btnCancel, "click", function () {
+				closeModal(false);
+			});
+			bindOnce(mask, "click", function (e) {
+				if (e.target === mask) closeModal(false);
+			});
+			bindOnce(confirmOkBtn, "click", function () {
+				settleConfirm(true);
+			});
+			bindOnce(confirmCancelBtn, "click", function () {
+				settleConfirm(false);
+			});
+			bindOnce(confirmEl, "click", function (e) {
+				if (e.target === confirmEl) settleConfirm(false);
+			});
+			bindOnce(btnAdd, "click", onAddClick);
+			bindOnce(listEl, "click", onListClick);
+			bindOnce(listEl, "input", onListInput);
+			bindOnce(btnSave, "click", onSaveClick);
 			ensureKeydown();
 		}
 
