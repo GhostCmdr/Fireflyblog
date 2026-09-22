@@ -1,4 +1,8 @@
 ---
+import { getCollection } from "astro:content";
+import { readFileSync } from "node:fs";
+// [OURS] 动态就地编辑器：配置过 GitHub Token 的浏览器里，页头工具行右侧出现「管理」按钮
+import DynamicEditor from "@components/ours/DynamicEditor.astro";
 import { Icon } from "astro-icon/components";
 import DynamicFeed from "@/components/pages/dynamic/DynamicFeed.svelte";
 import DynamicItemTemplate from "@/components/pages/dynamic/DynamicItemTemplate.astro";
@@ -7,6 +11,7 @@ import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
 import "@/styles/dynamic.css";
+import { sortDynamics } from "@/utils/dynamic-utils";
 import { url } from "@/utils/url-utils";
 
 if (!siteConfig.pages.dynamic) {
@@ -26,6 +31,70 @@ const dataUrl = dynamicConfig.apiUrl?.startsWith("http")
 	? dynamicConfig.apiUrl
 	: url(dynamicConfig.apiUrl || "/api/dynamic.json");
 const memos = dynamicConfig.memos;
+
+/**
+ * [OURS] 给动态就地编辑器提供"首屏快照"。
+ *
+ * 为什么需要：编辑器弹窗的内容全靠浏览器读 GitHub 才能得到，若首屏什么都不画，
+ * 弹窗会先以"空内容"的高度出现、数据到达后再长高 —— 视觉上就是一次跳动
+ * （友链编辑器同日踩过同一个坑，其解法也是"服务端先给一份快照"）。
+ * 这里把与服务端同一份数据（同样的排序）序列化给组件，弹窗一打开即为终态。
+ */
+const timezone = siteConfig.timezone || "Asia/Shanghai";
+const stampFormatter = new Intl.DateTimeFormat("en-CA", {
+	timeZone: timezone,
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+	hourCycle: "h23",
+});
+
+/**
+ * published 必须取 **md 文件原文**，不能拿 entry.data.published（Date）再格式化：
+ * "YYYY-MM-DD HH:mm:ss" 不带时区，YAML 会按 UTC 解析；若再按站点时区格式化就会被 +8 小时，
+ * 导致首屏快照与"浏览器直接读 md 文本"得到的时间不一致 ⇒ 编辑器判定数据变了而白重绘一次
+ * （表现为打开弹窗后"闪一下"）。原文直取则与编辑器读到的完全一致。
+ */
+function rawPublished(filePath: string | undefined): string {
+	if (!filePath) return "";
+	try {
+		const matched = readFileSync(filePath, "utf8").match(
+			/^published:[ \t]*(.+?)[ \t]*$/m,
+		);
+		if (matched) return matched[1].replace(/^["']|["']$/g, "");
+	} catch {
+		/* 读不到就退回按站点时区格式化（stampFrom） */
+	}
+	return "";
+}
+
+/** 兜底：从 Date 按站点时区还原成 "YYYY-MM-DD HH:mm:ss" */
+function stampFrom(date: Date): string {
+	const parts: Record<string, string> = {};
+	for (const part of stampFormatter.formatToParts(date)) {
+		if (part.type !== "literal") parts[part.type] = part.value;
+	}
+	return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+/**
+ * 快照条数上限：快照会把**正文全文**内嵌进 HTML，条数多了会明显增大页面体积
+ * （个人站量级下全文都放进去更舒服，但要有个安全阀）。超出后首屏只画前 N 条，
+ * 完整列表会在打开弹窗后从 GitHub 同步到（编辑器本来就以远端为准）。
+ */
+const SEED_LIMIT = 50;
+const editorSeed = sortDynamics(await getCollection("dynamic"))
+	.slice(0, SEED_LIMIT)
+	.map((entry) => ({
+		file: entry.id.endsWith(".md") ? entry.id : `${entry.id}.md`,
+		published: rawPublished(entry.filePath) || stampFrom(entry.data.published),
+		pinned: Boolean(entry.data.pinned),
+		location: entry.data.location || "",
+		body: entry.body || "",
+	}));
 ---
 
 <MainGridLayout title={title} description={description}>
@@ -65,6 +134,8 @@ const memos = dynamicConfig.memos;
 						</select>
 						<Icon name="material-symbols:arrow-drop-down-rounded" />
 					</label>
+					{/* [OURS] 管理入口：仅站长可见（脚本按 localStorage 中的 Token 判定，?manage=1 可兜底唤出） */}
+					<DynamicEditor timezone={timezone} items={editorSeed} />
 				</div>
 			</header>
 

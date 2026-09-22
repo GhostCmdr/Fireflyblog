@@ -1,0 +1,1733 @@
+---
+// [OURS] 动态就地编辑器（/dynamic/ 页面）
+//
+// 用途：配置过 GitHub Token 的浏览器里，动态页工具行右侧会出现「管理」按钮；
+//      点开弹窗即可直接新建 / 编辑 / 删除动态。每条动态 = src/content/dynamic/ 下的一个 md 文件，
+//      保存时由浏览器用 GitHub Contents API 直接对该文件做 PUT / DELETE。
+//
+// 设计约定（与 AGENTS.md 的 Repository-Specific Conventions 一致）：
+//   - 目录与文件名严格沿用上游 scripts/new-dynamic.js：src/content/dynamic/YYYY-MM-DD-HHmmss.md
+//     （文件名用站点时区计算，且是 id / 锚点 / 固定链接的来源，编辑时不得改变）
+//   - frontmatter 模板逐字对齐脚本：`---\npublished: YYYY-MM-DD HH:mm:ss\n---\n\n正文\n`
+//     （无引号、空格分隔、无时区后缀；pinned / location 仅在非默认时追加）
+//   - 图片沿用本站既有习惯：正文里贴图片外链，编辑器不介入图片文件
+//   - 正文为纯 Markdown 文本框（动态通常只有一段话，不做工具栏）
+//   - 结构与交互照搬 src/components/features/FriendsEditor.astro（id 前缀 fe- → de-）
+//   - 无前端框架、无新依赖，缩进 tab、字符串双引号
+type DynamicSeed = {
+	/** 文件名（同时是 id）：YYYY-MM-DD-HHmmss.md */
+	file: string;
+	/** YYYY-MM-DD HH:mm:ss（站点时区） */
+	published: string;
+	pinned: boolean;
+	location: string;
+	body: string;
+};
+
+interface Props {
+	/** 站点时区（IANA），用于生成文件名与 published 时间戳 */
+	timezone?: string;
+	/** 服务端首屏快照（由 src/pages/dynamic/index.astro 传入），让弹窗打开即为终态 */
+	items?: DynamicSeed[];
+}
+
+const { timezone = "Asia/Shanghai", items = [] } = Astro.props;
+const initialJson = JSON.stringify(items);
+---
+
+<div id="de-root" class="flex shrink-0 items-center" data-timezone={timezone} data-items={initialJson}>
+	<!-- 管理入口：默认隐藏，脚本判定通过后才显示（无 Token 的访客完全看不到） -->
+	<button
+		id="de-open"
+		type="button"
+		class="hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
+		aria-label="管理动态"
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			width="16"
+			height="16"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+			><path d="M12 20h9"></path><path
+				d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg
+		>
+		<span class="hidden sm:inline">管理</span>
+	</button>
+
+	<!-- 弹窗 -->
+	<div
+		id="de-mask"
+		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm sm:p-6"
+		style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
+		role="dialog"
+		aria-modal="true"
+		aria-label="管理动态"
+	>
+		<div
+			id="de-panel"
+			class="card-base relative flex max-h-[92vh] w-full max-w-[720px] flex-col shadow-2xl sm:max-h-[85vh]"
+		>
+			<!-- 头部（固定） -->
+			<div
+				class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-4"
+			>
+				<div class="min-w-0">
+					<div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+						管理动态
+					</div>
+					<div id="de-subtitle" class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+						置顶优先、时间倒序（与页面显示顺序一致）
+					</div>
+				</div>
+				<button
+					id="de-close"
+					type="button"
+					class="shrink-0 rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+					aria-label="关闭"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="20"
+						height="20"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+						></path></svg
+					>
+				</button>
+			</div>
+
+			<!-- 状态提示条（浮层，不占文档流 ⇒ 出现/消失不会把内容推下再弹回）：
+			     位置＝头部正下方（即它原本的视觉位置），会盖住内容第一行上沿，这是"不占位"的代价。
+			     top 的 4.875rem 等于头部实测高度，头部改版需同步此值。 -->
+			<div
+				id="de-msg"
+				class="absolute inset-x-0 top-[4.875rem] z-10 hidden px-5 py-2.5 pr-11 text-sm"
+				role="status"
+				aria-live="polite"
+			>
+				<span id="de-msg-text"></span>
+				<button
+					id="de-msg-close"
+					type="button"
+					class="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-lg opacity-70 transition-opacity hover:opacity-100"
+					aria-label="关闭提示"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="1em"
+						height="1em"
+						fill="currentColor"
+						aria-hidden="true"
+						><path
+							d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+						></path></svg
+					>
+				</button>
+			</div>
+
+			<!-- 内容（独立滚动）：列表 + 可移动的内联编辑块（#de-editor 会被搬进正在编辑的那张卡片） -->
+			<div
+				id="de-body"
+				class="de-scroll min-h-0 grow overflow-y-auto px-5 py-4"
+				style="overscroll-behavior: contain;"
+			>
+				<!-- 动态列表（每张卡片由脚本渲染，编辑控件直接渲染在各卡片内部） -->
+				<div id="de-list" class="flex flex-col gap-2.5"></div>
+				<div
+					id="de-empty"
+					class="hidden flex-col items-center justify-center py-10 text-center text-sm text-neutral-400 dark:text-neutral-500"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="36"
+						height="36"
+						fill="currentColor"
+						aria-hidden="true"
+						class="mb-2 opacity-60"
+						><path
+							d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+						></path></svg
+					>
+					还没有发布过动态，点下方「+ 添加动态」写下第一条。
+				</div>
+				</div>
+
+			<!-- 底部操作条（固定）：发布新动态 / 关闭（每条动态的「提交」在卡片自身右上角） -->
+			<div
+				id="de-foot-list"
+				class="flex shrink-0 flex-col gap-2 border-t border-(--line-divider) px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+			>
+				<button
+					id="de-add"
+					type="button"
+					class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
+				>
+					+ 添加动态
+				</button>
+				<button
+					id="de-cancel"
+					type="button"
+					class="rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+				>
+					关闭
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- [OURS] 站内风格确认框：替代原生 window.confirm（否则会弹出「localhost:4321 显示」这种浏览器弹窗） -->
+	<div
+		id="de-confirm"
+		class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
+		style="overscroll-behavior: contain;"
+		role="alertdialog"
+		aria-modal="true"
+		aria-labelledby="de-confirm-title"
+	>
+		<div
+			id="de-confirm-panel"
+			class="card-base w-full max-w-[380px] border border-(--line-divider) shadow-2xl backdrop-blur-sm"
+		>
+			<div class="px-5 pt-5 pb-4">
+				<div class="flex items-start gap-3">
+					<span id="de-confirm-icon" class="shrink-0" style="color: #DC2626;">
+						<svg
+							data-kind="danger"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							width="24"
+							height="24"
+							fill="currentColor"
+							aria-hidden="true"
+							><path
+								d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+							></path></svg
+						>
+						<svg
+							data-kind="warning"
+							class="hidden"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							width="24"
+							height="24"
+							fill="currentColor"
+							aria-hidden="true"
+							><path d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"></path></svg
+						>
+						<svg
+							data-kind="info"
+							class="hidden"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							width="24"
+							height="24"
+							fill="currentColor"
+							aria-hidden="true"
+							><path
+								d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
+							></path></svg
+						>
+					</span>
+					<div class="min-w-0 flex-1">
+						<div
+							id="de-confirm-title"
+							class="text-[1.0625rem] leading-6 font-bold text-neutral-900 dark:text-neutral-100"
+						>
+							请确认
+						</div>
+						<div
+							id="de-confirm-text"
+							class="mt-1.5 text-sm leading-6 break-words text-neutral-600 dark:text-neutral-400"
+						>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="flex items-center justify-end gap-2 px-5 py-3.5">
+				<button
+					id="de-confirm-cancel"
+					type="button"
+					class="rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+				>
+					取消
+				</button>
+				<button
+					id="de-confirm-ok"
+					type="button"
+					class="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:brightness-110"
+				>
+					确定
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- ⚠️ 必须用 is:global：卡片内容是脚本用 innerHTML 动态生成的，而 Astro 的 scoped style
+     会往每个选择器上附加作用域属性 —— 对 JS 生成的内容永远不命中，且不报错（静默失效）。
+     项目里已踩过同一个坑（editor.astro 的预览内容样式也必须放在全局块）。 -->
+<style is:global>
+	/* 弹窗内滚动条：保留"细 + 圆角"的形状，颜色用接近系统默认的灰（不跟随主色）。 */
+	.de-scroll {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+	}
+	.dark .de-scroll {
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+	}
+	.de-scroll::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	.de-scroll::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	.de-scroll::-webkit-scrollbar-thumb {
+		background: rgba(0, 0, 0, 0.3);
+		background-clip: content-box;
+		border: 2px solid transparent;
+		border-radius: 999px;
+	}
+	.de-scroll::-webkit-scrollbar-thumb:hover {
+		background: rgba(0, 0, 0, 0.45);
+		background-clip: content-box;
+	}
+	.dark .de-scroll::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.28);
+		background-clip: content-box;
+	}
+	.dark .de-scroll::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.42);
+		background-clip: content-box;
+	}
+
+	/* 列表容器始终预留滚动条槽位：避免"内容没撑满 → 撑出滚动条"导致宽度瞬变
+	   （只作用于本容器，不影响页面根滚动条与 vw）。 */
+	#de-body {
+		scrollbar-gutter: stable;
+	}
+
+	/* 弹窗内所有按钮都用手型光标（<button> 浏览器默认不给 pointer）；
+	   卡片内的按钮由脚本生成 ⇒ 这条规则必须放在全局块才命中。 */
+	#de-open,
+	#de-root > button,
+	#de-panel button,
+	#de-confirm-panel button {
+		cursor: pointer;
+	}
+
+	/* ── 卡片的「只读 / 可编辑」两态 ──
+	   卡片结构完全一致（左右各一半），不编辑时把控件做成"纯文本样子"：
+	   去掉边框与底色、禁止交互，布局与尺寸都不发生变化 ⇒ 点「编辑」只是让文字变得可改。 */
+	/* 只读态：去掉边框做成"文本样子"，但仍给极淡底色 —— 避免大片空白显得"太空"；
+	   不加 pointer-events:none，这样只读时也能选中/复制正文（只读由 readOnly 保证）。 */
+	.de-item:not([data-editing="1"]) [data-f] {
+		border-color: transparent !important;
+		box-shadow: none !important;
+		background: rgba(0, 0, 0, 0.03);
+	}
+	.dark .de-item:not([data-editing="1"]) [data-f] {
+		background: rgba(255, 255, 255, 0.04);
+	}
+	.de-item:not([data-editing="1"]) .de-editor-only {
+		display: none;
+	}
+	.de-item[data-editing="1"] .de-readonly-only {
+		display: none;
+	}
+	/* 编辑中的卡片给一点视觉强调，便于一眼看出在改哪一条 */
+	.de-item[data-editing="1"] {
+		border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+	}
+
+	/* ── 卡片内正文框的滚动行为 ──
+	   ① 只读态**隐藏滚动条**：多条动态时不会每张卡片都挂着一条滚动条（视觉干净）；
+	      滚动能力仍然保留（内容超出照样能滚，只是不显示条）。
+	   ② 两个状态都加 overscroll-behavior: contain ⇒ 阻断"滚动链"：
+	      在卡片内滚到底不会带着弹窗内容区一起滚。 */
+	.de-item textarea[data-f] {
+		overscroll-behavior: contain;
+	}
+	.de-item:not([data-editing="1"]) textarea[data-f] {
+		scrollbar-width: none;
+	}
+	.de-item:not([data-editing="1"]) textarea[data-f]::-webkit-scrollbar {
+		display: none;
+	}
+
+	/* ── 确认框内的按钮不显示键盘焦点环 ──
+	   askConfirm() 打开时会把焦点程序化给「取消」按钮；若这次唤出由键盘触发（如按 Esc），
+	   全站焦点基线（main.css 的 :focus-visible ⇒ outline: 2px solid var(--primary)）就会在
+	   按钮外画出一圈橙框 —— 看起来像"按钮被框选"。确认框是一次性决策、按钮固定两个，这里抑制掉。
+	   纯 CSS、零运行时开销；与 editor.astro 的「焦点黑边统一方案」同源同解法。 */
+	#de-confirm button:focus,
+	#de-confirm button:focus-visible {
+		outline: none;
+	}
+</style>
+
+<script is:inline>
+	(function () {
+		"use strict";
+
+		// 【swup 重入】本站点 @swup/scripts-plugin 会在 content:replace 时**重新执行全文档内联脚本**，
+		// 因此本组件每次切回动态页都会重放。重放前先执行上一次登记的清理 —— 移除上一轮的 keydown
+		// 监听与 body 上那份旧弹窗，避免监听器与 DOM 累积（重复绑定会让「保存」被触发多次）。
+		try {
+			if (typeof window.__deCleanup === "function") window.__deCleanup();
+		} catch (e) {
+			/* 清理失败不得阻断本次初始化 */
+		}
+
+		var root = document.getElementById("de-root");
+		if (!root) return;
+
+		var btnOpen = document.getElementById("de-open");
+		var mask = document.getElementById("de-mask");
+		var panel = document.getElementById("de-panel");
+		var listEl = document.getElementById("de-list");
+		var emptyEl = document.getElementById("de-empty");
+		var msgEl = document.getElementById("de-msg");
+		var subtitleEl = document.getElementById("de-subtitle");
+		var msgCloseBtn = document.getElementById("de-msg-close");
+		var msgTextEl = document.getElementById("de-msg-text");
+		var btnAdd = document.getElementById("de-add");
+		var btnCancel = document.getElementById("de-cancel");
+		var btnClose = document.getElementById("de-close");
+
+		// 动态所在目录（与 scripts/new-dynamic.js 完全一致，不得改变）
+		var DIR_PATH = "src/content/dynamic";
+		var DEFAULT_REPO = "GhostCmdr/Fireflyblog";
+		var TZ = root.getAttribute("data-timezone") || "Asia/Shanghai";
+
+		// editing: null = 全部只读；"" = 新建；否则为被编辑条目的文件名（编辑时文件名不变）
+		var state = {
+			items: [],
+			saved: null,
+			dirty: false,
+			busy: false,
+			editing: null,
+			loaded: false,
+		};
+
+		/* ───────────── 小工具 ───────────── */
+
+		function cfg() {
+			var ls = window.localStorage;
+			return {
+				token: ls.getItem("gh-token") || ls.getItem("gh-editor-token") || "",
+				repo: ls.getItem("gh-repo") || ls.getItem("gh-editor-repo") || DEFAULT_REPO,
+				branch: ls.getItem("gh-branch") || "main",
+			};
+		}
+
+		function escHtml(s) {
+			return String(s == null ? "" : s)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+
+		function pad2(n) {
+			return (n < 10 ? "0" : "") + n;
+		}
+
+		// 幂等绑定：本站点 @swup/scripts-plugin 会在切页时**重新执行全文档内联脚本**，同一元素会被
+		// 多个闭包反复 addEventListener。副作用：切换类操作（「编辑」展开/收起）会被"开 + 关"
+		// 互相抵消（表现为点一次没反应、点两次才对）；提交 / 删除类则会被重复触发。
+		// 标记写在元素上 ⇒ 跨闭包可见 ⇒ 每个「元素 + 事件」只绑一次；元素换新时会自动重新绑定。
+		function bindOnce(el, type, fn) {
+			if (!el || !el.addEventListener) return;
+			var flag = "__deBound_" + type;
+			if (el[flag]) return;
+			el[flag] = true;
+			el.addEventListener(type, fn);
+		}
+
+		function showMsg(text, kind) {
+			// 底色沿用占位版的原始半透明语义色：靠与背后面板底色叠加呈现淡彩。
+			var palette = {
+				info: "background: rgba(59,130,246,0.10); color: #2563EB;",
+				success: "background: rgba(22,163,74,0.12); color: #15803D;",
+				warn: "background: rgba(217,119,6,0.12); color: #B45309;",
+				error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
+			};
+			msgEl.style.cssText = palette[kind] || palette.info;
+			// 注意：必须写进 #de-msg-text 而不是 #de-msg —— 对父元素赋 textContent 会清空所有子节点，
+			// 把里面的关闭按钮一起抹掉。
+			if (msgTextEl) msgTextEl.textContent = text;
+			else msgEl.textContent = text;
+			msgEl.classList.remove("hidden");
+		}
+
+		function hideMsg() {
+			msgEl.classList.add("hidden");
+		}
+
+		function setBusy(on, label) {
+			// 提交 / 删除的进度反馈走提示条（浮层不占位）；卡片内的「提交」由 state.busy 防重入
+			state.busy = !!on;
+			if (on && label) showMsg(label, "info");
+		}
+
+		/* ───────────── 二次确认框期间的滚动拦截 ─────────────
+		   主弹窗**不锁**根滚动（滚动条常显、鼠标移出弹窗才滚网页）。
+		   确认框是模态决策：出现期间**不隐藏滚动条** —— 用 overflow:hidden 会让滚动条消失、
+		   页面内容横向跳动（用户明确反馈过这个问题），改为在捕获阶段拦截"滚动类输入"：
+		   滚轮 / 触摸滑动 / 方向键·翻页键·空格 ⇒ 滚动条始终可见、页面内容不动。 */
+		var scrollLockCount = 0;
+		var SCROLL_KEYS = {
+			ArrowUp: 1,
+			ArrowDown: 1,
+			PageUp: 1,
+			PageDown: 1,
+			Home: 1,
+			End: 1,
+			" ": 1,
+		};
+
+		function preventScrollInput(e) {
+			if (scrollLockCount > 0) e.preventDefault();
+		}
+
+		function preventScrollKey(e) {
+			if (scrollLockCount > 0 && SCROLL_KEYS[e.key]) e.preventDefault();
+		}
+
+		function lockPageScroll() {
+			scrollLockCount++;
+			if (scrollLockCount > 1) return;
+			window.addEventListener("wheel", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("touchmove", preventScrollInput, {
+				passive: false,
+				capture: true,
+			});
+			window.addEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
+		function unlockPageScroll() {
+			if (scrollLockCount > 0) scrollLockCount--;
+			if (scrollLockCount > 0) return;
+			scrollLockCount = 0;
+			window.removeEventListener("wheel", preventScrollInput, { capture: true });
+			window.removeEventListener("touchmove", preventScrollInput, { capture: true });
+			window.removeEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
+		/* ───────────── 时间（站点时区，取法同 scripts/new-dynamic.js） ───────────── */
+
+		function tzParts(date) {
+			var parts = {};
+			new Intl.DateTimeFormat("en-CA", {
+				timeZone: TZ,
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+				hourCycle: "h23",
+			})
+				.formatToParts(date)
+				.forEach(function (p) {
+					if (p.type !== "literal") parts[p.type] = p.value;
+				});
+			return parts;
+		}
+
+		// frontmatter 里的 published 值（与脚本逐字一致：无引号、空格分隔、无时区后缀）
+		function stampOf(d) {
+			var p = tzParts(d);
+			return (
+				p.year + "-" + p.month + "-" + p.day + " " + p.hour + ":" + p.minute + ":" + p.second
+			);
+		}
+
+		// 文件名（与脚本逐字一致）：YYYY-MM-DD-HHmmss.md
+		function fileNameOf(d) {
+			var p = tzParts(d);
+			return (
+				p.year + "-" + p.month + "-" + p.day + "-" + p.hour + p.minute + p.second + ".md"
+			);
+		}
+
+		// "YYYY-MM-DD HH:mm:ss" → datetime-local 需要的 "YYYY-MM-DDTHH:mm"
+		function stampToInput(stamp) {
+			var m = String(stamp || "").match(
+				/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/,
+			);
+			if (!m) return "";
+			return m[1] + "-" + m[2] + "-" + m[3] + "T" + m[4] + ":" + m[5];
+		}
+
+		// datetime-local 的值 + 原秒（编辑时保留原秒；新建时为当刻秒）→ "YYYY-MM-DD HH:mm:ss"
+		function inputToStamp(value, fallbackSec) {
+			var m = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+			if (!m) return "";
+			var sec = m[6] || fallbackSec || "00";
+			return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + sec;
+		}
+
+		function isValidStamp(stamp) {
+			if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(stamp || ""))) return false;
+			return !isNaN(new Date(String(stamp).replace(" ", "T")).getTime());
+		}
+
+		/* ───────────── 解析动态 md（frontmatter + 正文） ───────────── */
+
+		function unquoteYaml(v) {
+			var s = String(v == null ? "" : v).trim();
+			if (s.length >= 2) {
+				var a = s.charAt(0);
+				var b = s.charAt(s.length - 1);
+				if ((a === '"' && b === '"') || (a === "'" && b === "'")) return s.slice(1, -1);
+			}
+			return s;
+		}
+
+		// 拆出 frontmatter 与正文。已知键解析成字段，**未知键原样保留**（回写时追加，
+		// 防止上游将来给动态新增 frontmatter 字段时被本编辑器抹掉）。
+		function parseDynamic(text) {
+			var src = String(text == null ? "" : text);
+			var out = { published: "", pinned: false, location: "", body: "", extra: [] };
+			var m = src.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/);
+			if (!m) {
+				out.body = src.replace(/^[\r\n]+/, "");
+				return out;
+			}
+			out.body = src.slice(m[0].length).replace(/^[\r\n]+/, "");
+			var lines = m[1].split(/\r?\n/);
+			for (var i = 0; i < lines.length; i++) {
+				var line = lines[i];
+				var mm = line.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/);
+				if (!mm) {
+					if (line.trim()) out.extra.push(line);
+					continue;
+				}
+				var key = mm[1];
+				var raw = mm[2].trim();
+				if (key === "published") out.published = unquoteYaml(raw);
+				else if (key === "pinned") out.pinned = raw === "true" || raw === "yes";
+				else if (key === "location") out.location = unquoteYaml(raw);
+				else out.extra.push(line);
+			}
+			return out;
+		}
+
+		// YAML 标量：含特殊字符（首尾空格 / `: ` / `#` / 引号 / 以特殊符号开头）时用双引号包裹
+		function yamlScalar(v) {
+			var s = String(v == null ? "" : v);
+			if (!s) return "";
+			if (
+				/^\s|\s$/.test(s) ||
+				/:\s|:$/.test(s) ||
+				/#/.test(s) ||
+				/["']/.test(s) ||
+				/^[-?*&!|>%@`{}[\]]/.test(s)
+			) {
+				return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+			}
+			return s;
+		}
+
+		/* ───────────── 生成动态 md 文本 ─────────────
+		   模板与 scripts/new-dynamic.js 逐字对齐：
+		   ---\npublished: YYYY-MM-DD HH:mm:ss\n[pinned: true\n][location: 值\n]---\n\n正文\n */
+
+		function buildDynamic(item) {
+			var head = "---\n" + "published: " + item.published + "\n";
+			if (item.pinned) head += "pinned: true\n";
+			if (item.location) head += "location: " + yamlScalar(item.location) + "\n";
+			var extra = item.extra || [];
+			for (var i = 0; i < extra.length; i++) head += extra[i] + "\n";
+			head += "---\n\n";
+			var body = String(item.body == null ? "" : item.body).replace(/\s+$/, "");
+			return head + body + "\n";
+		}
+
+		function commitMessage(kind, stamp) {
+			var t = String(stamp || "").slice(0, 16);
+			if (kind === "create") return "feat(dynamic): 网站端发布动态（" + t + "）";
+			if (kind === "update") return "feat(dynamic): 网站端更新动态（" + t + "）";
+			return "chore(dynamic): 网站端删除动态（" + t + "）";
+		}
+
+		function normalizeItem(raw) {
+			return {
+				file: String(raw.file == null ? "" : raw.file),
+				sha: String(raw.sha == null ? "" : raw.sha),
+				published: String(raw.published == null ? "" : raw.published),
+				pinned: !!raw.pinned,
+				location: String(raw.location == null ? "" : raw.location),
+				body: String(raw.body == null ? "" : raw.body),
+				extra: Array.isArray(raw.extra) ? raw.extra.slice() : [],
+				readError: !!raw.readError,
+			};
+		}
+
+		// 排序与 src/utils/dynamic-utils.ts 的 sortDynamics 一致：置顶优先，再按发布时间降序
+		// （published 是固定宽度的 "YYYY-MM-DD HH:mm:ss"，字典序即时间序）
+		function sortItems(arr) {
+			return arr.slice().sort(function (a, b) {
+				if (a.pinned && !b.pinned) return -1;
+				if (!a.pinned && b.pinned) return 1;
+				return String(b.published).localeCompare(String(a.published));
+			});
+		}
+
+		// 比较文本前先做尾部空白规范化：
+		// 服务端 entry.body 已去掉尾换行，而 parseDynamic 读回的是原文（一般带尾换行）；
+		// published / location 也可能有引号或空白差异。不规范化会把"内容其实一样"误判成变了，
+		// 于是白重绘一次 —— 正是用户看到的"打开后过一会儿内容才刷出来"。
+		function sameText(a, b) {
+			return (
+				String(a == null ? "" : a).replace(/\s+$/, "") ===
+				String(b == null ? "" : b).replace(/\s+$/, "")
+			);
+		}
+
+		// 只比较"列表上会显示出来的内容"，**不比 sha**：
+		// 服务端首屏快照没有 sha，而 sha 变化并不代表内容变化 ⇒ 否则必然判定为"变了"、白重绘一次。
+		function sameData(a, b) {
+			if (a.length !== b.length) return false;
+			for (var i = 0; i < a.length; i++) {
+				if (a[i].file !== b[i].file) return false;
+				if (!sameText(a[i].published, b[i].published)) return false;
+				if (!!a[i].pinned !== !!b[i].pinned) return false;
+				if (!sameText(a[i].location, b[i].location)) return false;
+				if (!sameText(a[i].body, b[i].body)) return false;
+			}
+			return true;
+		}
+
+		function summarize(body) {
+			var s = String(body || "")
+				.replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+				.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+				.replace(/[#>*_`~]/g, "")
+				.replace(/\s+/g, " ")
+				.trim();
+			return s.length > 72 ? s.slice(0, 72) + "…" : s;
+		}
+
+		/* ───────────── GitHub Contents API ───────────── */
+
+		function apiHeaders(token) {
+			var h = { Accept: "application/vnd.github.v3+json" };
+			if (token) h.Authorization = "token " + token;
+			return h;
+		}
+
+		function contentsUrl(repo, path) {
+			return (
+				"https://api.github.com/repos/" +
+				repo +
+				"/contents/" +
+				path.split("/").map(encodeURIComponent).join("/")
+			);
+		}
+
+		function handleWrite(res, label) {
+			if (res.status === 401) throw new Error("Token 无效或已过期，请到编辑器页更新后再试。");
+			if (res.status === 403)
+				throw new Error("Token 权限不足（需要该仓库的 Contents 读写权限）。");
+			if (res.status === 409 || res.status === 422)
+				throw new Error("文件已在别处被改动，请点「重新读取」后再提交。");
+			if (!res.ok) {
+				return res.json().then(
+					function (err) {
+						throw new Error(label + "失败：" + (err.message || "HTTP " + res.status));
+					},
+					function () {
+						throw new Error(label + "失败（HTTP " + res.status + "）");
+					},
+				);
+			}
+			return res.json();
+		}
+
+		// 列出目录下的全部 .md（含 sha）。目录不存在（Git 不跟踪空目录）返回 404 ⇒ 视为空列表。
+		function listRemote() {
+			var c = cfg();
+			if (!c.token)
+				return Promise.reject(new Error("未检测到 GitHub Token，请先在编辑器页面配置。"));
+			return fetch(
+				contentsUrl(c.repo, DIR_PATH) +
+					"?ref=" +
+					encodeURIComponent(c.branch) +
+					"&t=" +
+					Date.now(),
+				{ headers: apiHeaders(c.token), cache: "no-store" },
+			).then(function (res) {
+				if (res.status === 404) return [];
+				if (!res.ok) return handleWrite(res, "读取目录");
+				return res.json().then(function (data) {
+					return (Array.isArray(data) ? data : [])
+						.filter(function (f) {
+							return f && f.type === "file" && /\.md$/i.test(f.name || "");
+						})
+						.map(function (f) {
+							return { file: f.name, sha: f.sha };
+						});
+				});
+			});
+		}
+
+		// 读取单条：base64 → 原文 → 解析。单项失败不阻断整体（标记 readError，列表里显示为不可编辑行）。
+		function readOne(entry) {
+			var c = cfg();
+			return fetch(
+				contentsUrl(c.repo, DIR_PATH + "/" + entry.file) +
+					"?ref=" +
+					encodeURIComponent(c.branch) +
+					"&t=" +
+					Date.now(),
+				{ headers: apiHeaders(c.token), cache: "no-store" },
+			)
+				.then(function (res) {
+					if (!res.ok) throw new Error("HTTP " + res.status);
+					return res.json();
+				})
+				.then(function (data) {
+					var text = decodeURIComponent(
+						escape(atob(String(data.content || "").replace(/\n/g, ""))),
+					);
+					var parsed = parseDynamic(text);
+					return normalizeItem({
+						file: entry.file,
+						sha: data.sha || entry.sha,
+						published: parsed.published,
+						pinned: parsed.pinned,
+						location: parsed.location,
+						body: parsed.body,
+						extra: parsed.extra,
+						readError: false,
+					});
+				})
+				.catch(function () {
+					return normalizeItem({
+						file: entry.file,
+						sha: entry.sha,
+						readError: true,
+					});
+				});
+		}
+
+		// 并发受限地读取全部条目（上限 6，避免一次打开弹窗打爆 API 配额）
+		function readAll(entries) {
+			var out = [];
+			var idx = 0;
+			var limit = 6;
+			function worker() {
+				if (idx >= entries.length) return Promise.resolve();
+				var cur = entries[idx++];
+				return readOne(cur).then(function (item) {
+					out.push(item);
+					return worker();
+				});
+			}
+			var workers = [];
+			for (var i = 0; i < Math.min(limit, entries.length); i++) workers.push(worker());
+			return Promise.all(workers).then(function () {
+				return out;
+			});
+		}
+
+		function putFile(fileName, text, sha, message) {
+			var c = cfg();
+			var body = {
+				message: message,
+				content: btoa(unescape(encodeURIComponent(text))),
+				branch: c.branch,
+			};
+			if (sha) body.sha = sha;
+			return fetch(contentsUrl(c.repo, DIR_PATH + "/" + fileName), {
+				method: "PUT",
+				headers: Object.assign(apiHeaders(c.token), { "Content-Type": "application/json" }),
+				body: JSON.stringify(body),
+			}).then(function (res) {
+				return handleWrite(res, "提交");
+			});
+		}
+
+		function deleteFile(fileName, sha, message) {
+			var c = cfg();
+			return fetch(contentsUrl(c.repo, DIR_PATH + "/" + fileName), {
+				method: "DELETE",
+				headers: Object.assign(apiHeaders(c.token), { "Content-Type": "application/json" }),
+				body: JSON.stringify({ message: message, sha: sha, branch: c.branch }),
+			}).then(function (res) {
+				if (res.status === 404)
+					throw new Error("文件已不存在（可能已在别处被删除），请点「重新读取」。");
+				if (res.status === 409 || res.status === 422)
+					throw new Error("文件已在别处被改动，请点「重新读取」后再删除。");
+				return handleWrite(res, "删除");
+			});
+		}
+
+		/* ───────────── 渲染 ───────────── */
+
+		var BTN_RO_EDIT =
+			'<button type="button" data-act="edit" class="de-readonly-only rounded-lg border border-(--line-divider) px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:text-(--primary) dark:text-neutral-300">编辑</button>';
+		var BTN_ED_CANCEL =
+			'<button type="button" data-act="cancel" class="de-editor-only rounded-lg border border-(--line-divider) px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">取消</button>';
+		var BTN_ED_SAVE =
+			'<button type="button" data-act="save" class="de-editor-only rounded-lg bg-(--primary) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60">提交</button>';
+		var BTN_DEL =
+			'<button type="button" data-act="del" title="删除" aria-label="删除" class="rounded-lg border border-red-500/40 px-2 py-1 text-red-500 transition-colors hover:bg-red-500/10"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M9 3v1H4v2h16V4h-5V3H9zM6 8v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8H6zm3 2h2v9H9v-9zm4 0h2v9h-2v-9z"></path></svg></button>';
+
+		var INPUT_CLS =
+			'class="w-full rounded-lg border border-(--line-divider) bg-transparent px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"';
+		var TEXTAREA_CLS =
+			'class="de-scroll w-full resize-none rounded-lg border border-(--line-divider) bg-transparent px-3 py-2 text-sm leading-6 text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"';
+
+		// 卡片内容：左右各一半 —— 左＝基本设置（时间 / 位置 / 置顶 / 文件名），右＝正文。
+		// 两态共用同一套 DOM（只读时由 CSS 去掉边框底色并禁交互）⇒ 点「编辑」时布局与尺寸完全不变。
+		function cardBodyHtml(it, isNew) {
+			var publishedVal = isNew ? stampToInput(stampOf(new Date())) : stampToInput(it.published);
+			return (
+				'<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">' +
+				'<div class="flex flex-col gap-2.5">' +
+				'<label class="flex flex-col gap-1">' +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">发布时间</span>' +
+				'<input data-f="published" type="datetime-local" value="' +
+				escHtml(publishedVal) +
+				'" ' +
+				INPUT_CLS +
+				" />" +
+				"</label>" +
+				'<label class="flex flex-col gap-1">' +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">位置（可选）</span>' +
+				'<input data-f="location" type="text" value="' +
+				escHtml(it.location || "") +
+				'" placeholder="上海" ' +
+				INPUT_CLS +
+				" />" +
+				"</label>" +
+				'<label class="flex items-center gap-2">' +
+				'<span class="relative inline-flex h-5 w-9 shrink-0 items-center">' +
+				'<input data-f="pinned" type="checkbox" class="peer sr-only" ' +
+				(it.pinned ? "checked" : "") +
+				" />" +
+				'<span class="absolute inset-0 rounded-full bg-neutral-300 transition-colors peer-checked:bg-(--primary) dark:bg-neutral-600"></span>' +
+				'<span class="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span>' +
+				"</span>" +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">置顶</span>' +
+				"</label>" +
+				"</div>" +
+				'<label class="flex flex-col gap-1">' +
+				'<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">正文</span>' +
+				'<textarea data-f="body" rows="4" placeholder="今天在研究什么？记一笔。" ' +
+				TEXTAREA_CLS +
+				">" +
+				escHtml(it.body || "") +
+				"</textarea>" +
+				"</label>" +
+				"</div>"
+			);
+		}
+
+		function itemHtml(it) {
+			var isNew = it.isNew === true;
+			var headLeft;
+			if (isNew) {
+				headLeft =
+					'<span class="font-medium text-(--primary)">新建动态</span>' +
+					'<span class="truncate text-neutral-400">提交后按发布时间生成文件名</span>';
+			} else if (it.readError) {
+				headLeft =
+					'<span class="font-medium text-red-500">读取失败</span>' +
+					'<span class="truncate text-neutral-400">' +
+					escHtml(it.file) +
+					"</span>";
+			} else {
+				var flags = "";
+				if (it.pinned)
+					flags +=
+						'<span class="rounded-md bg-(--primary)/12 px-1.5 py-0.5 font-medium text-(--primary)">置顶</span>';
+				if (it.location)
+					flags +=
+						'<span class="rounded-md bg-neutral-500/12 px-1.5 py-0.5 text-neutral-500 dark:text-neutral-400">' +
+						escHtml(it.location) +
+						"</span>";
+				// 时间与文件名**不再在这里重复**（左半已有「发布时间」字段与文件名提示 ⇒ 之前同一屏里出现三次）
+				headLeft = flags;
+			}
+			var buttons = it.readError
+				? BTN_DEL
+				: BTN_RO_EDIT + BTN_ED_CANCEL + BTN_ED_SAVE + BTN_DEL;
+			// 文件名提示：只在"编辑已有条目"时出现（新建卡头部已写明"提交后生成文件名"），
+			// 跟在头部标记（置顶 / 位置）之后、左对齐；灰色小字、超长省略。
+			var hint =
+				!isNew && !it.readError
+					? '<span data-hint class="de-editor-only max-w-[13rem] truncate text-[11px] text-neutral-400">' +
+						escHtml(it.file) +
+						"</span>"
+					: "";
+			return (
+				'<div class="de-item card-base rounded-xl border border-(--line-divider) p-3"' +
+				(isNew ? ' data-new="1"' : ' data-file="' + escHtml(it.file) + '"') +
+				">" +
+				'<div class="flex items-start gap-3">' +
+				'<div class="min-w-0 grow">' +
+				'<div class="flex flex-wrap items-center gap-1.5 text-[11px]">' +
+				headLeft +
+				hint +
+				"</div>" +
+				"</div>" +
+				'<div class="flex shrink-0 items-center gap-1.5">' +
+				buttons +
+				"</div>" +
+				"</div>" +
+				(it.readError ? "" : cardBodyHtml(it, isNew)) +
+				"</div>"
+			);
+		}
+
+		function render() {
+			listEl.innerHTML = state.items.map(itemHtml).join("");
+			// 新建态：顶部插一张草稿卡（不进 state.items，提交成功后才成为真实条目）
+			if (state.editing === "") {
+				listEl.insertAdjacentHTML(
+					"afterbegin",
+					itemHtml({
+						file: "",
+						published: stampOf(new Date()),
+						pinned: false,
+						location: "",
+						body: "",
+						isNew: true,
+					}),
+				);
+			}
+			applyEditable();
+			setSubtitle();
+		}
+
+		// state.editing 语义：null = 没有展开编辑块；"" = 正在新建；其它 = 正在编辑该文件名
+		function setSubtitle() {
+			if (state.editing !== null) {
+				subtitleEl.textContent = state.editing
+					? "正在编辑 · " + state.editing + "（文件名不变）"
+					: "新建动态 · 文件名与时间按站点时区自动生成";
+			} else {
+				subtitleEl.textContent =
+					"共 " + state.items.length + " 条 · 置顶优先、时间倒序（与页面显示顺序一致）";
+			}
+			var isEmpty =
+				state.editing === null && state.loaded && !state.items.length;
+			emptyEl.classList.toggle("hidden", !isEmpty);
+			emptyEl.classList.toggle("flex", isEmpty);
+		}
+
+		/* ───────────── 卡片数据（替代原"表单"概念） ───────────── */
+
+		function findItem(file) {
+			for (var i = 0; i < state.items.length; i++) {
+				if (state.items[i].file === file) return state.items[i];
+			}
+			return null;
+		}
+
+		/* ───────────── 就地编辑：只切换卡片的「只读 / 可编辑」，不搬 DOM、不重绘 ───────────── */
+
+		// 用于选择器的转义（文件名只含数字 / 字母 / - / .，这里只兜底引号与反斜杠）
+		function cssEscape(s) {
+			return String(s == null ? "" : s).replace(/["\\]/g, "\\$&");
+		}
+
+		function findCard(key) {
+			if (key === "") return listEl.querySelector('.de-item[data-new="1"]');
+			return listEl.querySelector('.de-item[data-file="' + cssEscape(key) + '"]');
+		}
+
+		// 把"哪一条可编辑"应用到 DOM：只改属性与类 ⇒ 不重排、不重建，布局和尺寸零变化
+		function applyEditable() {
+			var cards = listEl.querySelectorAll(".de-item");
+			for (var i = 0; i < cards.length; i++) {
+				var card = cards[i];
+				var key =
+					card.getAttribute("data-new") === "1" ? "" : card.getAttribute("data-file") || "";
+				var on = state.editing !== null && key === state.editing;
+				if (on) card.setAttribute("data-editing", "1");
+				else card.removeAttribute("data-editing");
+				var fields = card.querySelectorAll("[data-f]");
+				for (var j = 0; j < fields.length; j++) {
+					var el = fields[j];
+					if (el.tagName === "INPUT" && el.type === "checkbox") el.disabled = !on;
+					else el.readOnly = !on;
+				}
+			}
+		}
+
+		// key：null = 全部只读；"" = 新建；其它 = 正在编辑该文件名
+		function setEditing(key) {
+			state.editing = key;
+			state.dirty = false;
+			var it = key ? findItem(key) : null;
+			state.secBase =
+				key && it ? String(it.published || "").slice(17, 19) : pad2(new Date().getSeconds());
+			applyEditable();
+			setSubtitle();
+			hideMsg();
+			if (key === null) return;
+			var card = findCard(key);
+			var body = card ? card.querySelector('[data-f="body"]') : null;
+			if (body) {
+				try {
+					body.focus({ preventScroll: true });
+				} catch (e) {
+					/* ignore */
+				}
+			}
+		}
+
+		// 从某张卡片读回内容（含未提交的编辑）
+		function collectCard(key) {
+			var card = findCard(key);
+			var it = key ? findItem(key) : null;
+			var val = function (f) {
+				var el = card ? card.querySelector('[data-f="' + f + '"]') : null;
+				if (!el) return "";
+				if (el.type === "checkbox") return !!el.checked;
+				return el.value;
+			};
+			return {
+				file: key || "",
+				published: inputToStamp(val("published"), state.secBase),
+				pinned: !!val("pinned"),
+				location: String(val("location")).trim(),
+				body: val("body"),
+				extra: it ? it.extra.slice() : [],
+			};
+		}
+
+		// 把某张卡片恢复成内存里的值（取消编辑时用）；新建卡直接移除
+		function restoreCard(key) {
+			if (key === "") {
+				var draft = findCard("");
+				if (draft && draft.parentNode) draft.parentNode.removeChild(draft);
+				return;
+			}
+			var it = findItem(key);
+			var card = findCard(key);
+			if (!it || !card) return;
+			var set = function (f, v) {
+				var el = card.querySelector('[data-f="' + f + '"]');
+				if (el) el.value = v;
+			};
+			set("published", stampToInput(it.published));
+			set("location", it.location);
+			set("body", it.body);
+			var pin = card.querySelector('[data-f="pinned"]');
+			if (pin) pin.checked = !!it.pinned;
+		}
+
+		function cancelEdit() {
+			var key = state.editing;
+			if (key === null) return;
+			if (state.dirty) {
+				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					okText: "确定",
+					cancelText: "取消",
+					kind: "warning",
+				}).then(function (ok) {
+					if (ok) {
+						restoreCard(key);
+						setEditing(null);
+						render();
+					}
+				});
+				return;
+			}
+			restoreCard(key);
+			setEditing(null);
+			render();
+		}
+
+		function validateForm(item) {
+			if (!String(item.body).trim()) return "正文不能为空。";
+			if (!isValidStamp(item.published)) return "发布时间格式不正确，请重新选择。";
+			if (/[\r\n]/.test(item.location)) return "位置不能包含换行。";
+			return "";
+		}
+
+		// 保存前自检：把即将写入的文本解析回来，逐字段与表单值比对 ——
+		// 宁可阻止保存，也不把"读回来会变形/丢字段"的内容写进仓库（与友链编辑器同款做法）。
+		function selfCheck(item, text) {
+			var back = parseDynamic(text);
+			if (back.published !== item.published) return "published";
+			if (!!back.pinned !== !!item.pinned) return "pinned";
+			if (back.location !== item.location) return "location";
+			if (back.body.trim() !== String(item.body).trim()) return "正文";
+			return "";
+		}
+
+		/* ───────────── 主流程 ───────────── */
+
+		// 记下"已保存"快照（读取成功 / 提交成功后）。放弃修改、重新打开弹窗都回滚到这里，
+		// 否则未提交的表单内容会在内存与 DOM 里残留。
+		function markSaved() {
+			state.saved = state.items.map(normalizeItem);
+			state.dirty = false;
+		}
+
+		function restoreSaved() {
+			if (!state.saved) return;
+			var restored = state.saved.map(normalizeItem);
+			// 内容与当前一致时**不重绘**：整体 innerHTML 重建会产生瞬时空帧，
+			// 打开弹窗时调用它（内容本来就没变）会被看成"闪一下 / 过一会儿才出来"。
+			if (sameData(restored, state.items)) {
+				state.dirty = false;
+				return;
+			}
+			state.items = restored;
+			state.dirty = false;
+			render();
+		}
+
+		function loadFromRemote() {
+			listRemote()
+				.then(function (entries) {
+					if (!entries.length) return [];
+					return readAll(entries);
+				})
+				.then(function (items) {
+					// 用户在等待期间已开始编辑 ⇒ 不要用远端数据覆盖，避免吞掉刚落下的改动
+					if (state.dirty) return;
+					var pulled = sortItems(items.map(normalizeItem));
+					// 与当前列表（通常来自服务端首屏快照）内容一致时：只补 sha，**不重绘**。
+					// 整体 innerHTML 重建会造成瞬时空帧，是"打开时抖一下"的加重因素。
+					var same = sameData(pulled, state.items);
+					if (same) {
+						// sha 只有远端有，必须补上，否则随后的编辑 / 删除会因 sha 缺失被拒
+						for (var i = 0; i < pulled.length; i++) {
+							if (state.items[i]) state.items[i].sha = pulled[i].sha;
+						}
+					} else {
+						state.items = pulled;
+					}
+					state.loaded = true;
+					markSaved();
+					if (same) setSubtitle();
+					else render();
+					hideMsg();
+				})
+				.catch(function (e) {
+					state.loaded = true;
+					setSubtitle();
+					showMsg(e.message || "读取失败，请重试。", "error");
+				});
+		}
+
+		function openModal() {
+			hideMsg(); // 先清掉上一次残留的提示（否则旧错误消息会带进本次打开的弹窗）
+			setEditing(null);
+			// 只在"需要清掉残留的新建卡"时才重建列表：无条件 render 会在打开瞬间造成一次
+			// innerHTML 重建（瞬时空帧），这正是"点开时闪一下"的来源之一。
+			if (listEl.querySelector('[data-new="1"]')) render();
+			mask.classList.remove("hidden");
+			mask.classList.add("flex");
+			// 焦点落到关闭按钮：键盘用户不必 Tab 穿越整份列表；preventScroll 避免顺带滚动页面
+			try {
+				btnClose.focus({ preventScroll: true });
+			} catch (e) {
+				/* ignore */
+			}
+			if (state.saved) restoreSaved();
+			loadFromRemote();
+		}
+
+		// 直接关闭：无动画（不做位移/缩放过渡，也不延迟隐藏）
+		function doClose() {
+			setEditing(null);
+			// 同 openModal：仅在残留新建卡时才重建（关闭时虽不可见，但没必要做无谓的重排）
+			if (listEl.querySelector('[data-new="1"]')) render();
+			state.dirty = false;
+			mask.classList.add("hidden");
+			mask.classList.remove("flex");
+		}
+
+		function closeModal(force) {
+			if (state.dirty && !force) {
+				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					okText: "确定",
+					cancelText: "取消",
+					kind: "warning",
+				}).then(function (ok) {
+					if (ok) {
+						restoreSaved();
+						doClose();
+					}
+				});
+				return;
+			}
+			doClose();
+		}
+
+		function doSave() {
+			if (state.busy) return;
+			if (state.editing === null) return; // 没有正在编辑的卡片
+			var item = collectCard(state.editing);
+			var err = validateForm(item);
+			if (err) {
+				showMsg(err, "warn");
+				return;
+			}
+			var isEdit = !!state.editing;
+			if (!isEdit) item.file = fileNameOf(new Date());
+			var text = buildDynamic(item);
+			var bad = selfCheck(item, text);
+			if (bad) {
+				showMsg("保存前自检未通过：「" + bad + "」读回后与填写不一致，已阻止提交。", "error");
+				return;
+			}
+			var prev = isEdit ? findItem(state.editing) : null;
+			setBusy(true, isEdit ? "正在提交修改…" : "正在发布…");
+			putFile(
+				item.file,
+				text,
+				prev && prev.sha ? prev.sha : "",
+				commitMessage(isEdit ? "update" : "create", item.published),
+			)
+				.catch(function (e) {
+					// 新建时无 sha：若撞上同名文件，GitHub 会返回 409/422 ⇒ 换成更准确的提示
+					if (!isEdit && /409|422|被改动/.test(String(e.message)))
+						throw new Error(
+							"同名文件已存在（" + item.file + "），请稍后再试或改一下发布时间。",
+						);
+					throw e;
+				})
+				.then(function () {
+					var idx = -1;
+					for (var i = 0; i < state.items.length; i++) {
+						if (state.items[i].file === item.file) idx = i;
+					}
+					var next = normalizeItem({
+						file: item.file,
+						sha: (prev && prev.sha) || (idx >= 0 ? state.items[idx].sha : ""),
+						published: item.published,
+						pinned: item.pinned,
+						location: item.location,
+						body: item.body,
+						extra: item.extra,
+						readError: false,
+					});
+					if (idx >= 0) state.items[idx] = next;
+					else state.items.push(next);
+					state.items = sortItems(state.items);
+					state.loaded = true;
+					setEditing(null);
+					markSaved();
+					render();
+					showMsg((isEdit ? "已提交修改" : "已提交") + " ✓", "success");
+					// 提交后 sha 会变：静默重拉一次目录，保证后续「编辑 / 删除」用的是最新 sha
+					listRemote()
+						.then(function (entries) {
+							for (var i = 0; i < entries.length; i++) {
+								var local = findItem(entries[i].file);
+								if (local) local.sha = entries[i].sha;
+							}
+							markSaved();
+						})
+						.catch(function () {
+							/* 静默失败：下次打开弹窗会重新读取 */
+						});
+				})
+				.catch(function (e) {
+					showMsg(e.message || "提交失败，请重试。", "error");
+				})
+				.then(function () {
+					setBusy(false);
+				});
+		}
+
+		function doDelete(it) {
+			if (state.busy) return; // 提交 / 删除进行中不重复触发（避免同一个 sha 被并发使用）
+			var label = summarize(it.body).slice(0, 16);
+			askConfirm(
+				"「" + (label || it.file) + "」这条动态将被删除。",
+				{ title: "删除这条动态？", okText: "确定", kind: "danger" },
+			).then(function (ok) {
+				if (!ok) return;
+				setBusy(true, "正在删除…");
+				deleteFile(it.file, it.sha, commitMessage("destroy", it.published))
+					.then(function () {
+						state.items = state.items.filter(function (x) {
+							return x.file !== it.file;
+						});
+						if (state.editing === it.file) {
+							setEditing(null);
+							render();
+						}
+						markSaved();
+						render();
+						showMsg("已提交删除 ✓", "success");
+					})
+					.catch(function (e) {
+						showMsg(e.message || "删除失败，请重试。", "error");
+					})
+					.then(function () {
+						setBusy(false);
+					});
+			});
+		}
+
+		/* ───────────── 站内确认框（替代 window.confirm，避免浏览器原生弹窗） ─────────────
+		   锁滚动：只在确认框出现期间锁（主弹窗不锁），任何关闭路径都无条件解锁（不会锁死）。 */
+
+		var confirmEl = document.getElementById("de-confirm");
+		var confirmTitleEl = document.getElementById("de-confirm-title");
+		var confirmTextEl = document.getElementById("de-confirm-text");
+		var confirmOkBtn = document.getElementById("de-confirm-ok");
+		var confirmCancelBtn = document.getElementById("de-confirm-cancel");
+		var confirmIconEl = document.getElementById("de-confirm-icon");
+		var confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+		var confirmResolve = null;
+
+		// 三种语义：danger=破坏性操作（红）、warning=会丢改动的操作（橙）、info=提醒类（主色）
+		var CONFIRM_SKINS = {
+			danger: { fg: "#DC2626", btn: "#DC2626" },
+			warning: { fg: "#B45309", btn: "#DC2626" },
+			info: { fg: "var(--primary)", btn: "var(--primary)" },
+		};
+
+		function askConfirm(text, opts) {
+			opts = opts || {};
+			var kind = opts.kind || "danger";
+			var skin = CONFIRM_SKINS[kind] || CONFIRM_SKINS.danger;
+			confirmTitleEl.textContent = opts.title || "请确认";
+			confirmTextEl.textContent = text;
+			confirmOkBtn.textContent = opts.okText || "确定";
+			confirmCancelBtn.textContent = opts.cancelText || "取消";
+			confirmOkBtn.style.backgroundColor = skin.btn;
+			confirmIconEl.style.color = skin.fg;
+			for (var i = 0; i < confirmIcons.length; i++) {
+				confirmIcons[i].classList.toggle(
+					"hidden",
+					confirmIcons[i].getAttribute("data-kind") !== kind,
+				);
+			}
+			confirmEl.classList.remove("hidden");
+			confirmEl.classList.add("flex");
+			lockPageScroll();
+			// 默认焦点给「取消」：破坏性操作不该让回车直接落到确认键上
+			try {
+				confirmCancelBtn.focus({ preventScroll: true });
+			} catch (e) {
+				/* ignore */
+			}
+			return new Promise(function (resolve) {
+				confirmResolve = resolve;
+			});
+		}
+
+		function settleConfirm(result) {
+			if (!confirmResolve) return;
+			var resolve = confirmResolve;
+			confirmResolve = null;
+			confirmEl.classList.add("hidden");
+			confirmEl.classList.remove("flex");
+			unlockPageScroll(); // 无条件解锁
+			resolve(result);
+		}
+
+		/* ───────────── 事件绑定 ───────────── */
+
+		// 【关键】把弹窗搬到 <body> 下：
+		// 组件位于动态页头部卡片内，而站点卡片/布局祖先带 transform / backdrop-filter，
+		// 这会让 position:fixed 相对"该祖先"而不是视口定位（弹窗被卡在卡片里、位置错乱）。
+		if (mask.parentNode !== document.body) document.body.appendChild(mask);
+		if (confirmEl.parentNode !== document.body) document.body.appendChild(confirmEl);
+
+		// 面板空白处滚动的兜底：鼠标位于面板内但不在内容滚动容器上（头部/底部/间隙）时，
+		// 阻止滚动链传给网页；内容区正常滚动；遮罩空白处不拦截（放行给网页滚动）。
+		// 无 DOM 操作、无布局读取，开销可忽略。
+		(function initPanelWheelGuard() {
+			if (panel.__deWheelBound) return; // 脚本重放时不要重复绑
+			panel.__deWheelBound = true;
+			panel.addEventListener(
+				"wheel",
+				function (e) {
+					if (e.target.closest && e.target.closest("#de-body")) return;
+					e.preventDefault();
+				},
+				{ passive: false },
+			);
+		})();
+
+		// 入口按钮可见性：有 Token（或 ?manage=1 兜底）才显示。
+		// 提成具名函数：swup 切页后入口按钮是新元素，需要重新判断一次可见性。
+		function initVisibility() {
+			if (!btnOpen) return;
+			var hasToken = !!cfg().token;
+			var force = /[?&]manage=1\b/.test(window.location.search);
+			if (!hasToken && !force) return;
+			btnOpen.classList.remove("hidden");
+			btnOpen.classList.add("inline-flex");
+		}
+		initVisibility();
+
+		// 入口按钮的绑定必须幂等：swup 重放的新闭包与 swup 钩子（attachEntry）都会尝试绑它，
+		// 不加保护会每次切页 +1，多个 handler 会让 openModal 被重复调用。
+		// 标记写在元素上 ⇒ 跨闭包可见 ⇒ 无论两者谁先执行，最终都只有一次绑定。
+		function bindOpen() {
+			if (!btnOpen || btnOpen.__deOpenBound) return;
+			btnOpen.__deOpenBound = true;
+			btnOpen.addEventListener("click", openModal);
+		}
+		bindOpen();
+
+		// 提示条右侧的关闭按钮：同样用元素级标记做幂等
+		function bindMsgClose() {
+			if (!msgCloseBtn || msgCloseBtn.__deBound) return;
+			msgCloseBtn.__deBound = true;
+			msgCloseBtn.addEventListener("click", hideMsg);
+		}
+		bindMsgClose();
+
+		state.secBase = pad2(new Date().getSeconds());
+
+		// 全部"直接绑定"集中在这里：首屏调用一次；swup 切页后由 attachEntry 再调用一次。
+		// bindOnce 是元素级幂等 ⇒ 只有新元素才会真正绑上，重复调用无副作用
+		// （否则一旦 swup 把弹窗 DOM 换成新的，列表区与按钮就会失去监听）。
+		function bindAll() {
+			bindOnce(btnClose, "click", function () {
+				closeModal(false);
+			});
+			bindOnce(btnCancel, "click", function () {
+				closeModal(false);
+			});
+		bindOnce(btnAdd, "click", function () {
+			// 已有编辑中的卡片：先让它提交或取消，避免未提交内容被静默丢弃
+			if (state.editing !== null) {
+				if (state.dirty) {
+					showMsg("请先提交或取消当前正在编辑的那条动态。", "warn");
+					return;
+				}
+				setEditing(null);
+			}
+			setEditing("");
+			render();
+		});
+		bindOnce(mask, "click", function (e) {
+			if (e.target === mask) closeModal(false);
+		});
+		bindOnce(confirmOkBtn, "click", function () {
+			settleConfirm(true);
+		});
+		bindOnce(confirmCancelBtn, "click", function () {
+			settleConfirm(false);
+		});
+		bindOnce(confirmEl, "click", function (e) {
+			if (e.target === confirmEl) settleConfirm(false);
+		});
+
+			// 列表区委托：编辑 / 取消 / 提交 / 删除（列表会整体重绘，所以绑在容器上）
+			bindOnce(listEl, "click", function (e) {
+			var btn = e.target.closest ? e.target.closest("[data-act]") : null;
+			if (!btn) return;
+			var card = btn.closest(".de-item");
+			if (!card) return;
+			var isNew = card.getAttribute("data-new") === "1";
+			var key = isNew ? "" : card.getAttribute("data-file") || "";
+			var act = btn.getAttribute("data-act");
+			if (act === "edit") {
+				if (state.dirty && state.editing !== key) {
+					showMsg("请先提交或取消当前正在编辑的那条动态。", "warn");
+					return;
+				}
+				setEditing(key);
+				return;
+			}
+			if (act === "cancel") {
+				cancelEdit();
+				return;
+			}
+			if (act === "save") {
+				doSave();
+				return;
+			}
+			if (act === "del") {
+				var it = findItem(key);
+				if (it) doDelete(it);
+			}
+		});
+
+			// 卡片里的任何输入/切换都视为"有未提交改动"（供取消/关闭时的放弃保护）；
+			// 用程序赋值（render / restoreCard 里的 .value = / .checked =）不会触发事件，因此不会误标脏。
+			// 只有"正在编辑的那一条"能输入（其余卡片是 readOnly）。
+			bindOnce(listEl, "input", function () {
+				if (state.editing !== null) state.dirty = true;
+			});
+			bindOnce(listEl, "change", function () {
+				if (state.editing !== null) state.dirty = true;
+			});
+		}
+		bindAll();
+
+		// 具名函数：swup 重跑时需要能从 document 上精确移除（匿名函数无法移除）
+		function onKeydown(e) {
+			if (e.key !== "Escape") return;
+			// 确认框优先：它开着时 Esc 只关它，不要连带把编辑弹窗也关掉
+			if (!confirmEl.classList.contains("hidden")) {
+				settleConfirm(false);
+				return;
+			}
+			if (mask.classList.contains("hidden")) return;
+			// 有卡片在编辑：Esc 先取消编辑（脏则弹放弃确认），不直接关掉整个弹窗
+			if (state.editing !== null) cancelEdit();
+			else closeModal(false);
+		}
+
+		function ensureKeydown() {
+			if (window.__deKeydownBound) return;
+			document.addEventListener("keydown", onKeydown);
+			window.__deKeydownBound = true;
+		}
+		ensureKeydown();
+
+		// 首屏快照：立刻用服务端内嵌的数据渲染一次，让弹窗一打开就是终态。
+		// 否则"打开那一瞬间列表是空的、等 GitHub 返回才有内容"会表现为一次高度跳动
+		// （友链编辑器同日踩过同一个坑，解法同为"服务端先给一份快照"）。
+		(function bootstrapFromSeed() {
+			try {
+				var seed = JSON.parse(root.getAttribute("data-items") || "[]").map(function (x) {
+					return normalizeItem(x);
+				});
+				state.items = sortItems(seed);
+				// 服务端已经给出权威答案（哪怕为空），因此直接进入"已加载"态，不再显示读取中占位
+				state.loaded = true;
+				markSaved();
+				render();
+			} catch (e) {
+				/* 快照不可用时保留"读取中"占位，等远端数据 */
+			}
+		})();
+
+		/* ───────────── swup 重入 ───────────── */
+
+		// 登记清理入口（供脚本重放时兜底，见文件开头）
+		window.__deCleanup = function () {
+			window.__deKeydownBound = false;
+			try {
+				document.removeEventListener("keydown", onKeydown);
+			} catch (e) {
+				/* ignore */
+			}
+			// 复位滚动拦截：避免上一次脚本重放把监听器留在 window 上
+			while (scrollLockCount > 0) unlockPageScroll();
+			["de-mask", "de-confirm"].forEach(function (id) {
+				var el = document.getElementById(id);
+				if (el && el.parentNode === document.body) el.parentNode.removeChild(el);
+			});
+		};
+
+		// 【swup 重入 · 正式处理】两步：
+		//   ① adoptDialog：接管"当前文档里最新的那份弹窗"。重放会在容器里带来新的一份 DOM，而闭包
+		//      里的引用可能已被移出文档（表现成"页面读到的弹窗可见、handler 里的 mask 却是 hidden"）。
+		//   ② attachEntry：重新取入口按钮引用并重绑，并确认 keydown 监听存在。
+		function adoptDialog() {
+			var masks = document.querySelectorAll("#de-mask");
+			var confs = document.querySelectorAll("#de-confirm");
+			var m = masks.length ? masks[masks.length - 1] : null;
+			var c = confs.length ? confs[confs.length - 1] : null;
+			var i;
+			for (i = 0; i < masks.length - 1; i++) {
+				if (masks[i].parentNode) masks[i].parentNode.removeChild(masks[i]);
+			}
+			for (i = 0; i < confs.length - 1; i++) {
+				if (confs[i].parentNode) confs[i].parentNode.removeChild(confs[i]);
+			}
+			if (m && m.parentNode !== document.body) document.body.appendChild(m);
+			if (c && c.parentNode !== document.body) document.body.appendChild(c);
+			if (m) mask = m;
+			if (c) confirmEl = c;
+			refreshRefs();
+		}
+
+		function attachEntry() {
+			adoptDialog();
+			root = document.getElementById("de-root") || root;
+			btnOpen = document.getElementById("de-open");
+			if (!root) return;
+			initVisibility();
+			bindOpen(); // 幂等：只有新元素才会真正绑定
+			bindMsgClose();
+			bindAll(); // 弹窗内部（列表委托、按钮、确认框）也按新元素重绑一次
+			ensureKeydown();
+		}
+
+		// 刷新元素引用：swup 换页后入口按钮是新的；万一弹窗 DOM 也被换掉，这里把引用一并指回
+		// 当前文档中的那份。取不到时保留原引用，避免把引用清成 null。
+		function refreshRefs() {
+			root = document.getElementById("de-root") || root;
+			btnOpen = document.getElementById("de-open") || btnOpen;
+			mask = document.getElementById("de-mask") || mask;
+			confirmEl = document.getElementById("de-confirm") || confirmEl;
+			if (mask) {
+				panel = mask.querySelector("#de-panel") || panel;
+				listEl = mask.querySelector("#de-list") || listEl;
+				emptyEl = mask.querySelector("#de-empty") || emptyEl;
+				msgEl = mask.querySelector("#de-msg") || msgEl;
+				subtitleEl = mask.querySelector("#de-subtitle") || subtitleEl;
+				msgCloseBtn = mask.querySelector("#de-msg-close") || msgCloseBtn;
+				msgTextEl = mask.querySelector("#de-msg-text") || msgTextEl;
+				btnAdd = mask.querySelector("#de-add") || btnAdd;
+				btnCancel = mask.querySelector("#de-cancel") || btnCancel;
+				btnClose = mask.querySelector("#de-close") || btnClose;
+			}
+			if (confirmEl) {
+				confirmTitleEl = confirmEl.querySelector("#de-confirm-title") || confirmTitleEl;
+				confirmTextEl = confirmEl.querySelector("#de-confirm-text") || confirmTextEl;
+				confirmOkBtn = confirmEl.querySelector("#de-confirm-ok") || confirmOkBtn;
+				confirmCancelBtn = confirmEl.querySelector("#de-confirm-cancel") || confirmCancelBtn;
+				confirmIconEl = confirmEl.querySelector("#de-confirm-icon") || confirmIconEl;
+				confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+			}
+		}
+
+		// window.swup 可能晚于本脚本就绪，用 swup:enable 兜底（与站内 Navbar、友链编辑器同款做法）
+		function bindSwupHooks() {
+			// 脚本若被重放会存在多个闭包；钩子只保留最早那个（它的引用由 adoptDialog 持续刷新）
+			if (window.__deSwupHooked) return true;
+			if (!window.swup || !window.swup.hooks) return false;
+			window.swup.hooks.on("content:replace", function () {
+				adoptDialog(); // 先接管文档里最新的那份弹窗（并删掉重复），保证引用一致
+				// 切到没有本组件的页面时，只需把弹窗关掉，不必重绑入口
+				if (!document.getElementById("de-root")) {
+					doClose();
+					return;
+				}
+				attachEntry();
+			});
+			window.__deSwupHooked = true;
+			return true;
+		}
+		if (!bindSwupHooks()) {
+			document.addEventListener(
+				"swup:enable",
+				function () {
+					bindSwupHooks();
+				},
+				{ once: true },
+			);
+		}
+	})();
+</script>
+
