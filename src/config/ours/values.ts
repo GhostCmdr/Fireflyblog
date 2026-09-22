@@ -244,7 +244,7 @@ export const oursFriendsConfig: FriendLink[] = [
 		siteurl: "https://xiaomaisos.me",
 		tags: ["Blog"],
 		weight: 3,
-		enabled: true,
+		enabled: false,
 	},
 	{
 		title: "测试专用1",
@@ -254,7 +254,7 @@ export const oursFriendsConfig: FriendLink[] = [
 		siteurl: "https://www.ubisoft.com/en-gb/account/account-information",
 		tags: ["大大", "哒哒哒", "大大", "dada1", "dadda1"],
 		weight: 2,
-		enabled: true,
+		enabled: false,
 	},
 	{
 		title: "GitHub",
