@@ -111,14 +111,19 @@ footer.site-footer span[aria-hidden="true"]:has(+ a[href$="sitemap-index.xml"]) 
   display: none !important;
 }
 
-/* [OURS] 日期输入框的 📅 图标统一染色（2026-09-16）
-   覆盖 4 处：编辑器「文章信息」面板的发布时间 / 更新时间，以及相册的
-   「新建相册」(#new-album-date) / 「编辑相册」(#edit-album-date)。
+/* [OURS] 日期输入框的 📅 图标统一染色（2026-09-16，2026-09-24 扩展）
+   覆盖：编辑器「文章信息」面板的发布时间 / 更新时间、友链、相册（date），
+   以及**动态编辑器的发布时间（datetime-local）**。
+   ⚠️ 2026-09-24 用户指出"动态的日历图标不对" —— 根因就是这里当初只写了
+   `input[type="date"]`，而动态用的是 `type="datetime-local"`（浏览器给它的原生图标
+   与 date 不同：黑色、实心、更小）⇒ 把选择器一并覆盖 datetime-local 即可，
+   **不需要改动输入框的类型与结构**。
    原生 ::-webkit-calendar-picker-indicator 是黑色 SVG，深色主题下发黑、与主题色不搭。
    做法：去掉原生背景图 → 用同形状 SVG 当 mask → 背景色取主题色 --primary。
    用 mask + 背景色（而不是 filter）是因为本站主题色可配置，filter 无法跟随。
    注：点开后的日历弹窗是浏览器原生 UI，颜色改不了；这里只改输入框右侧的小图标。 */
-input[type="date"]::-webkit-calendar-picker-indicator {
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   width: 1.1em;
   height: 1.1em;
   background-image: none;

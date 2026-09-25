@@ -13,7 +13,11 @@ type AnyObj = Record<string, any>;
 // 仅类型导入（无运行时代价）：给下面的数组加显式类型，确保结构写错时 astro check 能报出来
 import type { BooknavGroup } from "../../types/booknavConfig";
 import type { FriendLink } from "../../types/friendsConfig";
+import type { GalleryAlbum } from "../../types/galleryConfig";
 import type { ProfileConfig } from "../../types/profileConfig";
+
+// 相册数据（JSON 数据源）：供 /gallery-admin/ 在线增删改；编辑器只改这个 json 文件
+import galleryAlbums from "./gallery-albums.json";
 
 // 【isolatedDeclarations / TS9017】本文件导出的对象里，数组字面量必须写 `as const`：
 // 该修饰只在类型层生效，编译后不留痕迹，运行时行为完全不变。
@@ -675,36 +679,10 @@ export const oursFancyboxOptions = {
 };
 
 /* ────────────────────────── galleryConfig ────────────────────────── */
-// 数组 → 整体替换
-export const oursGalleryConfig = {
-	albums: [
-		{
-			id: "测试相簿",
-			name: "测试相簿",
-			description: "测试1",
-			location: "网页",
-			date: "2026-07-21",
-			tags: ["异次元", "测试", "相册"],
-		},
-		{
-			id: "封面上传相册测试",
-			cover: "/gallery/封面上传相册测试/cover.jpg",
-			name: "封面上传相册测试",
-			description: "封面设置ghost",
-			location: "hub20260101",
-			date: "2026-07-23",
-			tags: ["测试", "封面", "时间", "设置"],
-		},
-		{
-			id: "封面上传相册测试222",
-			cover: "/gallery/封面上传相册测试222/cover.png",
-			name: "封面上传相册测试222",
-			description: "封面设置ghost",
-			location: "hub20260101",
-			date: "2026-07-23",
-			tags: ["测试", "封面", "时间", "设置"],
-		},
-	] as const, // isolatedDeclarations 下的导出对象：数组字面量须 as const（纯类型层，运行时不变）
+// 相册数据已抽出为 JSON（gallery-albums.json），供 /gallery-admin/ 在线增删改；
+// 这里用显式类型标注（而非 as const）满足 isolatedDeclarations：见文件顶部说明。
+export const oursGalleryConfig: { albums: GalleryAlbum[] } = {
+	albums: galleryAlbums,
 };
 
 /* ────────────────────────── displaySettingsConfig ────────────────────────── */

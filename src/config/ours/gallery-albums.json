@@ -1,0 +1,28 @@
+[
+	{
+		"id": "测试相簿",
+		"name": "测试相簿",
+		"description": "测试1",
+		"location": "网页",
+		"date": "2026-07-21",
+		"tags": ["异次元", "测试", "相册"]
+	},
+	{
+		"id": "封面上传相册测试",
+		"cover": "/gallery/封面上传相册测试/cover.jpg",
+		"name": "封面上传相册测试",
+		"description": "封面设置ghost",
+		"location": "hub20260101",
+		"date": "2026-07-23",
+		"tags": ["测试", "封面", "时间", "设置"]
+	},
+	{
+		"id": "封面上传相册测试222",
+		"cover": "/gallery/封面上传相册测试222/cover.png",
+		"name": "封面上传相册测试222",
+		"description": "封面设置ghost",
+		"location": "hub20260101",
+		"date": "2026-07-23",
+		"tags": ["测试", "封面", "时间", "设置"]
+	}
+]

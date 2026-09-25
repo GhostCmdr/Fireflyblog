@@ -1,7 +1,11 @@
 ---
 import { Icon } from "astro-icon/components";
+// [OURS] 相册就地编辑器（入口 + 弹窗，仅站长可见）—— 对上游相册页的改动仅此 1 行 import + 1 行组件使用
+import GalleryEditor from "@/components/ours/GalleryEditor.astro";
 import AlbumCard from "@/components/pages/gallery/AlbumCard.astro";
 import { galleryConfig, siteConfig } from "@/config";
+// [OURS] 只传我方相册数据（不含上游默认示例相册），供编辑器读写
+import { oursGalleryConfig } from "@/config/ours/values";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
@@ -31,33 +35,24 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
     <!-- 页面标题和描述面板（与下方相册列表分离） -->
     <div class="card-base z-10 px-9 py-6 mb-4 relative w-full">
       <div class="mb-4">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between gap-3 mb-3">
           <div class="flex items-center gap-3">
             <div
               class="h-8 w-8 rounded-lg bg-(--primary) flex items-center justify-center text-white dark:text-black/70"
             >
-              <Icon is:inline name="material-symbols:photo-library" class="text-[1.5rem]" />
+              <Icon name="material-symbols:photo-library" class="text-[1.5rem]" />
             </div>
             <div class="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
               {title}
             </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button
-              id="btn-create-album"
-              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-(--primary) text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              新建相册
-            </button>
-            <button
-              id="btn-refresh-gallery"
-              class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-(--line-divider) bg-transparent text-neutral-600 dark:text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer"
-              title="刷新相册列表"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            </button>
-          </div>
+          {/* [OURS] 相册管理入口（仅站长可见，点开为弹窗）。
+              张数**单独传**：albums 里的 cover 是 getAlbumCover 的"回退值"（无 cover 时取首图），
+              混进 items 会被编辑器当成真实 cover 写回配置 ⇒ 只把张数传过去。 */}
+          <GalleryEditor
+            items={oursGalleryConfig.albums}
+            photoCounts={Object.fromEntries(albums.map((a) => [a.id, a.photoCount]))}
+          />
         </div>
         {description && (
           <p class="text-base text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4">
@@ -70,7 +65,7 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
       {albums.length > 0 && (
         <gallery-filter class="mb-6">
           <div class="relative mb-3">
-            <Icon is:inline
+            <Icon
               name="material-symbols:search"
               class="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500 text-lg pointer-events-none"
             />
@@ -85,14 +80,15 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
             <div class="flex flex-wrap gap-2">
               <button
                 data-tag="all"
-                class="btn-regular px-3 py-1.5 rounded-lg bg-(--primary) text-white hover:bg-(--primary) transition-colors duration-200 text-sm font-medium"
+                class="category-pill px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200"
+                data-active
               >
                 {i18n(I18nKey.all)}
               </button>
               {allTags.map((tag) => (
                 <button
                   data-tag={tag}
-                  class="btn-regular px-3 py-1.5 rounded-lg bg-(--btn-regular-bg) text-(--btn-content) hover:bg-(--btn-regular-bg-hover) transition-colors duration-200 text-sm font-medium"
+                  class="category-pill px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200"
                 >
                   {tag}
                 </button>
@@ -135,98 +131,6 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
     )}
   </div>
 
-  <!-- 新建相册弹窗 -->
-  <div id="create-album-modal" class="fixed inset-0 z-50 hidden bg-black/50">
-    <div class="rounded-2xl p-6 shadow-2xl bg-white dark:bg-neutral-900 border border-[var(--line-divider)]" style="position: absolute; top: 5.5vh; left: 50%; transform: translateX(-50%); width: 480px; max-height: 90vh; overflow-y: auto;">
-      <h3 class="text-base font-bold text-black/90 dark:text-white/90 mb-4">📁 新建相册</h3>
-
-      <div class="space-y-3">
-        <div class="flex gap-3">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">相册名称 <span class="text-red-500">*</span></label>
-            <input id="new-album-name" type="text" placeholder="如：2026 旅行日记"
-              class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-          </div>
-          <div style="width: 180px;">
-            <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">相册 ID <span class="text-xs text-black/40 dark:text-white/40">（自动生成）</span></label>
-            <input id="new-album-id" type="text" placeholder="travel-2026"
-              class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">描述</label>
-          <input id="new-album-desc" type="text" placeholder="一句话描述相册内容"
-            class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-        </div>
-
-        <div class="flex gap-3">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">拍摄地点</label>
-            <input id="new-album-location" type="text" placeholder="如：杭州"
-              class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-          </div>
-          <div style="width: 180px;">
-            <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">日期</label>
-            <input id="new-album-date" type="date"
-              class="w-full px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-          </div>
-        </div>
-
-        <div>
-          {/* [OURS] 用法说明：自定义标签支持多个，用逗号分隔，中英文逗号都可以（见文件内 split(/[,，]/)） */}
-          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">标签（多个用逗号分隔，中英文都行）</label>
-          <div class="grid grid-cols-4 gap-3">
-            <input id="new-album-tag1" type="text" placeholder="标签1"
-              class="px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-            <input id="new-album-tag2" type="text" placeholder="标签2"
-              class="px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-            <input id="new-album-tagcustom" type="text" placeholder="自定义标签"
-              class="col-span-2 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">访问密码 <span class="text-xs text-black/40 dark:text-white/40">（留空公开）</span></label>
-          <div class="grid grid-cols-4 gap-3">
-            <input id="new-album-hint" type="text" placeholder="密码提示（可选）"
-              class="col-span-2 px-3 py-2 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-            <div class="col-span-2 relative">
-              <input id="new-album-password" type="password" placeholder="设置密码（留空不加密）"
-                class="w-full px-3 py-2 pr-9 rounded-lg border border-[var(--line-divider)] bg-transparent text-sm text-black/90 dark:text-white/90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" />
-              <button id="toggle-new-pwd" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 cursor-pointer">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-medium text-black/60 dark:text-white/60 mb-1">封面图 <span class="text-xs text-black/40 dark:text-white/40">（可选，支持 jpg/png/webp）</span></label>
-          <div id="new-album-cover-drop" class="relative border-2 border-dashed border-[var(--line-divider)] rounded-lg p-3 text-center cursor-pointer hover:border-[var(--primary)]/50 transition">
-            <input id="new-album-cover-input" type="file" accept="image/jpeg,image/png,image/webp" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <div id="new-album-cover-preview" class="hidden">
-              <img id="new-album-cover-img" class="max-h-24 mx-auto rounded object-cover" />
-              <p id="new-album-cover-name" class="text-xs text-black/60 dark:text-white/60 mt-1 truncate"></p>
-            </div>
-            <div id="new-album-cover-placeholder" class="text-black/40 dark:text-white/40">
-              <svg class="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-              <p class="text-xs">点击或拖拽上传封面图</p>
-            </div>
-          </div>
-          <input id="new-album-cover-file" type="hidden" value="" />
-        </div>
-
-        <div id="create-status" class="text-sm hidden"></div>
-      </div>
-
-      <div class="flex justify-end gap-2 mt-5">
-        <button id="create-cancel" class="px-4 py-2 rounded-lg text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer">取消</button>
-        <button id="create-confirm" class="px-5 py-2 rounded-lg bg-(--primary) text-white dark:text-black/80 text-sm font-medium hover:opacity-90 transition cursor-pointer">创建</button>
-      </div>
-    </div>
-  </div>
-
   <script slot="head" is:inline>
     if (!customElements.get("gallery-filter")) {
       class GalleryFilter extends HTMLElement {
@@ -257,18 +161,9 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
           const filters = this.querySelectorAll("button");
 
           filters.forEach((f) => {
-            f.classList.remove("bg-(--primary)", "text-white");
-            f.classList.remove("hover:bg-(--primary)");
-            f.classList.add("bg-(--btn-regular-bg)", "text-(--btn-content)");
-            f.classList.add("hover:bg-(--btn-regular-bg-hover)");
-
-            if (f === button) {
-              f.classList.remove("bg-(--btn-regular-bg)", "text-(--btn-content)");
-              f.classList.remove("hover:bg-(--btn-regular-bg-hover)");
-              f.classList.add("bg-(--primary)", "text-white");
-              f.classList.add("hover:bg-(--primary)");
-            }
+            f.removeAttribute("data-active");
           });
+          button.setAttribute("data-active", "");
 
           this.applyFilters();
         }
@@ -321,371 +216,6 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
     }
   </script>
 
-  <script is:inline>
-    // ===== 事件委托：打开/关闭弹窗 =====
-    // 不用 data-swup-reload-script（不可靠），改用 swup:content:replaced 事件
-    function setupCreateAlbumDelegate() {
-      // 清理旧的监听器
-      if (window.__createAlbumAC) window.__createAlbumAC.abort();
-      window.__createAlbumAC = new AbortController();
-      var ac = window.__createAlbumAC;
-      var idManuallyEdited = false;
-
-      // ESC 关闭所有弹窗
-      document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-          var modals = document.querySelectorAll('#create-album-modal, #edit-album-modal, #delete-album-modal, #gallery-upload-modal');
-          modals.forEach(function(m) { if (!m.classList.contains('hidden')) m.classList.add('hidden'); });
-        }
-      }, { signal: ac.signal });
-
-      document.addEventListener('click', function(e) {
-        var t = e.target;
-
-        // 点击后移除焦点，避免黑色轮廓残留
-        if (t.closest && t.closest('button')) {
-          setTimeout(function() { t.blur(); }, 10);
-        }
-
-        // 刷新相册列表
-        if (t.closest('#btn-refresh-gallery')) {
-          window.location.reload();
-          return;
-        }
-
-        // 打开新建相册弹窗
-        if (t.closest('#btn-create-album')) {
-          var modal = document.getElementById('create-album-modal');
-          if (modal) {
-            modal.classList.remove('hidden');
-            document.getElementById('new-album-name').value = '';
-            document.getElementById('new-album-id').value = '';
-            idManuallyEdited = false;
-            document.getElementById('new-album-desc').value = '';
-            document.getElementById('new-album-location').value = '';
-            document.getElementById('new-album-tag1').value = '';
-            document.getElementById('new-album-tag2').value = '';
-            document.getElementById('new-album-tagcustom').value = '';
-            document.getElementById('new-album-password').value = '';
-            document.getElementById('new-album-hint').value = '';
-            document.getElementById('new-album-date').value = new Date().toISOString().split('T')[0];
-            // 重置封面图预览
-            var coverPreview = document.getElementById('new-album-cover-preview');
-            var coverPlaceholder = document.getElementById('new-album-cover-placeholder');
-            var coverInput = document.getElementById('new-album-cover-input');
-            var coverFileHidden = document.getElementById('new-album-cover-file');
-            if (coverPreview) coverPreview.classList.add('hidden');
-            if (coverPlaceholder) coverPlaceholder.classList.remove('hidden');
-            if (coverInput) coverInput.value = '';
-            if (coverFileHidden) coverFileHidden.value = '';
-            window.__newAlbumCoverFile = null;
-            var st = document.getElementById('create-status');
-            if (st) st.classList.add('hidden');
-            var bc = document.getElementById('create-confirm');
-            if (bc) { bc.disabled = false; bc.textContent = '创建'; }
-          }
-          return;
-        }
-
-        // 关闭弹窗
-        if (t.id === 'create-cancel' || t.closest('#create-cancel')) {
-          var m = document.getElementById('create-album-modal');
-          if (m) m.classList.add('hidden');
-          return;
-        }
-
-        // 点击遮罩关闭
-        if (t.classList && t.classList.contains('fixed') && t.classList.contains('inset-0') && !t.classList.contains('hidden')) {
-          t.classList.add('hidden');
-          return;
-        }
-
-        // 密码小眼睛
-        if (t.id === 'toggle-new-pwd' || t.closest('#toggle-new-pwd')) {
-          var p = document.getElementById('new-album-password');
-          if (p) p.type = p.type === 'password' ? 'text' : 'password';
-          return;
-        }
-      }, { signal: ac.signal });
-
-      // 封面图预览和拖拽上传
-      var coverInput = document.getElementById('new-album-cover-input');
-      var coverPreview = document.getElementById('new-album-cover-preview');
-      var coverPlaceholder = document.getElementById('new-album-cover-placeholder');
-      var coverImg = document.getElementById('new-album-cover-img');
-      var coverName = document.getElementById('new-album-cover-name');
-      var coverFileHidden = document.getElementById('new-album-cover-file');
-      var coverDrop = document.getElementById('new-album-cover-drop');
-
-      if (coverInput) {
-        coverInput.addEventListener('change', function(e) {
-          var file = e.target.files[0];
-          if (file) {
-            handleCoverFile(file);
-          }
-        });
-
-        // 拖拽上传
-        coverDrop.addEventListener('dragover', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          coverDrop.classList.add('border-[var(--primary)]');
-        });
-
-        coverDrop.addEventListener('dragleave', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          coverDrop.classList.remove('border-[var(--primary)]');
-        });
-
-        coverDrop.addEventListener('drop', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          coverDrop.classList.remove('border-[var(--primary)]');
-          var file = e.dataTransfer.files[0];
-          if (file && file.type.startsWith('image/')) {
-            handleCoverFile(file);
-          }
-        });
-      }
-
-      function handleCoverFile(file) {
-        var validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!validTypes.includes(file.type)) {
-          showCreateStatus('只支持 jpg/png/webp 格式', 'error');
-          return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-          showCreateStatus('封面图不能超过 5MB', 'error');
-          return;
-        }
-
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          coverImg.src = e.target.result;
-          coverName.textContent = file.name;
-          coverPreview.classList.remove('hidden');
-          coverPlaceholder.classList.add('hidden');
-          coverFileHidden.value = file.name;
-        };
-        reader.readAsDataURL(file);
-
-        // 保存文件对象到window
-        window.__newAlbumCoverFile = file;
-      }
-
-      function showCreateStatus(msg, type) {
-        var statusEl = document.getElementById('create-status');
-        statusEl.classList.remove('hidden');
-        statusEl.className = 'text-sm ' +
-          (type === 'error' ? 'text-red-500' :
-           type === 'success' ? 'text-green-500' :
-           'text-blue-500');
-        statusEl.textContent = msg;
-      }
-
-      // 相册名称自动生成 ID
-      document.addEventListener('input', function(e) {
-        if (e.target.id === 'new-album-name' && !idManuallyEdited) {
-          var name = e.target.value.trim();
-          var slug = name
-          .toLowerCase()
-          .replace(/[\u4e00-\u9fff]+/g, function(m) { return m; })
-          .replace(/[^\w\u4e00-\u9fff]+/g, '-')
-          .replace(/^-|-$/g, '');
-        document.getElementById('new-album-id').value = slug;
-      }
-      if (e.target.id === 'new-album-id') {
-        idManuallyEdited = true;
-      }
-    }, { signal: ac.signal });
-
-      // 创建相册
-      document.addEventListener('click', async function(e) {
-        if (e.target.id !== 'create-confirm' && !e.target.closest('#create-confirm')) return;
-
-        var nameInput = document.getElementById('new-album-name');
-        var idInput = document.getElementById('new-album-id');
-        var name = nameInput.value.trim();
-        var id = idInput.value.trim();
-        var desc = document.getElementById('new-album-desc').value.trim();
-        var location = document.getElementById('new-album-location').value.trim();
-        var date = document.getElementById('new-album-date').value;
-        var tag1 = document.getElementById('new-album-tag1').value.trim();
-        var tag2 = document.getElementById('new-album-tag2').value.trim();
-        var tagcustom = document.getElementById('new-album-tagcustom').value.trim();
-        var tags = [tag1, tag2, tagcustom].filter(Boolean).join(', ');
-        var password = document.getElementById('new-album-password').value;
-        var hint = document.getElementById('new-album-hint').value.trim();
-        var statusEl = document.getElementById('create-status');
-        var btnConfirm = document.getElementById('create-confirm');
-
-        function showStatus(msg, type) {
-          statusEl.classList.remove('hidden');
-          statusEl.className = 'text-sm ' +
-            (type === 'error' ? 'text-red-500' :
-             type === 'success' ? 'text-green-500' :
-             'text-blue-500');
-          statusEl.textContent = msg;
-        }
-
-        if (!name) { showStatus('请输入相册名称', 'error'); nameInput.focus(); return; }
-        if (!id) { showStatus('请输入相册 ID', 'error'); idInput.focus(); return; }
-        if (!/^[a-zA-Z0-9\u4e00-\u9fff][a-zA-Z0-9\-_\u4e00-\u9fff]*$/.test(id)) {
-          showStatus('ID 只能包含字母、数字、中文、连字符和下划线', 'error');
-          return;
-        }
-
-        var token = localStorage.getItem('gh-token') || localStorage.getItem('gh-editor-token');
-        var repo = localStorage.getItem('gh-editor-repo') || 'GhostCmdr/Fireflyblog';
-        if (!token) {
-          showStatus('请先在编辑器页面配置 GitHub Token（点击「发布到 GitHub」设置）', 'error');
-          return;
-        }
-
-        btnConfirm.disabled = true;
-        btnConfirm.textContent = '创建中...';
-
-        try {
-          showStatus('⏳ 正在读取配置文件...', 'uploading');
-          var configPath = 'src/config/galleryConfig.ts';
-          var getRes = await fetch('https://api.github.com/repos/' + repo + '/contents/' + configPath + '?ref=main', {
-            headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' },
-          });
-
-          if (!getRes.ok) throw new Error('读取 galleryConfig.ts 失败');
-          var fileData = await getRes.json();
-          var currentContent = decodeURIComponent(escape(atob(fileData.content)));
-          var sha = fileData.sha;
-
-          if (currentContent.includes('id: "' + id + '"') || currentContent.includes("id: '" + id + "'")) {
-            throw new Error('相册 ID「' + id + '」已存在');
-          }
-
-          var esc = function(s) { return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"'); };
-          var coverFile = window.__newAlbumCoverFile;
-          var coverPath = coverFile ? '/gallery/' + id + '/cover.' + coverFile.name.split('.').pop().toLowerCase() : '';
-          var newAlbum = '\t\t{\n';
-          newAlbum += '\t\t\tid: "' + esc(id) + '",\n';
-          if (coverPath) newAlbum += '\t\t\tcover: "' + esc(coverPath) + '",\n';
-          newAlbum += '\t\t\tname: "' + esc(name) + '",\n';
-          if (desc) newAlbum += '\t\t\tdescription: "' + esc(desc) + '",\n';
-          if (location) newAlbum += '\t\t\tlocation: "' + esc(location) + '",\n';
-          if (date) newAlbum += '\t\t\tdate: "' + date + '",\n';
-          if (tags) {
-            var tagList = tags.split(/[,，]/).map(function(t) { return t.trim(); }).filter(Boolean);
-            if (tagList.length > 0) newAlbum += '\t\t\ttags: [' + tagList.map(function(t) { return '"' + esc(t) + '"'; }).join(', ') + '],\n';
-          }
-          if (password) {
-            newAlbum += '\t\t\tpassword: "' + esc(password) + '",\n';
-            if (hint) newAlbum += '\t\t\tpasswordHint: "' + esc(hint) + '",\n';
-          }
-          newAlbum += '\t\t},';
-
-          var lastBracket = currentContent.lastIndexOf('],');
-          if (lastBracket === -1) throw new Error('无法解析 galleryConfig.ts 格式');
-          var updatedContent = currentContent.slice(0, lastBracket) + newAlbum + '\n\t' + currentContent.slice(lastBracket);
-
-          showStatus('⏳ 正在更新配置文件...', 'uploading');
-          var encoded = btoa(unescape(encodeURIComponent(updatedContent)));
-          var updateRes = await fetch('https://api.github.com/repos/' + repo + '/contents/' + configPath, {
-            method: 'PUT',
-            headers: {
-              'Authorization': 'token ' + token,
-              'Accept': 'application/vnd.github.v3+json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: 'gallery: create album "' + name + '" (' + id + ')',
-              content: encoded,
-              sha: sha,
-              branch: 'main',
-            }),
-          });
-          if (!updateRes.ok) {
-            var err = await updateRes.json();
-            throw new Error('更新配置失败: ' + (err.message || JSON.stringify(err)));
-          }
-
-          showStatus('⏳ 正在创建相册目录...', 'uploading');
-          var gitkeepPath = 'public/gallery/' + id + '/.gitkeep';
-          var gitkeepContent = btoa('');
-          var dirRes = await fetch('https://api.github.com/repos/' + repo + '/contents/' + gitkeepPath, {
-            method: 'PUT',
-            headers: {
-              'Authorization': 'token ' + token,
-              'Accept': 'application/vnd.github.v3+json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: 'gallery: init album directory ' + id,
-              content: gitkeepContent,
-              branch: 'main',
-            }),
-          });
-          if (!dirRes.ok) {
-            var dirErr = await dirRes.json();
-            throw new Error('创建目录失败: ' + (dirErr.message || JSON.stringify(dirErr)));
-          }
-
-          // 上传封面图
-          var coverFile = window.__newAlbumCoverFile;
-          if (coverFile) {
-            showStatus('⏳ 正在上传封面图...', 'uploading');
-            var ext = coverFile.name.split('.').pop().toLowerCase();
-            var coverFileName = 'cover.' + ext;
-            var coverPath = 'public/gallery/' + id + '/' + coverFileName;
-
-            // 读取文件为base64
-            var coverBase64 = await new Promise(function(resolve, reject) {
-              var reader = new FileReader();
-              reader.onload = function() {
-                var base64 = reader.result.split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(coverFile);
-            });
-
-            var coverRes = await fetch('https://api.github.com/repos/' + repo + '/contents/' + coverPath, {
-              method: 'PUT',
-              headers: {
-                'Authorization': 'token ' + token,
-                'Accept': 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                message: 'gallery: upload cover for album "' + name + '"',
-                content: coverBase64,
-                branch: 'main',
-              }),
-            });
-            if (!coverRes.ok) {
-              var coverErr = await coverRes.json();
-              console.error('封面图上传失败:', coverErr);
-              // 封面图上传失败不阻止相册创建
-            }
-          }
-
-          window.__newAlbumCoverFile = null;
-          btnConfirm.textContent = '完成';
-          showStatus('✅ 相册「' + name + '」创建成功！等待 GitHub Actions 部署后即可访问，2 秒后返回相册列表...', 'success');
-          setTimeout(function() { window.location.href = '/gallery/'; }, 2000);
-
-        } catch (e) {
-          btnConfirm.disabled = false;
-          btnConfirm.textContent = '创建';
-          showStatus('❌ ' + e.message, 'error');
-        }
-      }, { signal: ac.signal });
-    }
-
-    // 初始绑定
-    setupCreateAlbumDelegate();
-    // Swup 导航后重新绑定
-    document.addEventListener('swup:content:replaced', setupCreateAlbumDelegate);
-  </script>
-
   <style is:global>
     /* 页面外壳：与项目列表一致，宽度约束防止网格溢出 */
     .gallery-page {
@@ -706,9 +236,3 @@ const allTags = [...new Set(albums.flatMap((a) => a.tags || []))].sort();
     }
   </style>
 </MainGridLayout>
-
-  <style is:inline>
-    /* 隐藏浏览器自带的密码眼睛按钮（Edge: ::-ms-reveal, Firefox: ::-moz-reveal） */
-    input[type="password"]::-ms-reveal { display: none !important; }
-    input[type="password"]::-moz-reveal { display: none !important; }
-  </style>

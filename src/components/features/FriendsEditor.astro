@@ -44,7 +44,7 @@ const initialJson = JSON.stringify(items);
 			><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path
 				d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg
 		>
-		<span class="hidden sm:inline">编辑</span>
+		<span class="hidden sm:inline">管理</span>
 		</button>
 
 	<!-- 弹窗 -->
@@ -124,16 +124,16 @@ const initialJson = JSON.stringify(items);
 				</button>
 			</div>
 
-			<!-- 列表（独立滚动） -->
+			<!-- 列表（独立滚动）。flex + 空态 grow ⇒ 空态提示垂直居中于弹窗 -->
 			<div
 				id="fe-body"
-				class="fe-scroll min-h-0 grow overflow-y-auto px-5 py-4"
+				class="fe-scroll flex h-[380px] grow flex-col overflow-y-auto px-5 py-4"
 				style="overscroll-behavior: contain;"
 			>
 				<div id="fe-list" class="flex flex-col gap-3"></div>
 				<div
 					id="fe-empty"
-					class="hidden flex-col items-center justify-center py-10 text-center text-sm text-neutral-400 dark:text-neutral-500"
+					class="hidden grow flex-col items-center justify-center text-center text-sm text-neutral-400 dark:text-neutral-500"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -1204,7 +1204,13 @@ const initialJson = JSON.stringify(items);
 				var seed = sortByWeight(
 					JSON.parse(root.getAttribute("data-items") || "[]").map(normalize),
 				);
-				if (!seed.length) return;
+				// ⚠️ 快照为空时**也要渲染一次**：否则 #fe-empty 永远停在 hidden，
+				// 打开弹窗只看到一片空白（历史 bug）。动态编辑器没有这个问题，是因为它的
+				// render() 每次都会按"列表是否为空"切换空态显隐 —— 这里对齐同一行为。
+				if (!seed.length) {
+					render();
+					return;
+				}
 				state.items = seed;
 				markSaved();
 				render();
@@ -1244,8 +1250,12 @@ const initialJson = JSON.stringify(items);
 				}).then(function (ok) {
 					if (!ok) return;
 					card.parentNode.removeChild(card);
+					// ⚠️ 必须从 DOM 重建 state（友链以 DOM 为唯一真相）——
+					// 否则 setSubtitle() / 空态判断 / 保存都还按旧的 state.items 走：
+					// 删光之后副标题仍显示"共 3 条"，中间也不出现空态提示（历史 bug）。
+					state.items = collect();
 					state.dirty = true;
-					setSubtitle();
+					render();
 				});
 				return;
 			}
@@ -1348,8 +1358,14 @@ const initialJson = JSON.stringify(items);
 		}
 		bindOnce(btnSave, "click", onSaveClick);
 
-		// 登记清理入口（供脚本重放时兜底，见文件开头）
-		window.__feCleanup = function () {
+		/**
+		 * 彻底收拾：解绑键盘监听、复位滚动锁、把浮层从 body 上移除。
+		 * 两个调用点：
+		 *  ① 本组件脚本被重放之前（见文件开头）；
+		 *  ② **切到没有本组件的页面时**（见 bindSwupHooks）—— 这一点早先漏了，
+		 *     导致离开友链页后浮层一直挂在 body 上（无头浏览器实测残留）。
+		 */
+		function teardown() {
 			window.__feKeydownBound = false;
 			try {
 				document.removeEventListener("keydown", onKeydown);
@@ -1362,7 +1378,10 @@ const initialJson = JSON.stringify(items);
 			});
 			// 复位滚动拦截：避免上一次脚本重放把监听器留在 window 上
 			while (scrollLockCount > 0) unlockPageScroll();
-		};
+		}
+
+		// 登记清理入口（供脚本重放时兜底，见文件开头）
+		window.__feCleanup = teardown;
 
 		// 【swup 重入 · 正式处理】两步：
 		//   ① adoptDialog：接管"当前文档里最新的那份弹窗"。重放会在容器里带来新的一份 DOM，而闭包
@@ -1460,9 +1479,11 @@ const initialJson = JSON.stringify(items);
 			if (!window.swup || !window.swup.hooks) return false;
 			window.swup.hooks.on("content:replace", function () {
 				adoptDialog(); // 先接管文档里最新的那份弹窗（并删掉重复），保证引用一致
-				// 切到没有本组件的页面时，只需把弹窗关掉，不必重绑入口
+				// 切到没有本组件的页面时：关掉弹窗，并**把浮层/监听一并收拾掉**，
+				// 不留空壳在 body 上（不必重绑入口）
 				if (!document.getElementById("fe-root")) {
 					doClose();
+					teardown();
 					return;
 				}
 				attachEntry();

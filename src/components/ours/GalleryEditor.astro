@@ -1,0 +1,2935 @@
+---
+// [OURS] 相册就地编辑器（相册页 /gallery/ 内联组件，形态与动态页 DynamicEditor 一致）
+//
+// 交互：配过 GitHub Token 的浏览器里，相册页标题行右侧出现「管理」按钮 ⇒ 点开**弹窗**
+//       就地管理相册（新建 / 编辑 / 删除 / 照片上传删除 / 封面 / 远程清单），**不跳转页面**。
+//
+// 为什么做成"组件 + 弹窗"而不是独立页面：
+//   ① 用户要求与动态页一致的弹窗体验；
+//   ② 对上游相册页的改动仍只有 1 行（`<GalleryEditor items={...} />`），
+//      全部逻辑收在本组件内 ⇒ 上游更新相册页时冲突面极小（历史教训：曾达 +488 行）。
+//
+// 数据与文件通道：
+//   - 相册元数据：src/config/ours/gallery-albums.json（本组件在线增删改的就是它）
+//   - 相册照片：public/gallery/<相册 id>/（本地照片 + cover.* + urls.txt 远程清单）
+//   - 读写：浏览器内 GitHub Contents API（凭证取 localStorage，与友链/动态编辑器一致）
+//
+// 关键约束：
+//   - 只读 oursGalleryConfig.albums（我方数据），绝不用合并后的 galleryConfig.albums
+//     （后者含上游默认示例相册，写回会污染我方数据）
+//   - 相册 id 同时是网址与照片目录名 ⇒ 编辑时不可修改
+//   - 封面必须写 cover 字段：上游"自动取 cover 文件"的分支实际不生效
+//     （scanAlbumPhotos 已把 cover.* 排除在照片列表外）
+import type { GalleryAlbum } from "@/types/galleryConfig";
+import { url } from "@/utils/url-utils";
+
+interface Props {
+	/** 首屏快照（由相册页传入我方相册数据），让弹窗打开即为终态 */
+	items?: GalleryAlbum[];
+	/**
+	 * 各相册的照片张数：id → 张数。
+	 * 由相册页在**构建时**扫描目录算好（用的是同一个 scanAlbumPhotos，口径与前台一致）。
+	 * ⚠️ 单独传而不是塞进 items：相册页那份数据里的 cover 是 getAlbumCover 算出的"回退封面"，
+	 * 混进 items 会被编辑器当成真实 cover 写回配置 ⇒ 污染数据。
+	 * 运行时上传/删除照片后，由前端 reloadPhotos() 就地刷新对应项。
+	 */
+	photoCounts?: Record<string, number>;
+}
+
+const { items = [], photoCounts = {} } = Astro.props;
+const initialJson = JSON.stringify(items);
+const initialCountsJson = JSON.stringify(photoCounts);
+---
+
+<div
+	id="ge-root"
+	class="flex shrink-0 items-center"
+	data-albums={initialJson}
+	data-photo-counts={initialCountsJson}
+	data-config-path="src/config/ours/gallery-albums.json"
+	data-photo-dir="public/gallery"
+>
+	<!-- 管理入口：默认隐藏，脚本判定通过后才显示（无 Token 的访客完全看不到） -->
+	<button
+		id="ge-open"
+		type="button"
+		class="hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
+		aria-label="管理相册"
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			width="16"
+			height="16"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+			><path d="M12 20h9"></path><path
+				d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg
+		>
+		<span class="hidden sm:inline">管理</span>
+	</button>
+</div>
+
+<!-- ── 主弹窗（720px 三段式，与动态/友链编辑器同款） ── -->
+<div
+	id="ge-mask"
+	class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm sm:p-6"
+	style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
+	role="dialog"
+	aria-modal="true"
+	aria-label="管理相册"
+>
+	<div class="card-base relative flex max-h-[92vh] w-full max-w-[720px] flex-col shadow-2xl sm:max-h-[85vh]">
+		<!-- 头部（固定） -->
+		<div class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-4">
+			<div class="min-w-0">
+				<div id="ge-title" class="text-lg font-bold text-neutral-900 dark:text-neutral-100">管理相册</div>
+				<div id="ge-subtitle" class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+					正在读取…
+				</div>
+			</div>
+			<button
+				id="ge-close"
+				type="button"
+				class="shrink-0 cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+				aria-label="关闭"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					width="20"
+					height="20"
+					fill="currentColor"
+					aria-hidden="true"
+					><path
+						d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+					></path></svg
+			>
+			</button>
+		</div>
+
+		<!-- 状态提示条（浮层，不占文档流 ⇒ 出现/消失不推挤内容） -->
+		<div
+			id="ge-msg"
+			class="absolute inset-x-0 top-[4.875rem] z-10 hidden px-5 py-2.5 pr-11 text-sm"
+			role="status"
+			aria-live="polite"
+		>
+			<span id="ge-msg-text"></span>
+			<button
+				id="ge-msg-close"
+				type="button"
+				class="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded p-1 text-lg opacity-70 transition-opacity hover:opacity-100"
+				aria-label="关闭提示"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					width="1em"
+					height="1em"
+					fill="currentColor"
+					aria-hidden="true"
+					><path
+						d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+					></path></svg
+			>
+		</button>
+		</div>
+
+		<!-- ── 内容区：左列相册导航 + 右侧双 Tab（信息 / 图片）── -->
+		<div class="flex min-h-0 grow">
+			<!-- 左列：搜索 + 相册列表（独立滚动） -->
+			<div class="flex w-[200px] shrink-0 flex-col border-r border-(--line-divider)">
+				<!-- 高度 h-11 与右列 Tab 栏一致 ⇒ 两侧的分隔线才能齐平 -->
+				<div class="flex h-11 shrink-0 items-center border-b border-(--line-divider) px-2">
+					<input
+						id="ge-search"
+						type="text"
+						placeholder="搜索相册…"
+						autocomplete="off"
+						class="w-full rounded-lg border border-(--line-divider) bg-transparent px-2 py-1 text-xs text-neutral-900 outline-none transition-all placeholder-neutral-400 focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+					/>
+				</div>
+				<div
+					id="ge-nav"
+					class="ge-scroll min-h-0 grow overflow-y-auto p-2"
+					style="overscroll-behavior: contain;"
+				>
+				</div>
+				<div
+					id="ge-empty"
+					class="hidden shrink-0 flex-col items-center justify-center px-3 py-8 text-center text-xs text-neutral-400 dark:text-neutral-500"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="30"
+						height="30"
+						fill="currentColor"
+						aria-hidden="true"
+						class="mb-2 opacity-60"
+						><path
+							d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+						></path></svg
+					>
+					<!-- 文案由脚本按场景切换：一个相册都没有 ↔ 搜索无匹配 -->
+					<span data-empty-text>还没有相册，点下方「+ 新建相册」创建第一个。</span>
+				</div>
+			</div>
+
+			<!-- 右列：Tab 栏 + 面板 -->
+			<div class="flex min-w-0 grow flex-col">
+				<!-- Tab 栏（右侧是全局操作区：编辑 / 取消 / 提交 / 刷新）；高度 h-11 与左列搜索行一致 -->
+				<div class="flex h-11 shrink-0 items-center border-b border-(--line-divider) pr-4 pl-4">
+					<div class="flex items-center gap-0.5">
+						<button
+							id="ge-tab-info"
+							type="button"
+							class="-mb-px border-b-2 px-3 py-2.5 text-sm transition-colors"
+						>
+							基本信息
+						</button>
+						<button
+							id="ge-tab-photos"
+							type="button"
+							class="-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm transition-colors"
+						>
+							图片管理
+						</button>
+					</div>
+					<div id="ge-actions" class="ml-auto flex items-center gap-1.5"></div>
+				</div>
+
+				<!-- 面板 A：信息（字段常驻，只读 / 编辑两态共用同一套 DOM）
+				     flex + 内部卡片 grow ⇒ 内容少时卡片自动撑满，不会在下方露出一段空白 -->
+				<div
+					id="ge-panel-info"
+					class="ge-panel-flex ge-scroll flex h-[340px] grow flex-col overflow-y-auto"
+					style="overscroll-behavior: contain;"
+				>
+					<!-- 一个相册都没有时的空态（与动态弹窗的空态同款：居中图标 + 一句话） -->
+					<div
+						id="ge-info-empty"
+						class="m-3 hidden grow flex-col items-center justify-center py-16 text-center text-sm text-neutral-400 dark:text-neutral-500"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							width="36"
+							height="36"
+							fill="currentColor"
+							aria-hidden="true"
+							class="mb-2 opacity-60"
+							><path
+								d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+							></path></svg
+						>
+						还没有相册，点下方「+ 新建相册」创建第一个。
+					</div>
+					<div
+						id="ge-info-form"
+						class="card-base m-3 min-h-[calc(100%-1.5rem)] w-[calc(100%-1.5rem)] shrink-0 rounded-xl border border-(--line-divider) p-4"
+					>
+						<!-- 布局用**外层三栏 grid**：第 1 栏（封面图 + 其下方的「封面路径」「密码提示」）与
+						     第 2、3 栏（表单，内部再分两列）宽度由网格自动保证相等 ——
+						     不要再改成固定像素宽度（试过 157/152/150px，实测左栏 148 vs 右栏 156，永远差几像素）。
+						     第 1 栏用 mt-4 / mt-2 逐个控制间距，让两个输入框分别落在第 3、4 行
+						     （封面图下边 460 + 16 = 476；封面路径输入框下边 527 + 8 = 535）✓ -->
+						<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+							<div class="flex flex-col">
+								<div class="relative mx-auto">
+									<div
+										id="ge-cover-preview"
+										class="relative grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-(--primary)/35 to-(--primary)/5 text-center text-[9px] leading-tight text-neutral-500 dark:text-neutral-400"
+									>
+									</div>
+								</div>
+								<label class="ge-field mt-4 flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>封面路径</span
+									>
+									<input
+										data-f="cover"
+										type="text"
+										placeholder="/gallery/xx/cover.jpg"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field mt-2 flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>密码提示（可选）</span
+									>
+									<input
+										data-f="passwordHint"
+										type="text"
+										placeholder="提示语"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<input
+									id="ge-cover-input"
+									type="file"
+									accept="image/*"
+									tabindex="-1"
+									class="hidden"
+								/>
+							</div>
+							<!-- 字段按**行优先**排列（grid-cols-2 逐行填充）：
+							     相册名称 | 日期 / 相册 ID | 标签 / 描述 | 拍摄地点 / 访问密码 -->
+							<div class="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-2">
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>相册名称</span
+									>
+									<input
+										data-f="name"
+										type="text"
+										placeholder="如 2026 旅行日记"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>日期（可选）</span
+									>
+									<input
+										data-f="date"
+										type="date"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>相册 ID（创建后不可改）</span
+									>
+									<input
+										data-f="id"
+										type="text"
+										readonly
+										placeholder="如 travel-2026"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>标签（逗号分隔）</span
+									>
+									<input
+										data-f="tags"
+										type="text"
+										placeholder="旅行, 风景"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>描述（可选）</span
+									>
+									<input
+										data-f="description"
+										type="text"
+										placeholder="一句话描述"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>拍摄地点（可选）</span
+									>
+									<input
+										data-f="location"
+										type="text"
+										placeholder="如 杭州"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+								<label class="ge-field flex flex-col gap-1">
+									<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+										>访问密码（可选）</span
+									>
+									<input
+										data-f="password"
+										type="text"
+										placeholder="留空不加密"
+										class="w-full rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+									/>
+								</label>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- 面板 B：图片（网格；编辑态时第一格是「＋ 添加图片」） -->
+				<div
+					id="ge-panel-photos"
+					class="ge-panel-flex ge-scroll hidden h-[340px] grow flex-col overflow-y-auto"
+					style="overscroll-behavior: contain;"
+				>
+					<!-- ⚠️ 卡片必须 shrink-0：它是面板 flex 列容器的子项，默认 flex-shrink:1 会被
+					     压回容器高度 ⇒ 网格内容溢出但面板 scrollHeight 不变 ⇒ "看着被截了却滚不动"。 -->
+					<div
+						class="card-base m-3 flex min-h-[calc(100%-1.5rem)] w-[calc(100%-1.5rem)] shrink-0 flex-col rounded-xl border border-(--line-divider) p-4"
+					>
+						<div id="ge-photo-hint" class="mb-2 shrink-0 text-xs text-neutral-400 dark:text-neutral-500">
+						</div>
+						<div id="ge-photo-grid" class="grid grid-cols-3 gap-2"></div>
+						<div
+							id="ge-photo-empty"
+							class="hidden grow flex-col items-center justify-center text-center text-xs text-neutral-400 dark:text-neutral-500"
+						>
+							这个相册还没有照片
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- 底部操作条（固定） -->
+		<div class="flex shrink-0 items-center gap-2 border-t border-(--line-divider) px-5 py-3.5">
+			<button
+				id="ge-add"
+				type="button"
+				class="cursor-pointer rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
+			>
+				+ 新建相册
+			</button>
+			<div class="ml-auto flex items-center gap-1.5">
+				<button
+					id="ge-del-album"
+					type="button"
+					class="hidden cursor-pointer rounded-xl border border-red-500/40 px-3.5 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10"
+				>
+					删除相册
+				</button>
+				<button
+					id="ge-done"
+					type="button"
+					class="cursor-pointer rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+				>
+					关闭
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- ── 上传弹窗（独立浮层：本地上传 + 外链清单） ── -->
+<div
+	id="ge-upload"
+	class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
+	style="overscroll-behavior: contain;"
+	role="dialog"
+	aria-modal="true"
+	aria-label="添加图片"
+>
+	<div
+		class="card-base flex max-h-[85vh] w-full max-w-[480px] flex-col overflow-hidden shadow-2xl backdrop-blur-sm"
+	>
+		<div class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-3.5">
+			<div class="min-w-0">
+				<div class="text-base font-bold text-neutral-900 dark:text-neutral-100">添加图片</div>
+				<div
+					id="ge-upload-sub"
+					class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400"
+				>
+				</div>
+			</div>
+			<button
+				id="ge-upload-close"
+				type="button"
+				class="shrink-0 cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+				aria-label="关闭"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					width="18"
+					height="18"
+					fill="currentColor"
+					aria-hidden="true"
+					><path
+						d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+					></path></svg
+				>
+			</button>
+		</div>
+		<div
+			class="ge-scroll min-h-0 grow overflow-y-auto p-4"
+			style="overscroll-behavior: contain;"
+		>
+			<!-- ① 本地上传 -->
+			<div
+				id="ge-dropzone"
+				class="cursor-pointer rounded-lg border-2 border-dashed border-(--line-divider) px-4 py-5 text-center transition hover:border-(--primary)/50 hover:bg-(--primary)/5"
+			>
+				<svg
+					class="mx-auto mb-1.5 text-black/30 dark:text-white/30"
+					width="28"
+					height="28"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline
+						points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg
+				>
+				<p class="text-sm text-neutral-600 dark:text-neutral-300">
+					拖拽图片到这里，或<span class="font-medium text-(--primary)">点击选择文件</span>（可多选）
+				</p>
+				<p class="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
+					jpg / png / webp / avif / gif，单张不超过 10MB
+				</p>
+				<input
+				id="ge-file-input"
+				type="file"
+				accept="image/*"
+				multiple
+				tabindex="-1"
+				class="hidden"
+			/>
+			</div>
+
+			<!-- ② 或 -->
+			<div class="my-3 flex items-center gap-2">
+				<span class="h-px grow bg-(--line-divider)"></span>
+				<span class="text-[11px] text-neutral-400 dark:text-neutral-500">或</span>
+				<span class="h-px grow bg-(--line-divider)"></span>
+			</div>
+
+			<!-- ③ 远程图片清单（urls.txt）：粘贴外链，一行一个 -->
+			<label class="flex flex-col gap-1">
+				<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+					>外链图片地址（每行一个，以 # 开头的行会被忽略）</span
+				>
+				<textarea
+					id="ge-urls"
+					rows="3"
+					placeholder="https://example.com/photo.jpg"
+					class="ge-scroll w-full resize-none rounded-lg border border-(--line-divider) bg-transparent px-3 py-2 text-sm leading-6 text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+					style="overscroll-behavior: contain;"></textarea>
+			</label>
+			<div class="mt-2 flex justify-end">
+				<button
+					id="ge-save-urls"
+					type="button"
+					class="cursor-pointer rounded-lg bg-(--primary) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+				>
+					保存外链清单
+				</button>
+			</div>
+
+			<!-- ④ 上传队列 -->
+			<div id="ge-upload-queue" class="mt-3 hidden space-y-1.5"></div>
+		</div>
+		<div class="flex shrink-0 items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3.5">
+			<button
+				id="ge-upload-done"
+				type="button"
+				class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+			>
+				关闭
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- ── 站内确认框：与动态编辑器**完全同款**（遮罩不加背景色，只靠面板自身的 backdrop-blur 模糊背后） ── -->
+<div
+id="ge-confirm"
+class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
+style="overscroll-behavior: contain;"
+role="alertdialog"
+aria-modal="true"
+aria-labelledby="ge-confirm-title"
+>
+<div
+	class="card-base w-full max-w-[380px] border border-(--line-divider) shadow-2xl backdrop-blur-sm"
+>
+<div class="px-5 pt-5 pb-4">
+	<div class="flex items-start gap-3">
+		<span id="ge-confirm-icon" class="shrink-0" style="color: #DC2626;" aria-hidden="true">
+			<svg
+				data-kind="danger"
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 24 24"
+				width="24"
+				height="24"
+				fill="currentColor"
+				aria-hidden="true"
+				><path
+					d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+				></path></svg
+			>
+			<svg
+				data-kind="warning"
+				class="hidden"
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 24 24"
+				width="24"
+				height="24"
+				fill="currentColor"
+				aria-hidden="true"
+				><path d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"></path></svg
+			>
+			<svg
+				data-kind="info"
+				class="hidden"
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 24 24"
+				width="24"
+				height="24"
+				fill="currentColor"
+				aria-hidden="true"
+				><path
+					d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
+				></path></svg
+			>
+		</span>
+		<div class="min-w-0 flex-1">
+			<div
+				id="ge-confirm-title"
+				class="text-[1.0625rem] leading-6 font-bold text-neutral-900 dark:text-neutral-100"
+			>
+				请确认
+			</div>
+			<div
+				id="ge-confirm-text"
+				class="mt-1.5 text-sm leading-6 break-words text-neutral-600 dark:text-neutral-400"
+			>
+			</div>
+		</div>
+	</div>
+</div>
+		<div class="flex items-center justify-end gap-2 px-5 py-3.5">
+			<button
+				id="ge-confirm-cancel"
+				type="button"
+				class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+			>
+				取消
+			</button>
+			<button
+				id="ge-confirm-ok"
+				type="button"
+				class="cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+			>
+				确定
+			</button>
+		</div>
+	</div>
+</div>
+
+<style is:global>
+	/* 提示条配色由 JS 内联 cssText 设置（与动态编辑器同一套 palette、无圆角）⇒
+	   这里不再写 #ge-msg 的样式，避免与内联样式打架。 */
+
+	/* 弹窗内滚动条：细 + 圆角，颜色接近系统默认灰（不跟随主色） */
+	.ge-scroll {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+	}
+	.dark .ge-scroll {
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+	}
+	.ge-scroll::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	.ge-scroll::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	.ge-scroll::-webkit-scrollbar-thumb {
+		background: rgba(0, 0, 0, 0.3);
+		background-clip: content-box;
+		border: 2px solid transparent;
+		border-radius: 999px;
+	}
+	.dark .ge-scroll::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.28);
+	}
+	#ge-body-list {
+		scrollbar-gutter: stable;
+	}
+
+	/* 确认框内的按钮不显示键盘焦点环（与友链/动态一致：避免按 Esc 唤出时出现橙圈） */
+	#ge-confirm button:focus,
+	#ge-confirm button:focus-visible {
+		outline: none;
+	}
+
+	/* 浮层被 append 到 body 后类选择器会失效 ⇒ 用 id 选择器给按钮手型光标 */
+	#ge-root button,
+	#ge-mask button,
+	#ge-confirm button,
+	#ge-upload button {
+		cursor: pointer;
+	}
+
+	/* ── 右列两个 Tab：选中态用 data-active 控制（避免 JS 反复切类名） ── */
+	#ge-tab-info,
+	#ge-tab-photos {
+		border-bottom-color: transparent;
+		color: #737373;
+		font-weight: 500;
+	}
+	.dark #ge-tab-info,
+	.dark #ge-tab-photos {
+		color: #a3a3a3;
+	}
+	#ge-tab-info:hover,
+	#ge-tab-photos:hover {
+		color: #404040;
+	}
+	.dark #ge-tab-info:hover,
+	.dark #ge-tab-photos:hover {
+		color: #e5e5e5;
+	}
+	#ge-tab-info[data-active="1"],
+	#ge-tab-photos[data-active="1"] {
+		border-bottom-color: var(--primary);
+		color: var(--primary);
+		font-weight: 600;
+	}
+
+	/* ── 左列相册导航项 ── */
+	.ge-nav-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.375rem;
+		padding: 0.5rem;
+		border-radius: 0.5rem;
+		cursor: pointer;
+	}
+	.ge-nav-item:hover {
+		background-color: rgba(115, 115, 115, 0.08);
+	}
+	.ge-nav-item[data-active="1"] {
+		background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+	}
+	.ge-nav-name {
+		font-size: 0.75rem;
+		color: #404040;
+	}
+	.dark .ge-nav-name {
+		color: #d4d4d4;
+	}
+	.ge-nav-item[data-active="1"] .ge-nav-name {
+		color: var(--primary);
+		font-weight: 600;
+	}
+
+	/* ── 信息面板：只读态字段 ──
+	   与动态编辑器完全一致：去掉边框做成"文本样子"、只留一层极淡底色
+	   （避免大片空白显得太空）；不加 pointer-events:none，这样只读时也能选中复制，
+	   真正的"不可改"由 renderInfo() 里的 readOnly 保证（键盘同样改不了）。 */
+	#ge-panel-info[data-ro="1"] .ge-field input {
+		border-color: transparent;
+		box-shadow: none;
+		background: rgba(0, 0, 0, 0.03);
+		cursor: default;
+	}
+	.dark #ge-panel-info[data-ro="1"] .ge-field input {
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	/* 右侧两个面板：未隐藏时必须是 flex 列容器（内部卡片靠 grow 撑满）。
+	   不能写 Tailwind 的 flex + hidden 同时存在（hidden 会赢），所以用这条兜住。 */
+	.ge-panel-flex:not(.hidden) {
+		display: flex;
+	}
+
+	/* ── 左列相册项：白底卡片（与动态列表同款）── */
+	.ge-nav-item {
+		border: 1px solid var(--line-divider);
+	}
+	.ge-nav-item[data-active="1"] {
+		border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+	}
+
+	/* ── 图片网格第一格的「＋ 添加图片」虚线格 ──
+	   ⚠️ 必须**自己**撑出与照片卡片一致的高度（照片卡 = 4:3 图区 + 一行 h-8 名称行）。
+	   **不能**依赖网格 stretch —— 相册里只有封面、没有其它照片时，网格里就只剩这一格，
+	   行高会被容器的 min-h 撑满（约 380px）⇒ 按钮被拉成一个巨大的空框（用户实测报障）。
+	   所以改成与照片卡逐字同构：aspect-4/3 的虚线图区 + h-8 的空行，再用 align-self:start 兜底。 */
+	.ge-add-photo {
+		display: flex;
+		flex-direction: column;
+		align-self: start;
+		overflow: hidden;
+		border-radius: 0.75rem;
+		color: var(--color-neutral-400, #a3a3a3);
+		background: transparent;
+		transition: all 0.2s;
+	}
+	.ge-add-photo-frame {
+		display: grid;
+		place-items: center;
+		width: 100%;
+		flex-shrink: 0;
+		aspect-ratio: 4 / 3;
+		border: 2px dashed var(--line-divider);
+		border-radius: 0.75rem;
+	}
+	.ge-add-photo:hover .ge-add-photo-frame {
+		border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+		background-color: color-mix(in srgb, var(--primary) 5%, transparent);
+		color: var(--primary);
+	}
+</style>
+
+<script is:inline>
+	(function () {
+		/* ═══════════════ 元素引用 ═══════════════ */
+
+		var root = document.getElementById("ge-root");
+		if (!root) return;
+
+		var CONFIG_PATH = root.getAttribute("data-config-path") || "src/config/ours/gallery-albums.json";
+		var PHOTO_DIR = root.getAttribute("data-photo-dir") || "public/gallery";
+		var DEFAULT_REPO = "GhostCmdr/Fireflyblog";
+		var MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+		var IMG_RE = /\.(jpe?g|png|webp|avif|gif)$/i;
+		var COVER_RE = /^cover\./i;
+		// 内部信号：用户在"目录已存在"确认框里点了取消 ⇒ 中断提交流程且不当作错误提示
+		var ABORT_CREATE = "__ge_abort_create__";
+
+		var btnOpen = document.getElementById("ge-open");
+		var mask = document.getElementById("ge-mask");
+		var titleEl = document.getElementById("ge-title");
+		var subtitleEl = document.getElementById("ge-subtitle");
+		var msgEl = document.getElementById("ge-msg");
+		var msgTextEl = document.getElementById("ge-msg-text");
+		// 左列导航 + 搜索
+		var navEl = document.getElementById("ge-nav");
+		var emptyEl = document.getElementById("ge-empty");
+		var searchEl = document.getElementById("ge-search");
+		// 右列：Tab + 两个面板
+		var tabInfoEl = document.getElementById("ge-tab-info");
+		var tabPhotosEl = document.getElementById("ge-tab-photos");
+		var actionsEl = document.getElementById("ge-actions");
+		var panelInfoEl = document.getElementById("ge-panel-info");
+		var panelPhotosEl = document.getElementById("ge-panel-photos");
+		var coverPreviewEl = document.getElementById("ge-cover-preview");
+		var infoFormEl = document.getElementById("ge-info-form");
+		var infoEmptyEl = document.getElementById("ge-info-empty");
+		var coverInputEl = document.getElementById("ge-cover-input");
+		var photoHintEl = document.getElementById("ge-photo-hint");
+		// 底部条
+		var btnAdd = document.getElementById("ge-add");
+		var btnDelAlbum = document.getElementById("ge-del-album");
+		var btnDone = document.getElementById("ge-done");
+		// 上传弹窗（独立浮层）
+		var uploadEl = document.getElementById("ge-upload");
+		var uploadSubEl = document.getElementById("ge-upload-sub");
+		var btnUploadDone = document.getElementById("ge-upload-done");
+		var btnUploadClose = document.getElementById("ge-upload-close");
+		var dropzoneEl = document.getElementById("ge-dropzone");
+		var fileInputEl = document.getElementById("ge-file-input");
+		var queueEl = document.getElementById("ge-upload-queue");
+		var photoGridEl = document.getElementById("ge-photo-grid");
+		var photoEmptyEl = document.getElementById("ge-photo-empty");
+		var urlsEl = document.getElementById("ge-urls");
+		var btnSaveUrls = document.getElementById("ge-save-urls");
+		var confirmEl = document.getElementById("ge-confirm");
+		var confirmIconEl = document.getElementById("ge-confirm-icon");
+		var confirmTitleEl = document.getElementById("ge-confirm-title");
+		var confirmTextEl = document.getElementById("ge-confirm-text");
+		var confirmOkBtn = document.getElementById("ge-confirm-ok");
+		var confirmCancelBtn = document.getElementById("ge-confirm-cancel");
+		var confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+		var confirmResolve = null;
+
+		var CONFIRM_SKINS = {
+			danger: { fg: "#DC2626", btn: "#DC2626" },
+			warning: { fg: "#B45309", btn: "#DC2626" },
+			info: { fg: "var(--primary)", btn: "var(--primary)" },
+		};
+
+		// 复用的小样式串（Tab 栏操作区按钮、信息面板小标签）
+		var BTN_CLS =
+			"cursor-pointer rounded-lg border border-(--line-divider) px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700";
+		var BTN_PRIMARY_CLS =
+			"cursor-pointer rounded-lg bg-(--primary) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60";
+
+
+		var state = {
+			albums: [],
+			baseSha: "",
+			// editing：null = 全部只读；"" = 正在新建；其它 = 正在编辑该相册 id
+			editing: null,
+			// saved：进入编辑 / 读取成功时的快照（取消编辑、提交失败回滚用）
+			saved: null,
+			busy: false,
+			// 右侧 Tab："info"（信息）| "photos"（图片）
+			tab: "info",
+			// 左列选中的相册 id；"" = 未选中（新建态也没有选中项）
+			selected: "",
+			dirty: false, // 信息面板有未提交改动
+			idTouched: false, // 用户是否手动改过相册 ID（改过就不再跟随名称自动生成）
+			// 新建态暂存的封面文件：相册还没有 id，无法立即上传 ⇒
+			// 先存内存 + 本地预览，点「提交」时随相册一起写入（对齐旧版流程）
+			pendingCoverFile: null,
+			pendingCoverUrl: "",
+			photoFiles: [],
+			remotePhotos: [], // urls.txt 里的外链图片地址
+			urlsSha: "",
+			// 左列每项要显示的"张数"：id → 数量。
+			// 构建时由服务端扫目录给出；运行时上传/删除照片后由 reloadPhotos() 就地刷新。
+			photoCounts: {},
+			// 照片/外链数据是"为哪个相册"加载的：切 Tab 时据此跳过重复请求
+			// （点「刷新」按钮、或切换相册后会强制重拉）
+			loadedFor: "",
+		};
+
+		/* 三个"内容签名"：内容没变就不重建对应 DOM。
+		   重建的代价不只是 CPU —— 照片网格里的 <img> 会重新解码/重新请求，
+		   信息表单还会被回填从而冲掉用户正在输入、还没提交的内容。 */
+		var lastInfoSig = "";
+		var lastCoverSig = "";
+		var lastGridSig = "";
+
+		/** 手动清空过网格 / 换了数据源时调用：让签名失效，否则 renderPhotoPanel 会误判"内容没变"而跳过重建 */
+		function resetRenderCache() {
+			lastInfoSig = "";
+			lastCoverSig = "";
+			lastGridSig = "";
+		}
+
+		function cfg() {
+			var ls = window.localStorage;
+			return {
+				token: ls.getItem("gh-token") || ls.getItem("gh-editor-token") || "",
+				repo: ls.getItem("gh-editor-repo") || DEFAULT_REPO,
+				branch: ls.getItem("gh-branch") || "main",
+			};
+		}
+
+		function escHtml(s) {
+			return String(s == null ? "" : s)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+
+		// UTF-8 安全 base64（Contents API 要求）
+		function toB64(text) {
+			return btoa(unescape(encodeURIComponent(String(text))));
+		}
+		function fromB64(b64) {
+			return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, ""))));
+		}
+
+		// 提示条配色：**与动态编辑器逐字相同**（内联 cssText，无圆角）——
+		// 之前相册走的是 CSS 类（带 10.8px 圆角 + color-mix 配色），与动态不一致。
+		// 用户明确要求"提示条统一成动态的"，故改为同一套 palette。
+		var MSG_PALETTE = {
+			info: "background: rgba(59,130,246,0.10); color: #2563EB;",
+			success: "background: rgba(22,163,74,0.12); color: #15803D;",
+			warn: "background: rgba(217,119,6,0.12); color: #B45309;",
+			error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
+		};
+
+		function showMsg(text, kind) {
+			// 注意：必须写进 #ge-msg-text 而不是 #ge-msg —— 对父元素赋 textContent 会清空所有子节点，
+			// 把里面的关闭按钮一起抹掉。
+			msgEl.style.cssText = MSG_PALETTE[kind] || MSG_PALETTE.info;
+			if (msgTextEl) msgTextEl.textContent = text;
+			else msgEl.textContent = text;
+			msgEl.classList.remove("hidden");
+		}
+		function hideMsg() {
+			msgEl.classList.add("hidden");
+		}
+		function setBusy(on, label) {
+			state.busy = !!on;
+			if (on && label) showMsg(label, "info");
+			render();
+		}
+
+		/* ═══════════════ 滚动锁（弹窗/确认框期间，事件拦截版；不用 overflow:hidden） ═══════════════ */
+
+		var scrollLockCount = 0;
+		var SCROLL_KEYS = {
+			ArrowUp: 1,
+			ArrowDown: 1,
+			PageUp: 1,
+			PageDown: 1,
+			Home: 1,
+			End: 1,
+			" ": 1,
+		};
+		/**
+		 * 阻断"滚动链"：确认框 / 上传弹窗期间不让网页跟着滚。
+		 * ⚠️ 必须放行**弹窗内部的滚动容器**（.ge-scroll）—— 否则滚轮会被窗口级 capture 监听整体拦掉，
+		 * 表现成"鼠标放在图片页滚不动、只能拖滚动条"（实测踩过）。
+		 */
+		function inScrollArea(target) {
+			return !!(target && target.closest && target.closest(".ge-scroll"));
+		}
+
+		function preventScrollInput(e) {
+			if (scrollLockCount <= 0) return;
+			if (inScrollArea(e.target)) return;
+			e.preventDefault();
+		}
+
+		function preventScrollKey(e) {
+			if (scrollLockCount <= 0 || !SCROLL_KEYS[e.key]) return;
+			if (inScrollArea(e.target)) return;
+			e.preventDefault();
+		}
+		function lockPageScroll() {
+			scrollLockCount++;
+			if (scrollLockCount > 1) return;
+			window.addEventListener("wheel", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("touchmove", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("keydown", preventScrollKey, { capture: true });
+		}
+		function unlockPageScroll() {
+			if (scrollLockCount > 0) scrollLockCount--;
+			if (scrollLockCount > 0) return;
+			scrollLockCount = 0;
+			window.removeEventListener("wheel", preventScrollInput, { capture: true });
+			window.removeEventListener("touchmove", preventScrollInput, { capture: true });
+			window.removeEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
+		/* ═══════════════ 站内确认框 ═══════════════ */
+
+		function askConfirm(text, opts) {
+			opts = opts || {};
+			var kind = opts.kind || "danger";
+			var skin = CONFIRM_SKINS[kind] || CONFIRM_SKINS.danger;
+			confirmTitleEl.textContent = opts.title || "请确认";
+			confirmTextEl.textContent = text;
+			confirmOkBtn.textContent = "确定";
+			confirmCancelBtn.textContent = "取消";
+			confirmOkBtn.style.backgroundColor = skin.btn;
+			confirmIconEl.style.color = skin.fg;
+			for (var i = 0; i < confirmIcons.length; i++) {
+				confirmIcons[i].classList.toggle(
+					"hidden",
+					confirmIcons[i].getAttribute("data-kind") !== kind,
+				);
+			}
+			confirmEl.classList.remove("hidden");
+			confirmEl.classList.add("flex");
+			// ⚠️ 确认框期间必须锁住页面滚动（与动态/友链一致）——
+			// 遗漏会导致"确认框弹出后鼠标滚轮还能滚网页"（用户实测报障过）。
+			lockPageScroll();
+			try {
+				confirmCancelBtn.focus({ preventScroll: true });
+			} catch (e) {
+				/* ignore */
+			}
+			return new Promise(function (resolve) {
+				confirmResolve = resolve;
+			});
+		}
+
+		function settleConfirm(result) {
+			if (!confirmResolve) return;
+			var resolve = confirmResolve;
+			confirmResolve = null;
+			confirmEl.classList.add("hidden");
+			confirmEl.classList.remove("flex");
+			unlockPageScroll(); // 无条件解锁（与动态/友链同一套）
+			resolve(result);
+		}
+
+		/* ═══════════════ GitHub Contents API ═══════════════ */
+
+		function apiHeaders(token) {
+			return {
+				Authorization: "token " + token,
+				Accept: "application/vnd.github.v3+json",
+				"Content-Type": "application/json",
+			};
+		}
+		function contentsUrl(repo, path) {
+			return (
+				"https://api.github.com/repos/" +
+				repo +
+				"/contents/" +
+				path.split("/").map(encodeURIComponent).join("/")
+			);
+		}
+		function requireToken() {
+			var c = cfg();
+			if (!c.token) {
+				showMsg("请先在编辑器页面配置 GitHub Token（点击「发布到 GitHub」设置）", "error");
+				return null;
+			}
+			return c;
+		}
+
+		function getFile(c, path) {
+			return fetch(contentsUrl(c.repo, path) + "?ref=" + encodeURIComponent(c.branch), {
+				headers: apiHeaders(c.token),
+			}).then(function (res) {
+				if (res.status === 404) return { missing: true, sha: "", content: "" };
+				if (!res.ok) throw new Error("读取失败（HTTP " + res.status + "）");
+				return res.json().then(function (j) {
+					return { sha: j.sha || "", content: j.content ? fromB64(j.content) : "", missing: false };
+				});
+			});
+		}
+		function listDir(c, dir) {
+			return fetch(contentsUrl(c.repo, dir) + "?ref=" + encodeURIComponent(c.branch), {
+				headers: apiHeaders(c.token),
+			}).then(function (res) {
+				if (res.status === 404) return [];
+				if (!res.ok) throw new Error("读取目录失败（HTTP " + res.status + "）");
+				return res.json().then(function (j) {
+					return Array.isArray(j) ? j : [];
+				});
+			});
+		}
+		function putFile(c, path, text, sha, message) {
+			var body = { message: message, content: toB64(text), branch: c.branch };
+			if (sha) body.sha = sha;
+			return fetch(contentsUrl(c.repo, path), {
+				method: "PUT",
+				headers: apiHeaders(c.token),
+				body: JSON.stringify(body),
+			}).then(function (res) {
+				if (!res.ok) throw new Error("写入失败（HTTP " + res.status + "）");
+				return res.json();
+			});
+		}
+		function putFileRaw(c, path, base64, sha, message) {
+			var body = { message: message, content: base64, branch: c.branch };
+			if (sha) body.sha = sha;
+			return fetch(contentsUrl(c.repo, path), {
+				method: "PUT",
+				headers: apiHeaders(c.token),
+				body: JSON.stringify(body),
+			}).then(function (res) {
+				if (!res.ok) throw new Error("上传失败（HTTP " + res.status + "）");
+				return res.json();
+			});
+		}
+		function deleteFile(c, path, sha, message) {
+			return fetch(contentsUrl(c.repo, path), {
+				method: "DELETE",
+				headers: apiHeaders(c.token),
+				body: JSON.stringify({ message: message, sha: sha, branch: c.branch }),
+			}).then(function (res) {
+				if (!res.ok) throw new Error("删除失败（HTTP " + res.status + "）");
+				return true;
+			});
+		}
+
+		/* ═══════════════ 相册数据：解析 / 渲染 ═══════════════ */
+
+		function normalizeAlbum(raw) {
+			return {
+				id: String(raw.id == null ? "" : raw.id),
+				name: String(raw.name == null ? "" : raw.name),
+				description: String(raw.description == null ? "" : raw.description),
+				location: String(raw.location == null ? "" : raw.location),
+				date: String(raw.date == null ? "" : raw.date),
+				tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
+				cover: String(raw.cover == null ? "" : raw.cover),
+				password: String(raw.password == null ? "" : raw.password),
+				passwordHint: String(raw.passwordHint == null ? "" : raw.passwordHint),
+			};
+		}
+
+		/**
+		 * 相册名称 → 相册 ID（URL 与目录名）：空白转连字符，只保留字母/数字/中文/连字符/下划线。
+		 * 与 validateAlbum 的校验规则一致 ⇒ 自动生成的结果一定合法。
+		 */
+		function slugifyAlbumId(name) {
+			return String(name == null ? "" : name)
+				.trim()
+				.replace(/\s+/g, "-")
+				.replace(/[^\w\u4e00-\u9fa5-]/g, "")
+				.toLowerCase();
+		}
+
+		function albumsToJson(arr) {
+			var out = arr.map(function (a) {
+				var o = { id: a.id, name: a.name };
+				if (a.description) o.description = a.description;
+				if (a.location) o.location = a.location;
+				if (a.date) o.date = a.date;
+				if (a.tags && a.tags.length) o.tags = a.tags.slice();
+				if (a.cover) o.cover = a.cover;
+				if (a.password) o.password = a.password;
+				if (a.passwordHint) o.passwordHint = a.passwordHint;
+				return o;
+			});
+			return JSON.stringify(out, null, "\t") + "\n";
+		}
+
+		function navItemHtml(a) {
+			// 左列导航项：白底卡片（与动态列表同款），选中态给主色描边（对齐动态"编辑中的卡片"）
+			var active = state.editing !== "" && a.id === state.selected;
+			var sub = a.date || a.location || "";
+			// 张数显示在这里（用户要求：不再放在「图片管理」Tab 上）
+			var cnt = state.photoCounts[a.id];
+			if (typeof cnt === "number" && cnt >= 0) sub = sub ? sub + " · " + cnt + " 张" : cnt + " 张";
+			// 选中项的缩略图也做"无 cover 时用第一张照片"的回退（其它项拿不到照片列表）
+			var navCov = a.id === state.selected ? effectiveCover() : String(a.cover || "");
+			var thumb = navCov
+				? '<img src="' +
+					escHtml(navCov) +
+					'" alt="" loading="lazy" class="h-full w-full object-cover" onerror="this.style.display=\'none\'" />'
+				: "图";
+			return (
+				'<div class="ge-nav-item card-base" data-nav="' +
+				escHtml(a.id) +
+				'"' +
+				(active ? ' data-active="1"' : "") +
+				">" +
+				'<div class="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md bg-gradient-to-br from-(--primary)/30 to-(--primary)/5 text-[9px] text-neutral-500 dark:text-neutral-400">' +
+				thumb +
+				"</div>" +
+				'<div class="min-w-0">' +
+				// 加密相册补一个小锁标记（密码字段非空即加密），否则它和公开相册长得一样
+				'<div class="flex items-center gap-1">' +
+				'<div class="ge-nav-name truncate">' +
+				escHtml(a.name || a.id) +
+				"</div>" +
+				(a.password
+					? '<svg class="shrink-0 opacity-70" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="11" height="11" fill="currentColor" role="img" aria-label="加密相册"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zM9 10V7a3 3 0 0 1 6 0v3H9z"></path></svg>'
+					: "") +
+				"</div>" +
+				(sub
+					? '<div class="truncate text-[10px] text-neutral-400 dark:text-neutral-500">' +
+						escHtml(sub) +
+						"</div>"
+					: "") +
+				"</div></div>"
+			);
+		}
+
+		/** 新建态时左列顶部出现的「新建相册」项（用户要求：点新建后左列要能看到它） */
+		function navNewHtml() {
+			var active = state.editing === "";
+			return (
+				'<div class="ge-nav-item card-base" data-nav=""' +
+				(active ? ' data-active="1"' : "") +
+				">" +
+				'<div class="grid h-11 w-11 shrink-0 place-items-center rounded-md border-2 border-dashed border-(--line-divider) text-neutral-400">' +
+				'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>' +
+				"</div>" +
+				'<div class="min-w-0">' +
+				'<div class="ge-nav-name truncate font-semibold text-(--primary)">新建相册</div>' +
+				'<div class="truncate text-[10px] text-neutral-400 dark:text-neutral-500">填好后点「提交」</div>' +
+				"</div></div>"
+			);
+		}
+
+		/** 信息面板里的某个字段控件 */
+		function fieldEl(key) {
+			return panelInfoEl ? panelInfoEl.querySelector('[data-f="' + key + '"]') : null;
+		}
+
+		function currentAlbum() {
+			for (var i = 0; i < state.albums.length; i++) {
+				if (state.albums[i].id === state.selected) return state.albums[i];
+			}
+			return null;
+		}
+
+		/**
+		 * 当前选中相册的"实际封面地址"：
+		 * 优先 config 的 cover 字段；没有时**回退到第一张照片**（含 cover.* 文件与外链第一张）——
+		 * 对齐上游相册页「没有 cover 时用首张图当封面」的表现。
+		 * 注意：照片列表只对**选中相册**加载，所以这个回退只对当前相册有效。
+		 */
+		function effectiveCover() {
+			var a = currentAlbum();
+			if (a && a.cover) return String(a.cover);
+			if (!state.selected) return "";
+			var covers = state.photoFiles.filter(function (f) {
+				return COVER_RE.test(f.name) && IMG_RE.test(f.name);
+			});
+			var locals = state.photoFiles.filter(function (f) {
+				return IMG_RE.test(f.name) && !COVER_RE.test(f.name);
+			});
+			var pick = covers[0] || locals[0];
+			if (pick)
+				return (
+					"/gallery/" + encodeURIComponent(state.selected) + "/" + encodeURIComponent(pick.name)
+				);
+			if (state.remotePhotos && state.remotePhotos.length) return state.remotePhotos[0];
+			return "";
+		}
+
+		/** 把相册数据填进信息面板的 9 个字段（新建态填空模板） */
+		function fillInfo() {
+			var a = state.editing === "" ? normalizeAlbum({}) : currentAlbum() || normalizeAlbum({});
+			var set = function (k, v) {
+				var el = fieldEl(k);
+				if (el) el.value = v;
+			};
+			set("id", a.id);
+			set("name", a.name);
+			set("description", a.description);
+			set("location", a.location);
+			set("date", a.date);
+			set("tags", (a.tags || []).join(", "));
+			set("cover", a.cover);
+			set("password", a.password);
+			set("passwordHint", a.passwordHint);
+		}
+
+		/** 信息面板：封面预览 + 状态标签 + 只读/编辑两态 */
+		function renderInfo() {
+			var isNew = state.editing === "";
+			// ⚠️ ro 必须在最前面：下面多处要用它（曾被定义在函数中后段，
+			// 因 var 提升变成 undefined ⇒ 只读态也显示了"点击上传"标识）
+			var ro = state.editing === null;
+			var a = isNew ? normalizeAlbum({}) : currentAlbum() || normalizeAlbum({});
+			// ⚠️ 只在"换相册 / 进出编辑态 / 数据真的变了"时才回填表单 ——
+			// 否则 setBusy() → render() → fillInfo() 会把用户正在输入、还没提交的内容冲掉。
+			var infoSig = state.selected + "|" + String(state.editing) + "|" + JSON.stringify(a);
+			if (infoSig !== lastInfoSig) {
+				lastInfoSig = infoSig;
+				fillInfo();
+			}
+
+			if (coverPreviewEl) {
+				// 无 cover 时回退到"第一张照片"（对齐上游相册页的表现）；
+				// 新建态显示"已选但还没提交"的那张封面（本地 blob 预览）
+				var cov = isNew ? state.pendingCoverUrl || "" : effectiveCover();
+				// ⚠️ "点击更换/点击上传"的提示**只在编辑态**出现（用户要求：只读态不该有）
+				var badge = "";
+				if (!ro) {
+					badge =
+						'<span class="absolute inset-x-0 bottom-0 bg-black/45 py-0.5 text-center text-[9px] font-medium text-white">' +
+						(cov ? "点击更换" : "点击上传") +
+						"</span>";
+				}
+				var inner = cov
+					? '<img src="' +
+						escHtml(cov) +
+						'" alt="封面" class="h-full w-full object-cover" onerror="this.style.display=\'none\'" />'
+					: '<span class="px-1">' +
+						(ro ? "暂无封面" : isNew ? "新建后<br />可上传封面" : "点击上传封面") +
+						"</span>";
+				// 封面地址 / 只读态 / 新建态都没变就不重画 ⇒ 封面大图不重新加载
+				var coverSig = cov + "|" + (ro ? "1" : "0") + "|" + (isNew ? "1" : "0");
+				if (coverSig !== lastCoverSig) {
+					lastCoverSig = coverSig;
+					coverPreviewEl.innerHTML = inner + badge;
+				}
+			}
+
+			// 只读 / 编辑两态：两态共用同一套 DOM（切换时布局不跳）
+			if (panelInfoEl) panelInfoEl.setAttribute("data-ro", ro ? "1" : "0");
+			// ⚠️ 仅靠 CSS 的 pointer-events:none 只挡鼠标，**键盘（Tab + 输入）依然能改** ⇒
+			// 必须同时用 readOnly 兜住；另外相册 ID 永远只读（新建态可填，建好后不可改）。
+			var idEl = fieldEl("id");
+			if (idEl) idEl.readOnly = !isNew;
+			var restKeys = [
+				"name",
+				"description",
+				"location",
+				"date",
+				"tags",
+				"cover",
+				"password",
+				"passwordHint",
+			];
+			for (var ki = 0; ki < restKeys.length; ki++) {
+				var fe = fieldEl(restKeys[ki]);
+				if (fe) fe.readOnly = ro;
+			}
+
+			// 一个相册都没有、也不在新建态 ⇒ 右侧显示空态（与动态弹窗同款）
+			var hasTarget = isNew || !!currentAlbum();
+			if (infoFormEl) infoFormEl.classList.toggle("hidden", !hasTarget);
+			if (infoEmptyEl) {
+				infoEmptyEl.classList.toggle("hidden", hasTarget);
+				infoEmptyEl.classList.toggle("flex", !hasTarget);
+			}
+
+			// 封面：编辑态时可点击上传（用户要求"点编辑后封面图可以点击 ⇒ 点击就是上传封面图"）
+			if (coverPreviewEl) {
+				coverPreviewEl.classList.toggle("cursor-pointer", !ro);
+				coverPreviewEl.title = ro ? "" : "点击上传封面";
+			}
+		}
+
+		/** 总渲染入口：左列 + 信息面板 + 图片面板 + Tab 状态 + 操作区 */
+		function render() {
+			renderNav();
+			renderInfo();
+			renderPhotoPanel();
+			applyTab();
+			applyActions();
+			updateSubtitle();
+			// 「删除相册」：没有选中相册（或正在编辑 / 新建）时不显示
+			if (btnDelAlbum)
+				btnDelAlbum.classList.toggle(
+					"hidden",
+					!state.selected || state.editing !== null || state.busy,
+				);
+			if (btnAdd) btnAdd.disabled = state.busy || state.editing !== null;
+		}
+
+		/** 左列：按搜索词过滤后的相册列表（新建态顶部多一个「新建相册」项） */
+		function renderNav() {
+			var q = searchEl ? String(searchEl.value || "").trim().toLowerCase() : "";
+			var list = state.albums.filter(function (a) {
+				if (!q) return true;
+				var hay = [
+					a.name || "",
+					a.id,
+					a.location || "",
+					a.description || "",
+					(a.tags || []).join(" "),
+				]
+					.join(" ")
+					.toLowerCase();
+				return hay.indexOf(q) >= 0;
+			});
+			var html = state.editing === "" ? navNewHtml() : "";
+			html += list.map(navItemHtml).join("");
+			if (navEl) navEl.innerHTML = html;
+			if (emptyEl) {
+				// 两种空态：① 一个相册都没有；② 搜索词没匹配上（早先只判断 ①，
+				// 搜不到时左列一片空白、没有任何提示，用户会以为相册丢了）
+				var noAlbums = state.albums.length === 0 && state.editing !== "";
+				var noMatch = !!q && state.albums.length > 0 && list.length === 0;
+				var show = noAlbums || noMatch;
+				emptyEl.classList.toggle("hidden", !show);
+				emptyEl.classList.toggle("flex", show);
+				var txt = emptyEl.querySelector("[data-empty-text]");
+				if (txt)
+					txt.textContent = noMatch
+						? "没有匹配的相册，换个关键词试试。"
+						: "还没有相册，点下方「+ 新建相册」创建第一个。";
+			}
+		}
+
+		/**
+		 * 图片总数：**不含封面文件**，与前台相册页的"张数"口径一致
+		 * （上游 scanAlbumPhotos 会把 cover.* 排除在照片列表外）。
+		 * 外链图片计入（它确实是相册里的一张图）。
+		 */
+		function photoTotal() {
+			// ⚠️ **不含封面文件**：与前台相册页保持一致（上游 scanAlbumPhotos 会把 cover.*
+			// 排除掉，页面显示的张数从来不含封面）⇒ 弹窗用同一口径，避免两边数字对不上。
+			var locals = state.photoFiles.filter(function (f) {
+				return IMG_RE.test(f.name) && !COVER_RE.test(f.name);
+			});
+			return locals.length + (state.remotePhotos || []).length;
+		}
+
+		/** Tab 切换：两个面板互斥显示 + Tab 高亮 */
+		function applyTab() {
+			var isPhotos = state.tab === "photos";
+			if (panelInfoEl) panelInfoEl.classList.toggle("hidden", isPhotos);
+			if (panelPhotosEl) panelPhotosEl.classList.toggle("hidden", !isPhotos);
+			if (tabInfoEl) tabInfoEl.setAttribute("data-active", isPhotos ? "0" : "1");
+			if (tabPhotosEl) tabPhotosEl.setAttribute("data-active", isPhotos ? "1" : "0");
+		}
+
+		/** Tab 栏右侧的操作区：随「是否编辑中」变化 */
+		function applyActions() {
+			if (!actionsEl) return;
+			var busy = state.busy ? " disabled" : "";
+			var html = "";
+			if (state.editing !== null) {
+				// 编辑中：取消 / 提交
+				html +=
+					'<button type="button" data-act="cancel" class="' +
+					BTN_CLS +
+					'"' +
+					busy +
+					'>取消</button>';
+				html +=
+					'<button type="button" data-act="save" class="' +
+					BTN_PRIMARY_CLS +
+					'"' +
+					busy +
+					">提交</button>";
+			} else {
+				// 只读：图片页多一个「刷新」（**只要选中了相册就给** ——
+				// 早先用 state.photoFiles.length 判断，导致"只有外链的相册"和
+				// "照片还没加载完"时按钮根本不出现，且 reloadPhotos 结束后没重画操作区）
+				if (state.tab === "photos" && state.selected)
+					html +=
+						'<button type="button" data-act="reload" class="' +
+						BTN_CLS +
+						'"' +
+						busy +
+						">刷新</button>";
+				html +=
+					'<button type="button" data-act="edit" class="' +
+					BTN_CLS +
+					'"' +
+					busy +
+					">编辑</button>";
+			}
+			actionsEl.innerHTML = html;
+		}
+
+		function updateSubtitle() {
+			if (!subtitleEl) return;
+			var n = state.albums.length;
+			if (state.editing === "") {
+				subtitleEl.textContent = "共 " + n + " 个相册 · 新建中，填好后点「提交」";
+				return;
+			}
+			var a = currentAlbum();
+			if (a) {
+				subtitleEl.textContent =
+					(a.name || a.id) +
+					" · " +
+					(state.tab === "photos"
+						? "public/gallery/" + a.id + "/"
+						: "共 " + n + " 个相册") +
+					(state.editing !== null ? " · 编辑中" : "");
+				return;
+			}
+			subtitleEl.textContent = "共 " + n + " 个相册";
+		}
+
+		/** 选中某个相册（编辑中有未提交改动时不许切，避免静默丢弃） */
+		function selectAlbum(id) {
+			// 左列的「新建相册」项（data-nav=""）不可点选，避免把新建态切走
+			if (id === "") return;
+			if (id === state.selected && state.editing !== "") return;
+			if (state.editing !== null && state.editing !== id) {
+				showMsg("请先提交或取消当前相册的修改。", "warn");
+				return;
+			}
+			state.selected = id;
+			state.editing = null;
+			clearPendingCover();
+			state.photoFiles = [];
+			state.remotePhotos = [];
+			state.urlsSha = "";
+			state.loadedFor = ""; // 换了相册 ⇒ 照片/外链数据作废，需重新拉
+			if (urlsEl) urlsEl.value = "";
+			if (queueEl) {
+				queueEl.classList.add("hidden");
+				queueEl.innerHTML = "";
+			}
+			if (photoGridEl) photoGridEl.innerHTML = "";
+			resetRenderCache(); // 网格刚被清空，必须让签名失效
+			hideMsg();
+			render();
+			if (state.tab === "photos") {
+				reloadPhotos();
+				loadUrls();
+			}
+		}
+
+		/** 切换 Tab */
+		function setTab(tab) {
+			if (tab === state.tab) return;
+			state.tab = tab;
+			// 切过去时补画目标面板（否则 applyTab 只切显隐，面板内容还是旧的）
+			if (tab === "photos") {
+				renderPhotoPanel();
+				// ⚠️ 已经是这个相册的数据就不再重复请求（来回切 Tab 原本每次都发
+				// listDir + getFile 两个请求）；点「刷新」或换相册才会重拉
+				if (state.selected && state.loadedFor !== state.selected) {
+					state.loadedFor = state.selected;
+					reloadPhotos();
+					loadUrls();
+				}
+			} else {
+				renderInfo();
+			}
+			applyTab();
+			applyActions();
+			updateSubtitle();
+		}
+
+		/* ═══════════════ 打开 / 关闭弹窗 ═══════════════ */
+
+		function openModal() {
+			hideMsg();
+			state.tab = "info";
+			state.editing = null;
+			state.dirty = false;
+			// 每次打开都重新拉数据 ⇒ 清掉"已加载"标记与渲染签名缓存
+			state.loadedFor = "";
+			resetRenderCache();
+			// 打开即选中第一个相册（让右侧立刻有内容，而不是空白）
+			if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
+			render();
+			mask.classList.remove("hidden");
+			mask.classList.add("flex");
+			// ⚠️ 主弹窗**不锁**页面滚动（项目铁律：主弹窗打开时鼠标移出去仍能滚网页）；
+			// 只有"确认框 / 上传弹窗"这类二次浮层才锁。
+			loadFromRemote();
+			try {
+				var closeBtn = document.getElementById("ge-close");
+				if (closeBtn) closeBtn.focus({ preventScroll: true });
+			} catch (e) {
+				/* ignore */
+			}
+		}
+
+		function doClose() {
+			closeUpload(true);
+			mask.classList.add("hidden");
+			mask.classList.remove("flex");
+			state.editing = null;
+			state.dirty = false;
+			// 彻底复位滚动锁（主弹窗本身不锁；这里兜底清掉可能残留的计数）
+			while (scrollLockCount > 0) unlockPageScroll();
+		}
+
+		/** 关闭弹窗（有未提交改动时先确认；沿用动态编辑器那套确认框逻辑） */
+		function requestClose(force) {
+			if (state.dirty && !force) {
+				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					okText: "确定",
+					cancelText: "取消",
+					kind: "warning",
+				}).then(function (ok) {
+					if (ok) {
+						restoreSaved();
+						doClose();
+					}
+				});
+				return;
+			}
+			doClose();
+		}
+
+		/* ═══════════════ 上传弹窗（独立浮层） ═══════════════ */
+
+		function openUpload() {
+			if (!state.selected) {
+				showMsg("请先在左侧选择一个相册。", "warn");
+				return;
+			}
+			if (uploadSubEl) uploadSubEl.textContent = (currentAlbum() || {}).name || state.selected;
+			if (queueEl) {
+				queueEl.classList.add("hidden");
+				queueEl.innerHTML = "";
+			}
+			uploadEl.classList.remove("hidden");
+			uploadEl.classList.add("flex");
+			lockPageScroll();
+			loadUrls();
+		}
+
+		function closeUpload(force) {
+			if (!uploadEl || uploadEl.classList.contains("hidden")) return;
+			uploadEl.classList.add("hidden");
+			uploadEl.classList.remove("flex");
+			if (!force) unlockPageScroll();
+		}
+
+		/** 回滚到"已保存"快照（放弃修改用） */
+		function restoreSaved() {
+			if (state.saved) state.albums = JSON.parse(JSON.stringify(state.saved));
+			state.dirty = false;
+		}
+
+		/* ═══════════════ 读取云端数据 ═══════════════ */
+
+		function loadFromRemote() {
+			var c = requireToken();
+			if (!c) {
+				subtitleEl.textContent = "共 " + state.albums.length + " 个相册（只读：未配置 Token）";
+				return;
+			}
+			return getFile(c, CONFIG_PATH)
+				.then(function (f) {
+					state.baseSha = f.sha;
+					if (f.missing) return;
+					// 用户在等待期间已经开始编辑 ⇒ 不要用远端数据覆盖，避免吞掉刚落下的改动
+					if (state.dirty) return;
+					var parsed = [];
+					try {
+						parsed = JSON.parse(f.content);
+					} catch (e) {
+						showMsg("配置文件解析失败，已保留本地快照显示。", "error");
+						return;
+					}
+					if (!Array.isArray(parsed)) return;
+					state.albums = parsed.map(normalizeAlbum);
+					state.saved = JSON.parse(JSON.stringify(state.albums));
+					if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
+					render();
+					hideMsg();
+				})
+				.catch(function (e) {
+					showMsg(e.message || "读取配置失败，请重试。", "error");
+				});
+		}
+
+		/* ═══════════════ 保存 / 新建 / 删除 ═══════════════ */
+
+		/** 从信息面板收集当前表单值（新建 / 编辑共用） */
+		function collectInfo() {
+			function v(key) {
+				var el = fieldEl(key);
+				return el ? String(el.value || "").trim() : "";
+			}
+			var tagsRaw = v("tags");
+			return normalizeAlbum({
+				id: v("id"),
+				name: v("name"),
+				description: v("description"),
+				location: v("location"),
+				date: v("date"),
+				tags: tagsRaw
+					? tagsRaw
+							.split(/[,，]/)
+							.map(function (s) {
+								return s.trim();
+							})
+							.filter(Boolean)
+					: [],
+				cover: v("cover"),
+				password: v("password"),
+				passwordHint: v("passwordHint"),
+			});
+		}
+
+		function validateAlbum(a, isNew) {
+			if (!a.name) return "相册名称不能为空。";
+			if (isNew || !a.id) {
+				if (!a.id) return "相册 ID 不能为空。";
+				if (!/^[\w\u4e00-\u9fa5-]+$/.test(a.id))
+					return "相册 ID 只能包含字母、数字、中文、连字符和下划线。";
+				if (
+					state.albums.some(function (x) {
+						return x.id === a.id;
+					})
+				)
+					return "相册 ID「" + a.id + "」已存在，请换一个。";
+			}
+			if (a.date && !/^\d{4}-\d{2}-\d{2}$/.test(a.date)) return "日期格式应为 YYYY-MM-DD。";
+			return "";
+		}
+
+		function commitConfig(c, message) {
+			var text = albumsToJson(state.albums);
+			return getFile(c, CONFIG_PATH)
+				.then(function (f) {
+					return putFile(c, CONFIG_PATH, text, f.sha || state.baseSha, message);
+				})
+				.then(function () {
+					state.baseSha = "";
+					state.saved = JSON.parse(JSON.stringify(state.albums));
+				});
+		}
+
+		/** 提交信息面板的改动（新建 / 更新） */
+		function saveInfo() {
+			if (state.busy) return;
+			var c = requireToken();
+			if (!c) return;
+			var isNew = state.editing === "";
+			var a = collectInfo();
+			var err = validateAlbum(a, isNew);
+			if (err) {
+				showMsg(err, "error");
+				return;
+			}
+			setBusy(true, "正在写入…");
+			var next = state.albums.slice();
+			if (isNew) {
+				next.push(a);
+			} else {
+				var idx = -1;
+				for (var i = 0; i < next.length; i++) if (next[i].id === a.id) idx = i;
+				if (idx >= 0) next[idx] = a;
+			}
+			state.albums = next;
+			var chain = Promise.resolve();
+			if (isNew) {
+				// ⚠️ 建目录前先看一眼磁盘上有没有同名目录：validateAlbum 只查了**配置里**的 id 重复，
+				// 而 public/gallery/<id>/ 可能还在（例如相册从配置里删过、目录没清），
+				// 此时新相册会**无声接管**里面已有的照片 ⇒ 先问一句再继续。
+				chain = chain.then(function () {
+					return listDir(c, PHOTO_DIR + "/" + a.id)
+						.then(function (entries) {
+							var files = (entries || []).filter(function (x) {
+								return x && x.type === "file";
+							});
+							if (!files.length) return;
+							return askConfirm(
+								"目录 public/gallery/" +
+									a.id +
+									"/ 里已经有 " +
+									files.length +
+									" 个文件，继续创建会把这些文件当成这个新相册的照片。",
+								{
+									title: "目录已存在，仍要创建？",
+									okText: "继续创建",
+									cancelText: "取消",
+								},
+							).then(function (ok) {
+								if (!ok) throw new Error(ABORT_CREATE);
+							});
+						})
+						.catch(function (e) {
+							// 目录不存在（404）属正常情况 ⇒ 放行；只有"用户点了取消"才中断
+							if (e && e.message === ABORT_CREATE) throw e;
+						});
+				});
+				chain = chain.then(function () {
+					return putFile(
+						c,
+						PHOTO_DIR + "/" + a.id + "/.gitkeep",
+						"",
+						"",
+						"chore(gallery): 新建相册目录（" + a.id + "）",
+					).catch(function () {
+						/* 目录已存在或失败都不阻断配置写入 */
+					});
+				});
+				// 新建时若已选好封面 ⇒ 目录建好后立刻上传，并让配置的 cover 指向它
+				// （对齐旧版流程：封面图和相册信息一起提交）
+				if (state.pendingCoverFile) {
+					var coverFile = state.pendingCoverFile;
+					chain = chain.then(function () {
+						var ext = (coverFile.name.split(".").pop() || "jpg").toLowerCase();
+						var rel = "/gallery/" + a.id + "/cover." + ext;
+						var cpath = PHOTO_DIR + "/" + a.id + "/cover." + ext;
+						return readB64(coverFile)
+							.then(function (b64) {
+								if (!b64) return;
+								// 目录里可能已存在同名 cover.<ext>（例如同 id 相册被删配置后又重建），
+								// 带上 sha 才不会 422
+								return getFile(c, cpath).then(function (f) {
+									return putFileRaw(
+										c,
+										cpath,
+										b64,
+										f.missing ? "" : f.sha || "",
+										"feat(gallery): 网站端上传相册封面（" + a.id + "）",
+									);
+								});
+							})
+							.then(function () {
+								a.cover = rel; // a 已是 state.albums 里的同一个对象 ⇒ 直接生效
+							})
+							.catch(function () {
+								showMsg("相册已创建，但封面图上传失败，可在「图片管理」里重新上传。", "warn");
+							});
+					});
+				}
+			}
+			chain
+				.then(function () {
+					return commitConfig(
+						c,
+						"feat(gallery): 网站端" +
+							(isNew ? "发布" : "更新") +
+							"相册（" +
+							state.albums.length +
+							" 个）",
+					);
+				})
+				.then(function () {
+					state.editing = null;
+					state.dirty = false;
+					state.selected = a.id; // 新建成功后选中它，右侧继续可管理
+					// 清理新建态暂存的封面
+					if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
+					state.pendingCoverFile = null;
+					state.pendingCoverUrl = "";
+					setBusy(false);
+					render();
+					showMsg(isNew ? "已新建相册 ✓" : "已提交修改 ✓", "success");
+				})
+				.catch(function (e) {
+					state.albums = state.saved ? JSON.parse(JSON.stringify(state.saved)) : state.albums;
+					setBusy(false);
+					render();
+					// 用户在"目录已存在"确认框里主动取消 ⇒ 回滚后静默退出，不报错
+					if (e && e.message === ABORT_CREATE) {
+						hideMsg();
+						return;
+					}
+					showMsg(e.message || "提交失败，请重试。", "error");
+				});
+		}
+
+		function deleteAlbum(a) {
+			if (state.busy) return;
+			var c = requireToken();
+			if (!c) return;
+			// 确认框文案统一格式：「xxx」+ 一句陈述（与友链/动态保持一致，只换「」里的内容）
+			askConfirm("「" + (a.name || a.id) + "」这个相册将被删除。", {
+				title: "删除这个相册？",
+				kind: "danger",
+			}).then(function (ok) {
+				if (!ok) return;
+				setBusy(true, "正在删除照片…");
+				var dir = PHOTO_DIR + "/" + a.id;
+				listDir(c, dir)
+					.then(function (entries) {
+						var files = (entries || []).filter(function (x) {
+							return x && x.type === "file";
+						});
+						// 顺序删除，任一失败即中止（此时配置尚未改动，可重试）
+						return files.reduce(function (p, f) {
+							return p.then(function () {
+								return deleteFile(
+									c,
+									f.path,
+									f.sha,
+									"chore(gallery): 删除相册照片（" + a.id + "）",
+								);
+							});
+						}, Promise.resolve());
+					})
+					.then(function () {
+						state.albums = state.albums.filter(function (x) {
+							return x.id !== a.id;
+						});
+						showMsg("照片已清理，正在更新配置…", "info");
+						return commitConfig(c, "feat(gallery): 网站端删除相册（" + a.id + "）");
+					})
+					.then(function () {
+						setBusy(false);
+						render();
+						showMsg("已删除相册 ✓", "success");
+					})
+					.catch(function (e) {
+						setBusy(false);
+						render();
+						showMsg(e.message || "删除失败，请重试。", "error");
+					});
+			});
+		}
+
+		/* ═══════════════ 照片管理（视图 B） ═══════════════ */
+
+		function reloadPhotos() {
+			var c = cfg();
+			if (!c.token) {
+				showMsg("请先配置 GitHub Token 后再管理照片。", "error");
+				return;
+			}
+			var dir = PHOTO_DIR + "/" + state.selected;
+			return listDir(c, dir)
+				.then(function (entries) {
+					state.photoFiles = (entries || []).filter(function (x) {
+						return x && x.type === "file";
+					});
+					renderPhotoPanel();
+					// 左列张数**只在这里**更新（即"确实成功拿到目录数据"之后）。
+					// ⚠️ 早先写在 renderPhotoPanel() 里 ⇒ 拉取失败或还没拉完时会把服务端给的
+					// 正确数字覆盖成 0（网络抖一下，左列就有照片的相册显示「0 张」，且不会自愈）。
+					var t = photoTotal();
+					if (state.selected && state.photoCounts[state.selected] !== t) {
+						state.photoCounts[state.selected] = t;
+						renderNav();
+					}
+					// 封面在"没有 cover 字段"时会回退到第一张照片 ⇒ 照片到齐后要重画封面
+					renderInfo();
+					renderNav();
+				})
+				.catch(function (e) {
+					showMsg(e.message || "读取照片目录失败。", "error");
+				});
+		}
+
+		/** 解析外链清单文本 → 地址数组（跳过空行与 # 注释） */
+		function parseRemote(text) {
+			return String(text || "")
+				.split(/\r?\n/)
+				.map(function (s) {
+					return s.trim();
+				})
+				.filter(function (s) {
+					return s && s.charAt(0) !== "#";
+				});
+		}
+
+		/** 图片面板：本地上传的照片 + 外链照片，混排在同一网格里 */
+		function renderPhotoPanel() {
+			if (!photoGridEl) return;
+			var isEditing = state.editing !== null;
+			var base = "/gallery/" + encodeURIComponent(state.selected) + "/";
+			var locals = state.photoFiles.filter(function (f) {
+				return IMG_RE.test(f.name) && !COVER_RE.test(f.name);
+			});
+			var remotes = state.remotePhotos || [];
+			// ⚠️ 计数**不含封面文件**（与前台相册页口径一致）
+			var total = photoTotal();
+			var album = currentAlbum() || {};
+			var coverField = String(album.cover || "");
+
+			if (photoEmptyEl) {
+				// hidden 与 flex 必须成对切（只切 hidden 的话元素是 block，justify-center 不生效）
+				var noPhotos = total === 0 && !isEditing;
+				photoEmptyEl.classList.toggle("hidden", !noPhotos);
+				photoEmptyEl.classList.toggle("flex", noPhotos);
+			}
+			if (photoHintEl) {
+				// 正常态不显示「共 N 张」（张数已由 Tab 角标体现，这行是冗余信息）；
+				// 只在"没选中相册 / 相册还没保存"这两种需要指引的情况下出现
+				var hint = state.selected
+					? ""
+					: state.editing === ""
+						? "相册还没保存 —— 点右上「提交」创建后就能添加图片了。"
+						: "请先在左侧选择一个相册";
+				photoHintEl.textContent = hint;
+				photoHintEl.classList.toggle("hidden", !hint);
+			}
+
+			function card(src, label, isRemote, delKey) {
+				var isCover = coverField && coverField === src;
+				// ⚠️ 高度结构固定：图片区 aspect-4/3 + 名称行 h-8 ⇒ 无论图片是否加载成功、
+				// 也无论有没有 ★/🗑 按钮，**每张卡片的总高与名称行位置都完全一致**。
+				// self-start：网格行高被容器 min-h 撑满时（照片很少）卡片不跟着被拉长。
+				return (
+					'<div class="flex flex-col self-start overflow-hidden rounded-xl border border-(--line-divider)">' +
+					'<div class="relative grid aspect-4/3 min-h-0 w-full shrink-0 place-items-center overflow-hidden bg-black/5 dark:bg-white/5">' +
+					'<img src="' +
+					escHtml(src) +
+					'" alt="' +
+					escHtml(label) +
+					'" loading="lazy" class="h-full w-full object-cover" onerror="this.style.visibility=\'hidden\'" />' +
+					(isCover
+						? '<span class="absolute top-1 left-1 rounded bg-(--primary) px-1 py-0.5 text-[9px] font-medium text-white">封面</span>'
+						: "") +
+					(isRemote
+						? '<span class="absolute top-1 right-1 rounded bg-amber-500/90 px-1 py-0.5 text-[9px] font-medium text-white">外链</span>'
+						: "") +
+					"</div>" +
+					'<div class="flex h-8 shrink-0 items-center gap-1 px-1.5">' +
+					'<span class="min-w-0 grow truncate text-[10px] text-neutral-500 dark:text-neutral-400" title="' +
+					escHtml(label) +
+					'">' +
+					escHtml(label) +
+					"</span>" +
+					(isEditing && !isCover
+						? '<button type="button" data-photo-act="cover" data-src="' +
+							escHtml(src) +
+							'" title="设为封面" class="shrink-0 cursor-pointer rounded border border-(--line-divider) px-1 py-0.5 text-[9px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">★</button>'
+						: "") +
+					(isEditing
+						? '<button type="button" data-photo-act="del" data-src="' +
+							escHtml(src) +
+							'" data-key="' +
+							escHtml(delKey) +
+							'" data-remote="' +
+							(isRemote ? "1" : "0") +
+							'" title="删除" class="shrink-0 cursor-pointer rounded border border-red-500/40 px-1 py-0.5 text-[9px] text-red-500 hover:bg-red-500/10">' +
+							'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 3v1H4v2h16V4h-5V3H9zM6 8v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8H6zm3 2h2v9H9v-9zm4 0h2v9h-2v-9z"></path></svg></button>'
+						: "") +
+					"</div></div>"
+				);
+			}
+
+			// ⚠️ 网格内容签名：没变就不重建 innerHTML ——
+			// 每张 <img> 重建都会重新解码/请求，而 setBusy() → render() 一次操作就会触发两次。
+			var gridSig = [
+				state.selected,
+				isEditing ? "1" : "0",
+				coverField,
+				locals
+					.map(function (f) {
+						return f.name;
+					})
+					.join(","),
+				remotes.join("\n"),
+			].join("|");
+			if (gridSig === lastGridSig) return;
+			lastGridSig = gridSig;
+
+			var html = "";
+			// 「＋ 添加图片」固定在第一格（只在编辑态出现）。
+			// 结构与照片卡片**逐字同构**（4:3 图区 + h-8 名称行）⇒ 两者高度天然一致，
+			// 且不会因为"网格里没有别的照片"而被拉伸。
+			if (isEditing && state.selected) {
+				html +=
+					'<button type="button" data-act="upload" class="ge-add-photo" title="添加图片">' +
+					'<span class="ge-add-photo-frame">' +
+					'<span class="flex flex-col items-center gap-1">' +
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>' +
+					'<span class="text-[11px]">添加图片</span></span>' +
+					"</span>" +
+					'<span class="h-8 shrink-0"></span>' +
+					"</button>";
+			}
+			// ⚠️ **不渲染封面文件**（cover.*）：因为它不计入"共 N 张"，渲染出来会让
+			// "显示的张数"与"统计数字"对不上。封面只在"基本信息"页的预览里体现 ✓
+			locals.forEach(function (f) {
+				html += card(base + encodeURIComponent(f.name), f.name, false, f.name);
+			});
+			remotes.forEach(function (u) {
+				html += card(u, u, true, u);
+			});
+			photoGridEl.innerHTML = html;
+		}
+
+		function loadUrls() {
+			var c = cfg();
+			if (!c.token || !state.selected) return Promise.resolve();
+			var path = PHOTO_DIR + "/" + state.selected + "/urls.txt";
+			return getFile(c, path)
+				.then(function (f) {
+					state.urlsSha = f.sha || "";
+					var text = f.missing ? "" : f.content;
+					if (urlsEl) urlsEl.value = text;
+					state.remotePhotos = parseRemote(text);
+					renderPhotoPanel();
+				})
+				.catch(function () {
+					// ⚠️ 读取失败**不清理**已有数据（原先会把 urlsSha / 文本 / 外链数组全清空：
+					// 网络抖一下界面上外链就"消失"，且 urlsSha 丢了之后保存会误判成"新建"）。
+					// 保留旧值即可 —— 真正的"没有清单"由 404 分支（f.missing）表达。
+					renderPhotoPanel();
+				});
+		}
+
+		function saveUrls() {
+			var c = requireToken();
+			if (!c || !state.selected) return;
+			var path = PHOTO_DIR + "/" + state.selected + "/urls.txt";
+			var text = String((urlsEl && urlsEl.value) || "")
+				.replace(/\r\n/g, "\n")
+				.trim();
+			setBusy(true, "正在保存外链清单…");
+			var chain;
+			if (text) {
+				chain = getFile(c, path).then(function (f) {
+					return putFile(
+						c,
+						path,
+						text + "\n",
+						f.sha || state.urlsSha,
+						"feat(gallery): 网站端更新外链清单（" + state.selected + "）",
+					);
+				});
+			} else if (state.urlsSha) {
+				chain = deleteFile(
+					c,
+					path,
+					state.urlsSha,
+					"chore(gallery): 网站端清空外链清单（" + state.selected + "）",
+				);
+			} else {
+				setBusy(false);
+				showMsg("清单为空，无需保存。", "info");
+				return;
+			}
+			chain
+				.then(function () {
+					setBusy(false);
+					showMsg("外链清单已保存 ✓", "success");
+					return loadUrls();
+				})
+				.catch(function (e) {
+					setBusy(false);
+					showMsg(e.message || "保存清单失败。", "error");
+				});
+		}
+
+		function uploadFiles(files) {
+			var c = requireToken();
+			if (!c) return;
+			var list = Array.prototype.slice.call(files || []);
+			if (!list.length) return;
+			if (queueEl) {
+				queueEl.classList.remove("hidden");
+				queueEl.innerHTML = "";
+			}
+
+			var rows = list.map(function (f) {
+				var row = document.createElement("div");
+				row.className = "flex items-center gap-3 rounded-lg border border-(--line-divider) px-3 py-2";
+				row.innerHTML =
+					'<span class="min-w-0 grow truncate text-xs text-neutral-600 dark:text-neutral-300">' +
+					escHtml(f.name) +
+					'</span><span class="shrink-0 text-[11px] text-neutral-400">' +
+					Math.round(f.size / 1024) +
+					" KB</span>";
+				if (queueEl) queueEl.appendChild(row);
+				return row;
+			});
+
+			var okCount = 0;
+			var skipCount = 0;
+			var total = list.length;
+			showMsg("正在上传 0/" + total + " …", "info");
+
+			list
+				.reduce(function (p, f, i) {
+					return p
+						.then(function () {
+							var row = rows[i];
+							if (!IMG_RE.test(f.name)) {
+								skipCount++;
+								row.style.opacity = "0.5";
+								row.insertAdjacentHTML(
+									"beforeend",
+									'<span class="shrink-0 text-[11px] text-red-500">不支持的类型</span>',
+								);
+								return;
+							}
+							if (f.size > MAX_UPLOAD_BYTES) {
+								skipCount++;
+								row.style.opacity = "0.5";
+								row.insertAdjacentHTML(
+									"beforeend",
+									'<span class="shrink-0 text-[11px] text-red-500">超过 10MB</span>',
+								);
+								return;
+							}
+							var ext = (f.name.split(".").pop() || "jpg").toLowerCase();
+							var fileName =
+								Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+							var path = PHOTO_DIR + "/" + state.selected + "/" + fileName;
+							return new Promise(function (resolve) {
+								var reader = new FileReader();
+								reader.onload = function () {
+									resolve(String(reader.result).split(",")[1] || "");
+								};
+								reader.onerror = function () {
+									resolve("");
+								};
+								reader.readAsDataURL(f);
+							}).then(function (b64) {
+								if (!b64) {
+									skipCount++;
+									row.insertAdjacentHTML(
+										"beforeend",
+										'<span class="shrink-0 text-[11px] text-red-500">读取失败</span>',
+									);
+									return;
+								}
+								return putFileRaw(
+									c,
+									path,
+									b64,
+									"",
+									"feat(gallery): 网站端上传照片（" + state.selected + "）",
+								).then(function () {
+									okCount++;
+									row.insertAdjacentHTML(
+										"beforeend",
+										'<span class="shrink-0 text-[11px] text-green-600">已上传</span>',
+									);
+								});
+							});
+						})
+						.then(function () {
+							showMsg("正在上传 " + (i + 1) + "/" + total + " …", "info");
+						});
+				}, Promise.resolve())
+				.then(function () {
+					setBusy(false);
+					showMsg(
+						"上传完成 ✓ 成功 " +
+							okCount +
+							" 张" +
+							(skipCount ? "，跳过 " + skipCount + " 张" : ""),
+						okCount ? "success" : "error",
+					);
+					return reloadPhotos();
+				})
+				.catch(function (e) {
+					setBusy(false);
+					showMsg(e.message || "上传失败，请重试。", "error");
+					return reloadPhotos();
+				});
+		}
+
+		/**
+		 * 删除一张照片。
+		 * 本地照片：从仓库删文件；外链照片：从 urls.txt 里移除这一行。
+		 */
+		function deletePhoto(src, key, isRemote) {
+			var c = requireToken();
+			if (!c) return;
+			if (isRemote) {
+				var label = key || src;
+				askConfirm("「" + label + "」这条外链将被移除。", {
+					title: "移除这条外链？",
+					kind: "danger",
+				}).then(function (ok) {
+					if (!ok) return;
+					var rest = (state.remotePhotos || []).filter(function (u) {
+						return u !== label;
+					});
+					if (urlsEl) urlsEl.value = rest.join("\n");
+					saveUrls();
+				});
+				return;
+			}
+			var hit = state.photoFiles.filter(function (f) {
+				return f.name === key;
+			})[0];
+			if (!hit) {
+				showMsg("找不到该文件，请刷新列表。", "error");
+				return;
+			}
+			// 确认框文案统一格式：「xxx」+ 一句陈述
+			askConfirm("「" + key + "」这张照片将被删除。", {
+				title: "删除这张照片？",
+				kind: "danger",
+			}).then(function (ok) {
+				if (!ok) return;
+				setBusy(true, "正在删除…");
+				deleteFile(
+					c,
+					hit.path,
+					hit.sha,
+					"chore(gallery): 网站端删除照片（" + state.selected + "）",
+				)
+					.then(function () {
+						setBusy(false);
+						showMsg("已删除 ✓", "success");
+						return reloadPhotos();
+					})
+					.catch(function (e) {
+						setBusy(false);
+						showMsg(e.message || "删除失败，请重试。", "error");
+					});
+			});
+		}
+
+		/** 把某张照片设为封面：只改配置字段（零文件操作、可逆）。src 可以是本地路径或外链地址 */
+		function setCover(src) {
+			if (state.busy) return;
+			var c = requireToken();
+			if (!c) return;
+			var idx = -1;
+			for (var i = 0; i < state.albums.length; i++)
+				if (state.albums[i].id === state.selected) idx = i;
+			if (idx < 0) {
+				showMsg("找不到相册配置，请重试。", "error");
+				return;
+			}
+			setBusy(true, "正在设置封面…");
+			state.albums[idx].cover = src;
+			commitConfig(c, "feat(gallery): 网站端设置相册封面（" + state.selected + "）")
+				.then(function () {
+					setBusy(false);
+					showMsg("封面已设置 ✓", "success");
+					renderInfo();
+					renderPhotoPanel();
+				})
+				.catch(function (e) {
+					setBusy(false);
+					showMsg(e.message || "设置封面失败。", "error");
+				});
+		}
+
+		/** 清掉新建态暂存的封面（取消 / 切换相册 / 关闭弹窗时调用，顺手释放 blob 地址） */
+		function clearPendingCover() {
+			if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
+			state.pendingCoverFile = null;
+			state.pendingCoverUrl = "";
+		}
+
+		/** 读文件为 base64（去掉 data:xxx;base64, 前缀） */
+		function readB64(file) {
+			return new Promise(function (resolve) {
+				var reader = new FileReader();
+				reader.onload = function () {
+					resolve(String(reader.result).split(",")[1] || "");
+				};
+				reader.onerror = function () {
+					resolve("");
+				};
+				reader.readAsDataURL(file);
+			});
+		}
+
+		/**
+		 * 选中封面后的分流：
+		 *  - 已有相册（编辑态）⇒ 立即上传，写 cover.<ext> 并改配置 ✓
+		 *  - 新建相册（还没 id）⇒ 先暂存内存 + 本地预览，等「提交」时随相册一起写入 ✓
+		 *    （对齐旧版设计：封面图和相册信息是一起提交的）
+		 */
+		function pickCover(file) {
+			if (!file || state.busy) return;
+			if (!IMG_RE.test(file.name)) {
+				showMsg("封面必须是图片文件（jpg / png / webp / avif / gif）。", "error");
+				return;
+			}
+			if (file.size > MAX_UPLOAD_BYTES) {
+				showMsg("封面不能超过 10MB。", "error");
+				return;
+			}
+			if (state.editing !== null && !state.selected) {
+				if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
+				state.pendingCoverFile = file;
+				state.pendingCoverUrl = URL.createObjectURL(file);
+				state.dirty = true;
+				renderInfo();
+				showMsg("封面已选好 —— 点右上「提交」会和相册一起保存。", "info");
+				return;
+			}
+			uploadCover(file);
+		}
+
+		/**
+		 * 上传封面：写 public/gallery/<id>/cover.<ext>，再把 config 的 cover 字段指向它。
+		 * 由"编辑态下点击封面预览"触发（用户要求：点编辑后封面图可点击 ⇒ 点击就是上传封面图）。
+		 */
+		function uploadCover(file) {
+			if (!file || state.busy) return;
+			var c = requireToken();
+			if (!c || !state.selected) return;
+			if (!IMG_RE.test(file.name)) {
+				showMsg("封面必须是图片文件（jpg / png / webp / avif / gif）。", "error");
+				return;
+			}
+			if (file.size > MAX_UPLOAD_BYTES) {
+				showMsg("封面不能超过 10MB。", "error");
+				return;
+			}
+			var idx = -1;
+			for (var i = 0; i < state.albums.length; i++)
+				if (state.albums[i].id === state.selected) idx = i;
+			if (idx < 0) {
+				showMsg("找不到相册配置，请重试。", "error");
+				return;
+			}
+			setBusy(true, "正在上传封面…");
+			var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+			var rel = "/gallery/" + state.selected + "/cover." + ext;
+			readB64(file)
+				.then(function (b64) {
+					if (!b64) throw new Error("读取图片失败。");
+					// ⚠️ 必须带上"已存在封面"的 sha：Contents API 对**已存在**的文件要求 sha，
+					// 否则同一扩展名二次上传会直接 422（早先固定传 "" ⇒ 再传一次 cover.png 就失败，
+					// 传不同扩展名才恰好成功，掩盖了这个问题）。
+					var cpath = PHOTO_DIR + "/" + state.selected + "/cover." + ext;
+					return getFile(c, cpath).then(function (f) {
+						return putFileRaw(
+							c,
+							cpath,
+							b64,
+							f.missing ? "" : f.sha || "",
+							"feat(gallery): 网站端上传相册封面（" + state.selected + "）",
+						);
+					});
+				})
+				.then(function () {
+					// 先写新的、再清理旧封面：避免出现"没有封面的空窗期"。
+					// 同一个相册只应保留一个 cover.*（否则 cover.jpg 与 cover.png 并存，
+					// 上游 getAlbumCover 会取到不确定的那个）。
+					var dir = PHOTO_DIR + "/" + state.selected;
+					var keep = ("cover." + ext).toLowerCase();
+					return listDir(c, dir)
+						.then(function (entries) {
+							var olds = (entries || []).filter(function (x) {
+								return (
+									x &&
+									x.type === "file" &&
+									COVER_RE.test(x.name) &&
+									String(x.name).toLowerCase() !== keep
+								);
+							});
+							return olds.reduce(function (p, f) {
+								return p.then(function () {
+									return deleteFile(
+										c,
+										f.path,
+										f.sha,
+										"chore(gallery): 清理旧封面（" + state.selected + "）",
+									);
+								});
+							}, Promise.resolve());
+						})
+						.catch(function () {
+							/* 清理失败不阻断封面设置 */
+						});
+				})
+				.then(function () {
+					state.albums[idx].cover = rel;
+					return commitConfig(
+						c,
+						"feat(gallery): 网站端设置相册封面（" + state.selected + "）",
+					);
+				})
+				.then(function () {
+					setBusy(false);
+					showMsg("封面已更新 ✓", "success");
+					render();
+					if (state.tab === "photos") reloadPhotos();
+				})
+				.catch(function (e) {
+					setBusy(false);
+					showMsg(e.message || "封面上传失败，请重试。", "error");
+				});
+		}
+
+		/* ═══════════════ 编辑态切换 ═══════════════ */
+
+		function enterEdit() {
+			if (state.editing !== null) return;
+			if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
+			if (!state.selected) {
+				showMsg("请先选择或新建一个相册。", "warn");
+				return;
+			}
+			state.editing = state.selected;
+			state.saved = JSON.parse(JSON.stringify(state.albums));
+			state.dirty = false;
+			state.idTouched = false;
+			render();
+			var el = fieldEl("name");
+			if (el) {
+				try {
+					el.focus({ preventScroll: true });
+				} catch (e) {
+					/* ignore */
+				}
+			}
+			hideMsg();
+		}
+
+		// 取消编辑（有未提交改动时先确认；沿用动态编辑器那套确认框逻辑）
+		function cancelEdit() {
+			if (state.editing === null) return;
+			if (state.dirty) {
+				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					okText: "确定",
+					cancelText: "取消",
+					kind: "warning",
+				})				.then(function (ok) {
+					if (!ok) return;
+					restoreSaved();
+					state.editing = null;
+					clearPendingCover();
+					render();
+					hideMsg();
+				});
+				return;
+			}
+			state.editing = null;
+			clearPendingCover();
+			render();
+			hideMsg();
+		}
+
+		/* ═══════════════ 事件绑定 ═══════════════ */
+
+		// 信息面板：编辑态下点封面 = 上传封面（只读态不可点）
+		if (coverPreviewEl)
+			coverPreviewEl.addEventListener("click", function () {
+				// 编辑态才可点；新建态也能选（选中后先暂存，提交时随相册一起上传）
+				if (state.editing === null || state.busy) return;
+				if (coverInputEl) coverInputEl.click();
+			});
+		if (coverInputEl)
+			coverInputEl.addEventListener("change", function () {
+				pickCover(coverInputEl.files && coverInputEl.files[0]);
+				coverInputEl.value = "";
+			});
+
+		// 左列导航：点一项即选中（编辑中有未提交改动时会被拦住并提示）
+		if (navEl) {
+			navEl.addEventListener("click", function (e) {
+				var item = e.target.closest ? e.target.closest("[data-nav]") : null;
+				if (!item) return;
+				selectAlbum(item.getAttribute("data-nav") || "");
+			});
+		}
+		if (searchEl) searchEl.addEventListener("input", renderNav);
+
+		if (tabInfoEl)
+			tabInfoEl.addEventListener("click", function () {
+				setTab("info");
+			});
+		if (tabPhotosEl)
+			tabPhotosEl.addEventListener("click", function () {
+				setTab("photos");
+			});
+
+		// Tab 栏右侧操作区（按钮由 applyActions 动态生成 ⇒ 绑在容器上做委托）
+		if (actionsEl) {
+			actionsEl.addEventListener("click", function (e) {
+				var btn = e.target.closest ? e.target.closest("button[data-act]") : null;
+				if (!btn) return;
+				var act = btn.getAttribute("data-act");
+				if (act === "edit") enterEdit();
+				else if (act === "cancel") cancelEdit();
+				else if (act === "save") saveInfo();
+				else if (act === "reload") {
+					showMsg("正在刷新照片列表…", "info");
+					state.loadedFor = state.selected; // 手动刷新 ⇒ 记成"已加载过"
+					reloadPhotos();
+					loadUrls();
+				}
+			});
+		}
+
+		// 信息面板：任何输入 / 切换都算"有未提交改动"
+		if (panelInfoEl) {
+			panelInfoEl.addEventListener("input", function (e) {
+				if (state.editing !== null) state.dirty = true;
+				var t = e.target;
+				if (!t || !t.getAttribute) return;
+				var f = t.getAttribute("data-f");
+				// 相册 ID 默认跟随「相册名称」自动生成；用户一旦手动改过 ID 就不再跟随
+				if (f === "id") {
+					state.idTouched = true;
+					return;
+				}
+				if (f === "name" && !state.idTouched) {
+					var idEl = fieldEl("id");
+					if (idEl) idEl.value = slugifyAlbumId(t.value);
+				}
+			});
+			panelInfoEl.addEventListener("change", function () {
+				if (state.editing !== null) state.dirty = true;
+			});
+		}
+
+		if (btnAdd)
+			btnAdd.addEventListener("click", function () {
+				if (state.busy || state.editing !== null) return;
+				state.saved = JSON.parse(JSON.stringify(state.albums));
+				state.editing = "";
+				state.selected = "";
+				state.photoFiles = [];
+				state.remotePhotos = [];
+				state.dirty = false;
+				state.idTouched = false;
+				state.tab = "info";
+				state.urlsSha = "";
+				state.loadedFor = "";
+				// 清掉上一次新建遗留的暂存封面
+				if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
+				state.pendingCoverFile = null;
+				state.pendingCoverUrl = "";
+				if (urlsEl) urlsEl.value = "";
+				render();
+				hideMsg();
+			});
+
+		if (btnDelAlbum)
+			btnDelAlbum.addEventListener("click", function () {
+				var a = currentAlbum();
+				if (a) deleteAlbum(a);
+			});
+
+		if (btnDone)
+			btnDone.addEventListener("click", function () {
+				requestClose(false);
+			});
+		if (btnOpen) btnOpen.addEventListener("click", openModal);
+
+		var btnClose = document.getElementById("ge-close");
+		if (btnClose)
+			btnClose.addEventListener("click", function () {
+				requestClose(false);
+			});
+		if (mask)
+			mask.addEventListener("click", function (e) {
+				if (e.target === mask) requestClose(false);
+			});
+
+		var msgClose = document.getElementById("ge-msg-close");
+		if (msgClose)
+			msgClose.addEventListener("click", function () {
+				hideMsg();
+			});
+
+		/* 上传弹窗 */
+		if (btnUploadDone)
+			btnUploadDone.addEventListener("click", function () {
+				closeUpload(false);
+			});
+		if (btnUploadClose)
+			btnUploadClose.addEventListener("click", function () {
+				closeUpload(false);
+			});
+		if (uploadEl)
+			uploadEl.addEventListener("click", function (e) {
+				if (e.target === uploadEl) closeUpload(false);
+			});
+		if (dropzoneEl)
+			dropzoneEl.addEventListener("click", function () {
+				fileInputEl.click();
+			});
+		if (fileInputEl)
+			fileInputEl.addEventListener("change", function () {
+				uploadFiles(fileInputEl.files);
+				fileInputEl.value = "";
+			});
+		if (dropzoneEl) {
+			dropzoneEl.addEventListener("dragover", function (e) {
+				e.preventDefault();
+				dropzoneEl.classList.add("border-(--primary)");
+			});
+			dropzoneEl.addEventListener("dragleave", function () {
+				dropzoneEl.classList.remove("border-(--primary)");
+			});
+			dropzoneEl.addEventListener("drop", function (e) {
+				e.preventDefault();
+				dropzoneEl.classList.remove("border-(--primary)");
+				if (e.dataTransfer && e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
+			});
+		}
+
+		// 图片网格：委托（「＋ 添加图片」/ ★ 设为封面 / 🗑 删除）
+		if (photoGridEl)
+			photoGridEl.addEventListener("click", function (e) {
+				var up = e.target.closest ? e.target.closest('[data-act="upload"]') : null;
+				if (up) {
+					openUpload();
+					return;
+				}
+				var btn = e.target.closest ? e.target.closest("button[data-photo-act]") : null;
+				if (!btn) return;
+				var src = btn.getAttribute("data-src") || "";
+				if (btn.getAttribute("data-photo-act") === "del") {
+					deletePhoto(
+						src,
+						btn.getAttribute("data-key") || "",
+						btn.getAttribute("data-remote") === "1",
+					);
+				} else {
+					setCover(src);
+				}
+			});
+		if (btnSaveUrls) btnSaveUrls.addEventListener("click", saveUrls);
+
+		if (confirmOkBtn)
+			confirmOkBtn.addEventListener("click", function () {
+				settleConfirm(true);
+			});
+		if (confirmCancelBtn)
+			confirmCancelBtn.addEventListener("click", function () {
+				settleConfirm(false);
+			});
+		if (confirmEl)
+			confirmEl.addEventListener("click", function (e) {
+				if (e.target === confirmEl) settleConfirm(false);
+			});
+
+		// Esc 的优先顺序：确认框 → 上传弹窗 → 取消编辑 → 关闭主弹窗
+		function onKeydown(e) {
+			if (e.key !== "Escape") return;
+			if (confirmEl && !confirmEl.classList.contains("hidden")) {
+				settleConfirm(false);
+				return;
+			}
+			if (uploadEl && !uploadEl.classList.contains("hidden")) {
+				closeUpload(false);
+				return;
+			}
+			if (!mask || mask.classList.contains("hidden")) return;
+			if (state.editing !== null) {
+				cancelEdit();
+				return;
+			}
+			requestClose(false);
+		}
+
+		/* ═══════════════ 可见性 + 首屏快照 + swup 重入 ═══════════════ */
+
+		function initVisibility() {
+			if (!btnOpen) return;
+			var c = cfg();
+			var force = /[?&]manage=1\b/.test(window.location.search);
+			if (!c.token && !force) return;
+			btnOpen.classList.remove("hidden");
+			btnOpen.classList.add("inline-flex");
+		}
+
+		function bootstrap() {
+			var raw = root.getAttribute("data-albums") || "[]";
+			try {
+				var arr = JSON.parse(raw);
+				state.albums = (Array.isArray(arr) ? arr : []).map(normalizeAlbum);
+				state.saved = JSON.parse(JSON.stringify(state.albums));
+			} catch (e) {
+				state.albums = [];
+			}
+			state.editing = null;
+			state.dirty = false;
+			// 各相册张数（服务端构建时扫目录算好）⇒ 左列每项显示用
+			try {
+				var counts = JSON.parse(root.getAttribute("data-photo-counts") || "{}");
+				state.photoCounts = counts && typeof counts === "object" ? counts : {};
+			} catch (e) {
+				state.photoCounts = {};
+			}
+			if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
+			render();
+		}
+
+		// 【swup 重入】先拿走并执行上一次登记的清理（必须在本次重新登记之前，否则会清掉自己刚建的状态）
+		var prevCleanup = window.__geCleanup;
+		if (typeof prevCleanup === "function") {
+			try {
+				prevCleanup();
+			} catch (e) {
+				/* ignore */
+			}
+		}
+		window.__geCleanup = null;
+
+		// 浮层挂到 body（站点卡片祖先带 transform/backdrop-filter 时 fixed 会相对该祖先定位而错位）
+		if (mask && mask.parentNode !== document.body) document.body.appendChild(mask);
+		if (uploadEl && uploadEl.parentNode !== document.body) document.body.appendChild(uploadEl);
+		if (confirmEl && confirmEl.parentNode !== document.body) document.body.appendChild(confirmEl);
+
+		bootstrap();
+		initVisibility();
+		if (!window.__geKeydownBound) {
+			document.addEventListener("keydown", onKeydown);
+			window.__geKeydownBound = true;
+		}
+
+		/**
+		 * 彻底收拾：解绑键盘监听、复位滚动锁、把浮层从 body 上移除。
+		 * 两个调用点：
+		 *  ① 本组件脚本被重放之前（swup 的 scripts-plugin 会重放内联脚本）；
+		 *  ② **切到没有本组件的页面时**（见 bindSwup）—— 这一点早先漏了，
+		 *     导致离开相册页后 3 个隐藏浮层一直挂在 body 上（无头浏览器实测残留）。
+		 */
+		function teardown() {
+			window.__geKeydownBound = false;
+			try {
+				document.removeEventListener("keydown", onKeydown);
+			} catch (e) {
+				/* ignore */
+			}
+			while (scrollLockCount > 0) unlockPageScroll();
+			if (mask && mask.parentNode) mask.parentNode.removeChild(mask);
+			if (uploadEl && uploadEl.parentNode) uploadEl.parentNode.removeChild(uploadEl);
+			if (confirmEl && confirmEl.parentNode) confirmEl.parentNode.removeChild(confirmEl);
+			confirmResolve = null;
+		}
+
+		// 登记清理入口（供下一次脚本重放时兜底；必须在末尾登记）
+		window.__geCleanup = teardown;
+
+		function bindSwup() {
+			if (window.__geSwupHooked) return true;
+			if (!window.swup || !window.swup.hooks) return false;
+			window.swup.hooks.on("content:replace", function () {
+				adoptDialog();
+				if (!document.getElementById("ge-root")) {
+					// 切走了：先复位状态，再把浮层等一切本组件的东西从页面上清理干净
+					doClose();
+					teardown();
+					return;
+				}
+				// 仍在本页：入口是新元素，需要重新判定可见性
+				refreshRefs();
+				initVisibility();
+			});
+			window.__geSwupHooked = true;
+			return true;
+		}
+
+		/** 接管文档里最新的那份浮层（swup 重放会带来新 DOM），并删掉重复 */
+		function adoptDialog() {
+			var masks = document.querySelectorAll("#ge-mask");
+			var confs = document.querySelectorAll("#ge-confirm");
+			var ups = document.querySelectorAll("#ge-upload");
+			var m = masks.length ? masks[masks.length - 1] : null;
+			var c = confs.length ? confs[confs.length - 1] : null;
+			var u = ups.length ? ups[ups.length - 1] : null;
+			var i;
+			for (i = 0; i < masks.length - 1; i++) {
+				if (masks[i].parentNode) masks[i].parentNode.removeChild(masks[i]);
+			}
+			for (i = 0; i < confs.length - 1; i++) {
+				if (confs[i].parentNode) confs[i].parentNode.removeChild(confs[i]);
+			}
+			for (i = 0; i < ups.length - 1; i++) {
+				if (ups[i].parentNode) ups[i].parentNode.removeChild(ups[i]);
+			}
+			var docM = document.getElementById("ge-mask");
+			var docC = document.getElementById("ge-confirm");
+			var docU = document.getElementById("ge-upload");
+			if (docM && docM.parentNode !== document.body) document.body.appendChild(docM);
+			if (docU && docU.parentNode !== document.body) document.body.appendChild(docU);
+			if (docC && docC.parentNode !== document.body) document.body.appendChild(docC);
+			m = m || docM;
+			c = c || docC;
+			u = u || docU;
+			if (m) mask = m;
+			if (c) confirmEl = c;
+			if (u) uploadEl = u;
+			if (mask) {
+				var oc = mask.querySelector("#ge-close");
+				if (oc) {
+					oc.onclick = null;
+					oc.addEventListener("click", function () {
+						requestClose(false);
+					});
+				}
+			}
+			if (uploadEl) {
+				var uc = uploadEl.querySelector("#ge-upload-close");
+				var ud = uploadEl.querySelector("#ge-upload-done");
+				var uq = uploadEl.querySelector("#ge-upload-queue");
+				var uf = uploadEl.querySelector("#ge-file-input");
+				var uz = uploadEl.querySelector("#ge-dropzone");
+				var us = uploadEl.querySelector("#ge-urls");
+				var ub = uploadEl.querySelector("#ge-save-urls");
+				var ut = uploadEl.querySelector("#ge-upload-sub");
+				if (uq) queueEl = uq;
+				if (uf) fileInputEl = uf;
+				if (uz) dropzoneEl = uz;
+				if (us) urlsEl = us;
+				if (ub) btnSaveUrls = ub;
+				if (ut) uploadSubEl = ut;
+				if (uc)
+					uc.addEventListener("click", function () {
+						closeUpload(false);
+					});
+				if (ud)
+					ud.addEventListener("click", function () {
+						closeUpload(false);
+					});
+			}
+			if (confirmEl) {
+				confirmOkBtn = confirmEl.querySelector("#ge-confirm-ok") || confirmOkBtn;
+				confirmCancelBtn = confirmEl.querySelector("#ge-confirm-cancel") || confirmCancelBtn;
+				confirmIconEl = confirmEl.querySelector("#ge-confirm-icon") || confirmIconEl;
+				confirmTitleEl = confirmEl.querySelector("#ge-confirm-title") || confirmTitleEl;
+				confirmTextEl = confirmEl.querySelector("#ge-confirm-text") || confirmTextEl;
+				confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+			}
+		}
+
+		/** 重新取入口按钮引用（swup 切页后是新元素） */
+		function refreshRefs() {
+			root = document.getElementById("ge-root") || root;
+			var fresh = document.getElementById("ge-open");
+			if (fresh && fresh !== btnOpen) {
+				btnOpen = fresh;
+				if (!btnOpen.__geBound) {
+					btnOpen.__geBound = true;
+					btnOpen.addEventListener("click", openModal);
+				}
+			}
+		}
+
+		if (!bindSwup()) {
+			document.addEventListener(
+				"swup:enable",
+				function () {
+					bindSwup();
+				},
+				{ once: true },
+			);
+		}
+	})();
+</script>

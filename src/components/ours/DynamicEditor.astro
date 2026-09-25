@@ -138,14 +138,14 @@ const initialJson = JSON.stringify(items);
 			<!-- 内容（独立滚动）：列表 + 可移动的内联编辑块（#de-editor 会被搬进正在编辑的那张卡片） -->
 			<div
 				id="de-body"
-				class="de-scroll min-h-0 grow overflow-y-auto px-5 py-4"
+				class="de-scroll flex h-[380px] grow flex-col overflow-y-auto px-5 py-4"
 				style="overscroll-behavior: contain;"
 			>
 				<!-- 动态列表（每张卡片由脚本渲染，编辑控件直接渲染在各卡片内部） -->
 				<div id="de-list" class="flex flex-col gap-2.5"></div>
 				<div
 					id="de-empty"
-					class="hidden flex-col items-center justify-center py-10 text-center text-sm text-neutral-400 dark:text-neutral-500"
+					class="hidden grow flex-col items-center justify-center text-center text-sm text-neutral-400 dark:text-neutral-500"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -1622,8 +1622,14 @@ const initialJson = JSON.stringify(items);
 
 		/* ───────────── swup 重入 ───────────── */
 
-		// 登记清理入口（供脚本重放时兜底，见文件开头）
-		window.__deCleanup = function () {
+		/**
+		 * 彻底收拾：解绑键盘监听、复位滚动锁、把浮层从 body 上移除。
+		 * 两个调用点：
+		 *  ① 本组件脚本被重放之前（见文件开头）；
+		 *  ② **切到没有本组件的页面时**（见 bindSwupHooks）—— 这一点早先漏了，
+		 *     导致离开动态页后浮层一直挂在 body 上（无头浏览器实测残留）。
+		 */
+		function teardown() {
 			window.__deKeydownBound = false;
 			try {
 				document.removeEventListener("keydown", onKeydown);
@@ -1636,7 +1642,10 @@ const initialJson = JSON.stringify(items);
 				var el = document.getElementById(id);
 				if (el && el.parentNode === document.body) el.parentNode.removeChild(el);
 			});
-		};
+		}
+
+		// 登记清理入口（供脚本重放时兜底，见文件开头）
+		window.__deCleanup = teardown;
 
 		// 【swup 重入 · 正式处理】两步：
 		//   ① adoptDialog：接管"当前文档里最新的那份弹窗"。重放会在容器里带来新的一份 DOM，而闭包
@@ -1709,9 +1718,11 @@ const initialJson = JSON.stringify(items);
 			if (!window.swup || !window.swup.hooks) return false;
 			window.swup.hooks.on("content:replace", function () {
 				adoptDialog(); // 先接管文档里最新的那份弹窗（并删掉重复），保证引用一致
-				// 切到没有本组件的页面时，只需把弹窗关掉，不必重绑入口
+				// 切到没有本组件的页面时：关掉弹窗，并**把浮层/监听一并收拾掉**，
+				// 不留空壳在 body 上（不必重绑入口）
 				if (!document.getElementById("de-root")) {
 					doClose();
+					teardown();
 					return;
 				}
 				attachEntry();
