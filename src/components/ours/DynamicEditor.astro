@@ -168,13 +168,23 @@ const initialJson = JSON.stringify(items);
 				id="de-foot-list"
 				class="flex shrink-0 flex-col gap-2 border-t border-(--line-divider) px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
 			>
-				<button
-					id="de-add"
-					type="button"
-					class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
-				>
-					+ 添加动态
-				</button>
+				<div class="flex items-center gap-2">
+					<button
+						id="de-add"
+						type="button"
+						class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
+					>
+						+ 添加动态
+					</button>
+					<!-- [OURS] 唯一的主动拉取入口：打开弹窗走页面内嵌快照（零请求），需要同步仓库时点这里 -->
+					<button
+						id="de-refresh"
+						type="button"
+						class="rounded-xl border border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+					>
+						刷新
+					</button>
+				</div>
 				<button
 					id="de-cancel"
 					type="button"
@@ -403,6 +413,7 @@ const initialJson = JSON.stringify(items);
 		var msgCloseBtn = document.getElementById("de-msg-close");
 		var msgTextEl = document.getElementById("de-msg-text");
 		var btnAdd = document.getElementById("de-add");
+		var btnRefresh = document.getElementById("de-refresh");
 		var btnCancel = document.getElementById("de-cancel");
 		var btnClose = document.getElementById("de-close");
 
@@ -668,6 +679,9 @@ const initialJson = JSON.stringify(items);
 		function normalizeItem(raw) {
 			return {
 				file: String(raw.file == null ? "" : raw.file),
+				// ⚠️ sha 必须保留：readOne() 的**返回值**要带它，doSave / doDelete 靠它提交。
+				// （它随条目一起存进 state.items，但 state.items 里的这份没人读 —— 每次
+				//   编辑/删除都是 readOne() **当场取**，所以并发安全。）
 				sha: String(raw.sha == null ? "" : raw.sha),
 				published: String(raw.published == null ? "" : raw.published),
 				pinned: !!raw.pinned,
@@ -741,22 +755,33 @@ const initialJson = JSON.stringify(items);
 		}
 
 		function handleWrite(res, label) {
-			if (res.status === 401) throw new Error("Token 无效或已过期，请到编辑器页更新后再试。");
-			if (res.status === 403)
-				throw new Error("Token 权限不足（需要该仓库的 Contents 读写权限）。");
+			var th = tokenHint(res);
+			if (th) throw new Error(th);
 			if (res.status === 409 || res.status === 422)
 				throw new Error("文件已在别处被改动，请点「重新读取」后再提交。");
 			if (!res.ok) {
 				return res.json().then(
 					function (err) {
-						throw new Error(label + "失败：" + (err.message || "HTTP " + res.status));
+						throw new Error(label + "失败：" + (err.message || "请重试。"));
 					},
 					function () {
-						throw new Error(label + "失败（HTTP " + res.status + "）");
+						throw new Error(label + "失败，请重试。");
 					},
 				);
 			}
 			return res.json();
+		}
+
+		/**
+		 * GitHub API 失败的**全站统一**提示 —— 只分两类（相册 / 友链 / 动态三个编辑器同一套口径）：
+		 *  ① Token 类（401 / 403）⇒ 返回**唯一那一句**（用户只需去更新 Token）；
+		 *  ② 其它（404 / 409 / 5xx / 网络）⇒ 返回 ""，由调用方补上动作名。
+		 * 早先 readOne 一律抛 "HTTP 401"，上层又把原因吞成 readError ⇒ 删除时**误报"动态已找不到"**。
+		 */
+		function tokenHint(res) {
+			if (res.status === 401 || res.status === 403)
+				return "Token 无效或已过期，请到编辑器页更新后再试。";
+			return "";
 		}
 
 		// 列出目录下的全部 .md（含 sha）。目录不存在（Git 不跟踪空目录）返回 404 ⇒ 视为空列表。
@@ -773,14 +798,19 @@ const initialJson = JSON.stringify(items);
 				{ headers: apiHeaders(c.token), cache: "no-store" },
 			).then(function (res) {
 				if (res.status === 404) return [];
-				if (!res.ok) return handleWrite(res, "读取目录");
+				// ⚠️ 这是**读操作**，不能借写操作的 handleWrite（否则 500 会报"读取目录失败"，
+				// 与另两个编辑器的口径不一致）
+				if (!res.ok)
+					return Promise.reject(
+						new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。"),
+					);
 				return res.json().then(function (data) {
 					return (Array.isArray(data) ? data : [])
 						.filter(function (f) {
 							return f && f.type === "file" && /\.md$/i.test(f.name || "");
 						})
 						.map(function (f) {
-							return { file: f.name, sha: f.sha };
+							return { file: f.name };
 						});
 				});
 			});
@@ -798,7 +828,8 @@ const initialJson = JSON.stringify(items);
 				{ headers: apiHeaders(c.token), cache: "no-store" },
 			)
 				.then(function (res) {
-					if (!res.ok) throw new Error("HTTP " + res.status);
+					if (!res.ok)
+						throw new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。");
 					return res.json();
 				})
 				.then(function (data) {
@@ -808,7 +839,7 @@ const initialJson = JSON.stringify(items);
 					var parsed = parseDynamic(text);
 					return normalizeItem({
 						file: entry.file,
-						sha: data.sha || entry.sha,
+						sha: data.sha || "",
 						published: parsed.published,
 						pinned: parsed.pinned,
 						location: parsed.location,
@@ -817,12 +848,15 @@ const initialJson = JSON.stringify(items);
 						readError: false,
 					});
 				})
-				.catch(function () {
-					return normalizeItem({
+				.catch(function (e) {
+					// ⚠️ 保留失败原因：上层据此给出可行动的提示（只有两类 —— Token 类 / 点刷新重试），
+					// 而不是笼统的"读取失败"，那会让用户误判成"文件已丢失"。
+					var item = normalizeItem({
 						file: entry.file,
-						sha: entry.sha,
 						readError: true,
 					});
+					item.readErrorMsg = (e && e.message) || "读取失败，请点「刷新」后重试。";
+					return item;
 				});
 		}
 
@@ -1209,28 +1243,34 @@ const initialJson = JSON.stringify(items);
 				.then(function (items) {
 					// 用户在等待期间已开始编辑 ⇒ 不要用远端数据覆盖，避免吞掉刚落下的改动
 					if (state.dirty) return;
+					// ⚠️ 必须用 items（readOne 的原始返回）来判断读失败原因 ——
+					// 下面 normalizeItem 是**白名单**，会顺手把 readErrorMsg 过滤掉。
+					var allFailed =
+						items.length > 0 &&
+						items.every(function (x) {
+							return x.readError;
+						});
+					var failMsg = allFailed
+						? items[0].readErrorMsg || "读取失败，请点「刷新」后重试。"
+						: "";
 					var pulled = sortItems(items.map(normalizeItem));
-					// 与当前列表（通常来自服务端首屏快照）内容一致时：只补 sha，**不重绘**。
+					// 与当前列表（通常来自服务端首屏快照）内容一致时**不重绘**。
 					// 整体 innerHTML 重建会造成瞬时空帧，是"打开时抖一下"的加重因素。
 					var same = sameData(pulled, state.items);
-					if (same) {
-						// sha 只有远端有，必须补上，否则随后的编辑 / 删除会因 sha 缺失被拒
-						for (var i = 0; i < pulled.length; i++) {
-							if (state.items[i]) state.items[i].sha = pulled[i].sha;
-						}
-					} else {
-						state.items = pulled;
-					}
+					if (!same) state.items = pulled;
 					state.loaded = true;
 					markSaved();
 					if (same) setSubtitle();
 					else render();
 					hideMsg();
+					// 全部条目都读失败（多为 Token 过期 / 网络异常）⇒ 明确说一次原因，
+					// 否则界面只是"每条都不可编辑"，用户不知道问题在哪，还会以为动态丢了。
+					if (failMsg) showMsg(failMsg, "error");
 				})
 				.catch(function (e) {
 					state.loaded = true;
 					setSubtitle();
-					showMsg(e.message || "读取失败，请重试。", "error");
+					showMsg(e.message || "读取失败，请点「刷新」后重试。", "error");
 				});
 		}
 
@@ -1249,7 +1289,8 @@ const initialJson = JSON.stringify(items);
 				/* ignore */
 			}
 			if (state.saved) restoreSaved();
-			loadFromRemote();
+			// ⚠️ 打开弹窗**不再自动拉远端**：列表首屏用页面内嵌的快照（editorSeed，含正文）渲染
+			// ⇒ 零请求、秒开。需要与仓库同步时点底部的「刷新」。
 		}
 
 		// 直接关闭：无动画（不做位移/缩放过渡，也不延迟隐藏）
@@ -1297,14 +1338,26 @@ const initialJson = JSON.stringify(items);
 				showMsg("保存前自检未通过：「" + bad + "」读回后与填写不一致，已阻止提交。", "error");
 				return;
 			}
-			var prev = isEdit ? findItem(state.editing) : null;
 			setBusy(true, isEdit ? "正在提交修改…" : "正在发布…");
-			putFile(
-				item.file,
-				text,
-				prev && prev.sha ? prev.sha : "",
-				commitMessage(isEdit ? "update" : "create", item.published),
-			)
+			// ⚠️ 内嵌快照里**没有 sha** ⇒ 修改已存在的文件时**当场取**（新建才不需要 sha）。
+			// 不能再用 item.sha（那是预拉列表才有的）。
+			var shaPromise = isEdit
+				? readOne({ file: item.file }).then(function (r) {
+						// 用 readOne 带回的原因（只有两种：Token 类 / 其它）
+						if (r.readError)
+							throw new Error(r.readErrorMsg || "读取失败，请点「刷新」后重试。");
+						return r.sha || "";
+					})
+				: Promise.resolve("");
+			shaPromise
+				.then(function (sha) {
+					return putFile(
+						item.file,
+						text,
+						sha,
+						commitMessage(isEdit ? "update" : "create", item.published),
+					);
+				})
 				.catch(function (e) {
 					// 新建时无 sha：若撞上同名文件，GitHub 会返回 409/422 ⇒ 换成更准确的提示
 					if (!isEdit && /409|422|被改动/.test(String(e.message)))
@@ -1320,7 +1373,6 @@ const initialJson = JSON.stringify(items);
 					}
 					var next = normalizeItem({
 						file: item.file,
-						sha: (prev && prev.sha) || (idx >= 0 ? state.items[idx].sha : ""),
 						published: item.published,
 						pinned: item.pinned,
 						location: item.location,
@@ -1336,18 +1388,8 @@ const initialJson = JSON.stringify(items);
 					markSaved();
 					render();
 					showMsg((isEdit ? "已提交修改" : "已提交") + " ✓", "success");
-					// 提交后 sha 会变：静默重拉一次目录，保证后续「编辑 / 删除」用的是最新 sha
-					listRemote()
-						.then(function (entries) {
-							for (var i = 0; i < entries.length; i++) {
-								var local = findItem(entries[i].file);
-								if (local) local.sha = entries[i].sha;
-							}
-							markSaved();
-						})
-						.catch(function () {
-							/* 静默失败：下次打开弹窗会重新读取 */
-						});
+					// 快照模式下**不再需要预存 sha**（提交 / 删除都在操作时当场取）⇒
+					// 这里原来那次"静默重拉目录拿新 sha"已经多余，去掉可少一轮 N 个请求。
 				})
 				.catch(function (e) {
 					showMsg(e.message || "提交失败，请重试。", "error");
@@ -1366,7 +1408,15 @@ const initialJson = JSON.stringify(items);
 			).then(function (ok) {
 				if (!ok) return;
 				setBusy(true, "正在删除…");
-				deleteFile(it.file, it.sha, commitMessage("destroy", it.published))
+				// ⚠️ 内嵌快照里**没有 sha** ⇒ 当场取；文件已不在（快照过期）时给可行动提示
+				readOne({ file: it.file })
+					.then(function (r) {
+						// 提示只有两类（见 httpFailHint）：读失败 ⇒ 用 readOne 带回的原因；
+						// 200 但没 sha 属极罕见，归到同一句"点刷新重试"即可。
+						if (r.readError || !r.sha)
+							throw new Error(r.readErrorMsg || "读取失败，请点「刷新」后重试。");
+						return deleteFile(it.file, r.sha, commitMessage("destroy", it.published));
+					})
 					.then(function () {
 						state.items = state.items.filter(function (x) {
 							return x.file !== it.file;
@@ -1512,6 +1562,12 @@ const initialJson = JSON.stringify(items);
 			});
 			bindOnce(btnCancel, "click", function () {
 				closeModal(false);
+			});
+			bindOnce(btnRefresh, "click", function () {
+				// 「刷新」：唯一主动拉取入口（打开弹窗走内嵌快照，零请求）
+				if (state.busy) return;
+				showMsg("正在从仓库刷新…", "info");
+				loadFromRemote();
 			});
 		bindOnce(btnAdd, "click", function () {
 			// 已有编辑中的卡片：先让它提交或取消，避免未提交内容被静默丢弃
@@ -1698,6 +1754,7 @@ const initialJson = JSON.stringify(items);
 				msgCloseBtn = mask.querySelector("#de-msg-close") || msgCloseBtn;
 				msgTextEl = mask.querySelector("#de-msg-text") || msgTextEl;
 				btnAdd = mask.querySelector("#de-add") || btnAdd;
+			btnRefresh = mask.querySelector("#de-refresh") || btnRefresh;
 				btnCancel = mask.querySelector("#de-cancel") || btnCancel;
 				btnClose = mask.querySelector("#de-close") || btnClose;
 			}

@@ -34,11 +34,19 @@ interface Props {
 	 * 运行时上传/删除照片后，由前端 reloadPhotos() 就地刷新对应项。
 	 */
 	photoCounts?: Record<string, number>;
+	/**
+	 * 构建时内嵌的**照片清单**：id → { files: 本地图片文件名[], urls: 外链[] }。
+	 * 编辑器读取全部走这份快照 ⇒ 打开弹窗 / 切 Tab / 切相册**零请求**、照片秒出图；
+	 * 只有写操作（上传 / 删除 / 改配置 / 外链）才调 GitHub API（需要 sha 的当场获取）。
+	 * 快照是"上次构建时"的状态，与仓库不一致时点「刷新」手动同步。
+	 */
+	photoManifest?: Record<string, { files: string[]; urls: string[] }>;
 }
 
-const { items = [], photoCounts = {} } = Astro.props;
+const { items = [], photoCounts = {}, photoManifest = {} } = Astro.props;
 const initialJson = JSON.stringify(items);
 const initialCountsJson = JSON.stringify(photoCounts);
+const initialManifestJson = JSON.stringify(photoManifest);
 ---
 
 <div
@@ -46,6 +54,7 @@ const initialCountsJson = JSON.stringify(photoCounts);
 	class="flex shrink-0 items-center"
 	data-albums={initialJson}
 	data-photo-counts={initialCountsJson}
+	data-photo-manifest={initialManifestJson}
 	data-config-path="src/config/ours/gallery-albums.json"
 	data-photo-dir="public/gallery"
 >
@@ -380,9 +389,10 @@ const initialCountsJson = JSON.stringify(photoCounts);
 						<div
 							id="ge-photo-empty"
 							class="hidden grow flex-col items-center justify-center text-center text-xs text-neutral-400 dark:text-neutral-500"
-						>
-							这个相册还没有照片
-						</div>
+							>
+							<!-- 文案由脚本切换：真的没照片 ↔ 快照里没有这个相册的数据 -->
+							<span data-empty-text>这个相册还没有照片</span>
+							</div>
 					</div>
 				</div>
 			</div>
@@ -879,10 +889,12 @@ aria-labelledby="ge-confirm-title"
 			pendingCoverUrl: "",
 			photoFiles: [],
 			remotePhotos: [], // urls.txt 里的外链图片地址
-			urlsSha: "",
 			// 左列每项要显示的"张数"：id → 数量。
 			// 构建时由服务端扫目录给出；运行时上传/删除照片后由 reloadPhotos() 就地刷新。
 			photoCounts: {},
+			// 构建时内嵌的**照片清单**：id → { files: 文件名[], urls: 外链[] }。
+			// 读取全部走它 ⇒ 打开弹窗 / 切 Tab / 切相册零请求；写操作后再回写它。
+			photoManifest: {},
 			// 照片/外链数据是"为哪个相册"加载的：切 Tab 时据此跳过重复请求
 			// （点「刷新」按钮、或切换相册后会强制重拉）
 			loadedFor: "",
@@ -1072,12 +1084,25 @@ aria-labelledby="ge-confirm-title"
 			return c;
 		}
 
+		/**
+		 * GitHub API 失败的**全站统一**提示 —— 只分两类（相册 / 友链 / 动态三个编辑器同一套口径）：
+		 *  ① Token 类（401 / 403）⇒ 返回**唯一那一句**（用户只需去更新 Token）；
+		 *  ② 其它（404 / 409 / 5xx / 网络）⇒ 返回 ""，由调用方补上动作名。
+		 * ⚠️ 相册早先**完全没有** 401/403 判断 ⇒ Token 过期时只会显示"读取失败（HTTP 401）"。
+		 */
+		function tokenHint(res) {
+			if (res.status === 401 || res.status === 403)
+				return "Token 无效或已过期，请到编辑器页更新后再试。";
+			return "";
+		}
+
 		function getFile(c, path) {
 			return fetch(contentsUrl(c.repo, path) + "?ref=" + encodeURIComponent(c.branch), {
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
 				if (res.status === 404) return { missing: true, sha: "", content: "" };
-				if (!res.ok) throw new Error("读取失败（HTTP " + res.status + "）");
+				if (!res.ok)
+					throw new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。");
 				return res.json().then(function (j) {
 					return { sha: j.sha || "", content: j.content ? fromB64(j.content) : "", missing: false };
 				});
@@ -1088,7 +1113,8 @@ aria-labelledby="ge-confirm-title"
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
 				if (res.status === 404) return [];
-				if (!res.ok) throw new Error("读取目录失败（HTTP " + res.status + "）");
+				if (!res.ok)
+					throw new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。");
 				return res.json().then(function (j) {
 					return Array.isArray(j) ? j : [];
 				});
@@ -1102,7 +1128,7 @@ aria-labelledby="ge-confirm-title"
 				headers: apiHeaders(c.token),
 				body: JSON.stringify(body),
 			}).then(function (res) {
-				if (!res.ok) throw new Error("写入失败（HTTP " + res.status + "）");
+				if (!res.ok) throw new Error(tokenHint(res) || "提交失败，请重试。");
 				return res.json();
 			});
 		}
@@ -1114,7 +1140,7 @@ aria-labelledby="ge-confirm-title"
 				headers: apiHeaders(c.token),
 				body: JSON.stringify(body),
 			}).then(function (res) {
-				if (!res.ok) throw new Error("上传失败（HTTP " + res.status + "）");
+				if (!res.ok) throw new Error(tokenHint(res) || "上传失败，请重试。");
 				return res.json();
 			});
 		}
@@ -1124,7 +1150,7 @@ aria-labelledby="ge-confirm-title"
 				headers: apiHeaders(c.token),
 				body: JSON.stringify({ message: message, sha: sha, branch: c.branch }),
 			}).then(function (res) {
-				if (!res.ok) throw new Error("删除失败（HTTP " + res.status + "）");
+				if (!res.ok) throw new Error(tokenHint(res) || "删除失败，请重试。");
 				return true;
 			});
 		}
@@ -1430,6 +1456,100 @@ aria-labelledby="ge-confirm-title"
 			return locals.length + (state.remotePhotos || []).length;
 		}
 
+		/* ═══════════════ 内嵌快照（读取零请求） ═══════════════ */
+
+		/**
+		 * 用内嵌快照填充当前相册的照片数据。
+		 * 构造出的条目与 listDir 返回的**同构**（name / path / sha / type），
+		 * 但 **sha 留空** —— 构建时无法预知 sha，需要 sha 的写操作（删照片 / 清空清单）
+		 * 已改为操作时当场获取。
+		 */
+		function applyEmbeddedPhotos() {
+			if (!state.selected) return;
+			var m = state.photoManifest[state.selected];
+			if (!m) {
+				// 快照里没有这个相册（例如刚在网站端建的相册、尚未重新构建）
+				state.photoFiles = [];
+				state.remotePhotos = [];
+				if (urlsEl) urlsEl.value = "";
+				renderPhotoPanel();
+				syncPhotoCount();
+				return;
+			}
+			state.photoFiles = (m.files || []).map(function (name) {
+				return {
+					name: name,
+					path: PHOTO_DIR + "/" + state.selected + "/" + name,
+					sha: "",
+					type: "file",
+				};
+			});
+			state.remotePhotos = (m.urls || []).slice();
+			if (urlsEl) urlsEl.value = state.remotePhotos.join("\n");
+			renderPhotoPanel();
+			syncPhotoCount();
+		}
+
+		/** 确保当前相册的照片数据已就绪（幂等：同一个相册只应用一次） */
+		function ensurePhotoData() {
+			if (!state.selected) return;
+			if (state.loadedFor === state.selected) return;
+			state.loadedFor = state.selected;
+			applyEmbeddedPhotos();
+		}
+
+		/**
+		 * 把当前照片数据回写进内存快照。
+		 * 上传 / 删除 / 刷新之后调用，保证"切到别的相册再切回来"看到的仍是刚操作过的最新状态
+		 * （否则会退回构建时的旧快照）。
+		 */
+		function snapshotCurrent() {
+			if (!state.selected) return;
+			var files = (state.photoFiles || [])
+				.filter(function (f) {
+					return f && IMG_RE.test(f.name) && !COVER_RE.test(f.name);
+				})
+				.map(function (f) {
+					return f.name;
+				});
+			state.photoManifest[state.selected] = {
+				files: files,
+				urls: (state.remotePhotos || []).slice(),
+			};
+		}
+
+		/**
+		 * 重算左列张数（口径与 photoTotal 完全一致）。
+		 * ⚠️ 拉目录（reloadPhotos）与拉外链（loadUrls）是**并行**发出的 ⇒
+		 * 早先只在拉目录成功后算一次，会把"外链还没到"的数字写成最终值且不再自愈；
+		 * 现在两处回调各调一次 ⇒ 无论谁先返回，最终都以"两边都齐"的数据收敛。
+		 */
+		function syncPhotoCount() {
+			if (!state.selected) return;
+			var t = photoTotal();
+			if (state.photoCounts[state.selected] !== t) {
+				state.photoCounts[state.selected] = t;
+				renderNav();
+			}
+		}
+
+		/** 乐观写入快照（上传成功后立刻生效，即使随后的校正请求失败也不丢） */
+		function addManifestFile(albumId, fileName) {
+			if (!albumId || !fileName) return;
+			var m = state.photoManifest[albumId];
+			if (!m) m = state.photoManifest[albumId] = { files: [], urls: [] };
+			if (!m.files) m.files = [];
+			if (m.files.indexOf(fileName) < 0) m.files.push(fileName);
+		}
+
+		/** 从快照移除一个文件名（删除成功后立刻生效） */
+		function removeManifestFile(albumId, fileName) {
+			var m = state.photoManifest[albumId];
+			if (!m || !m.files) return;
+			var i = m.files.indexOf(fileName);
+			if (i >= 0) m.files.splice(i, 1);
+		}
+
 		/** Tab 切换：两个面板互斥显示 + Tab 高亮 */
 		function applyTab() {
 			var isPhotos = state.tab === "photos";
@@ -1514,7 +1634,6 @@ aria-labelledby="ge-confirm-title"
 			clearPendingCover();
 			state.photoFiles = [];
 			state.remotePhotos = [];
-			state.urlsSha = "";
 			state.loadedFor = ""; // 换了相册 ⇒ 照片/外链数据作废，需重新拉
 			if (urlsEl) urlsEl.value = "";
 			if (queueEl) {
@@ -1526,8 +1645,8 @@ aria-labelledby="ge-confirm-title"
 			hideMsg();
 			render();
 			if (state.tab === "photos") {
-				reloadPhotos();
-				loadUrls();
+				// 零请求：直接用内嵌快照渲染（不再 reloadPhotos + loadUrls）
+				ensurePhotoData();
 			}
 		}
 
@@ -1537,14 +1656,8 @@ aria-labelledby="ge-confirm-title"
 			state.tab = tab;
 			// 切过去时补画目标面板（否则 applyTab 只切显隐，面板内容还是旧的）
 			if (tab === "photos") {
-				renderPhotoPanel();
-				// ⚠️ 已经是这个相册的数据就不再重复请求（来回切 Tab 原本每次都发
-				// listDir + getFile 两个请求）；点「刷新」或换相册才会重拉
-				if (state.selected && state.loadedFor !== state.selected) {
-					state.loadedFor = state.selected;
-					reloadPhotos();
-					loadUrls();
-				}
+				// 零请求：内嵌快照渲染（同一个相册只应用一次，来回切 Tab 不发任何请求）
+				ensurePhotoData();
 			} else {
 				renderInfo();
 			}
@@ -1560,7 +1673,7 @@ aria-labelledby="ge-confirm-title"
 			state.tab = "info";
 			state.editing = null;
 			state.dirty = false;
-			// 每次打开都重新拉数据 ⇒ 清掉"已加载"标记与渲染签名缓存
+			// 每次打开都重新应用快照 ⇒ 清掉"已加载"标记与渲染签名缓存
 			state.loadedFor = "";
 			resetRenderCache();
 			// 打开即选中第一个相册（让右侧立刻有内容，而不是空白）
@@ -1568,9 +1681,12 @@ aria-labelledby="ge-confirm-title"
 			render();
 			mask.classList.remove("hidden");
 			mask.classList.add("flex");
+			// ⚠️ 打开弹窗**不发任何请求**（相册列表 / 张数 / 照片清单全部已内嵌）⇒ 秒开。
+			// 需要最新数据时点「刷新」（唯一主动拉取入口）。
 			// ⚠️ 主弹窗**不锁**页面滚动（项目铁律：主弹窗打开时鼠标移出去仍能滚网页）；
 			// 只有"确认框 / 上传弹窗"这类二次浮层才锁。
-			loadFromRemote();
+			if (!cfg().token && subtitleEl)
+				subtitleEl.textContent = "共 " + state.albums.length + " 个相册（只读：未配置 Token）";
 			try {
 				var closeBtn = document.getElementById("ge-close");
 				if (closeBtn) closeBtn.focus({ preventScroll: true });
@@ -1623,7 +1739,8 @@ aria-labelledby="ge-confirm-title"
 			uploadEl.classList.remove("hidden");
 			uploadEl.classList.add("flex");
 			lockPageScroll();
-			loadUrls();
+			// 零请求：外链文本框已由内嵌快照填充（需要最新清单时点「刷新」）
+			ensurePhotoData();
 		}
 
 		function closeUpload(force) {
@@ -1920,27 +2037,28 @@ aria-labelledby="ge-confirm-title"
 				showMsg("请先配置 GitHub Token 后再管理照片。", "error");
 				return;
 			}
-			var dir = PHOTO_DIR + "/" + state.selected;
+			// ⚠️ 捕获发起时的相册：请求返回时用户可能已切走 ⇒ 若不判断，会把 A 相册的
+			// 数据写进 B 相册（污染内存快照与左列张数）。
+			var target = state.selected;
+			if (!target) return;
+			var dir = PHOTO_DIR + "/" + target;
 			return listDir(c, dir)
 				.then(function (entries) {
+					if (target !== state.selected) return; // 已切走 ⇒ 丢弃结果
 					state.photoFiles = (entries || []).filter(function (x) {
 						return x && x.type === "file";
 					});
 					renderPhotoPanel();
-					// 左列张数**只在这里**更新（即"确实成功拿到目录数据"之后）。
-					// ⚠️ 早先写在 renderPhotoPanel() 里 ⇒ 拉取失败或还没拉完时会把服务端给的
-					// 正确数字覆盖成 0（网络抖一下，左列就有照片的相册显示「0 张」，且不会自愈）。
-					var t = photoTotal();
-					if (state.selected && state.photoCounts[state.selected] !== t) {
-						state.photoCounts[state.selected] = t;
-						renderNav();
-					}
+					// 张数与「拉外链」各自收敛一次（早先只在这里算 ⇒ 会把"外链还没到"的数字固化）
+					syncPhotoCount();
+					snapshotCurrent(); // 回写内存快照 ⇒ 切走再切回看到的仍是最新，不会退回旧快照
 					// 封面在"没有 cover 字段"时会回退到第一张照片 ⇒ 照片到齐后要重画封面
 					renderInfo();
 					renderNav();
 				})
 				.catch(function (e) {
-					showMsg(e.message || "读取照片目录失败。", "error");
+					if (target !== state.selected) return;
+					showMsg(e.message || "读取失败，请点「刷新」后重试。", "error");
 				});
 		}
 
@@ -1975,6 +2093,14 @@ aria-labelledby="ge-confirm-title"
 				var noPhotos = total === 0 && !isEditing;
 				photoEmptyEl.classList.toggle("hidden", !noPhotos);
 				photoEmptyEl.classList.toggle("flex", noPhotos);
+				// 快照里没有这个相册（如网站端刚建、尚未重新构建）⇒ 给可行动的引导，
+				// 而不是误导性的"这个相册还没有照片"
+				var emptyTxt = photoEmptyEl.querySelector("[data-empty-text]");
+				if (emptyTxt)
+					emptyTxt.textContent =
+						state.selected && !state.photoManifest[state.selected]
+							? "这里没有该相册的照片数据 —— 点右上「刷新」从仓库读取。"
+							: "这个相册还没有照片";
 			}
 			if (photoHintEl) {
 				// 正常态不显示「共 N 张」（张数已由 Tab 角标体现，这行是冗余信息）；
@@ -2077,19 +2203,26 @@ aria-labelledby="ge-confirm-title"
 
 		function loadUrls() {
 			var c = cfg();
-			if (!c.token || !state.selected) return Promise.resolve();
-			var path = PHOTO_DIR + "/" + state.selected + "/urls.txt";
+			if (!c.token) return Promise.resolve();
+			// 同 reloadPhotos：捕获发起时的相册，返回时若已切走就丢弃，避免串数据
+			var target = state.selected;
+			if (!target) return Promise.resolve();
+			var path = PHOTO_DIR + "/" + target + "/urls.txt";
 			return getFile(c, path)
 				.then(function (f) {
-					state.urlsSha = f.sha || "";
+					if (target !== state.selected) return;
 					var text = f.missing ? "" : f.content;
 					if (urlsEl) urlsEl.value = text;
 					state.remotePhotos = parseRemote(text);
 					renderPhotoPanel();
+					// 外链到齐后同样收敛一次张数（与"拉目录"两路收敛 ⇒ 不再漏算外链）
+					syncPhotoCount();
+					snapshotCurrent();
 				})
 				.catch(function () {
-					// ⚠️ 读取失败**不清理**已有数据（原先会把 urlsSha / 文本 / 外链数组全清空：
-					// 网络抖一下界面上外链就"消失"，且 urlsSha 丢了之后保存会误判成"新建"）。
+					if (target !== state.selected) return;
+					// ⚠️ 读取失败**不清理**已有数据（原先会把外链文本 / 数组全清空 ⇒
+					// 网络抖一下界面上外链就"消失"）。
 					// 保留旧值即可 —— 真正的"没有清单"由 404 分支（f.missing）表达。
 					renderPhotoPanel();
 				});
@@ -2110,21 +2243,22 @@ aria-labelledby="ge-confirm-title"
 						c,
 						path,
 						text + "\n",
-						f.sha || state.urlsSha,
+						f.sha || "",
 						"feat(gallery): 网站端更新外链清单（" + state.selected + "）",
 					);
 				});
-			} else if (state.urlsSha) {
-				chain = deleteFile(
-					c,
-					path,
-					state.urlsSha,
-					"chore(gallery): 网站端清空外链清单（" + state.selected + "）",
-				);
 			} else {
-				setBusy(false);
-				showMsg("清单为空，无需保存。", "info");
-				return;
+				// 清空清单：快照模式下拿不到 sha（构建期无法预知）⇒
+				// 必须**当场取 sha** 才能删掉仓库里的文件
+				chain = getFile(c, path).then(function (f) {
+					if (f.missing || !f.sha) return; // 仓库里本来就没有 ⇒ 无需删
+					return deleteFile(
+						c,
+						path,
+						f.sha,
+						"chore(gallery): 网站端清空外链清单（" + state.selected + "）",
+					);
+				});
 			}
 			chain
 				.then(function () {
@@ -2143,6 +2277,10 @@ aria-labelledby="ge-confirm-title"
 			if (!c) return;
 			var list = Array.prototype.slice.call(files || []);
 			if (!list.length) return;
+			// ⚠️ 捕获发起上传时的相册：上传过程中用户可能切走 ⇒ 若不固定，会把照片写进
+			// 另一个相册的目录（路径用 state.selected 拼的）。
+			var albumId = state.selected;
+			if (!albumId) return;
 			if (queueEl) {
 				queueEl.classList.remove("hidden");
 				queueEl.innerHTML = "";
@@ -2192,7 +2330,7 @@ aria-labelledby="ge-confirm-title"
 							var ext = (f.name.split(".").pop() || "jpg").toLowerCase();
 							var fileName =
 								Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
-							var path = PHOTO_DIR + "/" + state.selected + "/" + fileName;
+							var path = PHOTO_DIR + "/" + albumId + "/" + fileName;
 							return new Promise(function (resolve) {
 								var reader = new FileReader();
 								reader.onload = function () {
@@ -2216,9 +2354,11 @@ aria-labelledby="ge-confirm-title"
 									path,
 									b64,
 									"",
-									"feat(gallery): 网站端上传照片（" + state.selected + "）",
+									"feat(gallery): 网站端上传照片（" + albumId + "）",
 								).then(function () {
 									okCount++;
+									// 乐观写入内存快照 ⇒ 即使随后的校正请求失败，切走再切回也不丢
+									addManifestFile(albumId, fileName);
 									row.insertAdjacentHTML(
 										"beforeend",
 										'<span class="shrink-0 text-[11px] text-green-600">已上传</span>',
@@ -2283,16 +2423,36 @@ aria-labelledby="ge-confirm-title"
 				kind: "danger",
 			}).then(function (ok) {
 				if (!ok) return;
+				var albumId = state.selected;
 				setBusy(true, "正在删除…");
-				deleteFile(
-					c,
-					hit.path,
-					hit.sha,
-					"chore(gallery): 网站端删除照片（" + state.selected + "）",
-				)
+				// ⚠️ 内嵌快照里**没有 sha**（构建时无法预知）⇒ 必须**当场取**。
+				// 若仓库里已不存在（快照过期，或该文件在别处删过）⇒ getFile 返回 missing ⇒ 给可行动提示。
+				getFile(c, hit.path)
+					.then(function (f) {
+						if (f.missing || !f.sha)
+							throw new Error(
+								"仓库里已经找不到这张照片了（列表可能已过期），请点右上「刷新」。",
+							);
+						return deleteFile(
+							c,
+							hit.path,
+							f.sha,
+							"chore(gallery): 网站端删除照片（" + albumId + "）",
+						);
+					})
 					.then(function () {
 						setBusy(false);
 						showMsg("已删除 ✓", "success");
+						// 界面与内存快照立刻同步移除（乐观更新，不必等校正请求）
+						removeManifestFile(albumId, key);
+						if (albumId === state.selected) {
+							state.photoFiles = state.photoFiles.filter(function (x) {
+								return x.name !== key;
+							});
+							renderPhotoPanel();
+							syncPhotoCount();
+							renderInfo();
+						}
 						return reloadPhotos();
 					})
 					.catch(function (e) {
@@ -2565,10 +2725,14 @@ aria-labelledby="ge-confirm-title"
 				else if (act === "cancel") cancelEdit();
 				else if (act === "save") saveInfo();
 				else if (act === "reload") {
-					showMsg("正在刷新照片列表…", "info");
-					state.loadedFor = state.selected; // 手动刷新 ⇒ 记成"已加载过"
+					// 「刷新」是**唯一的主动拉取入口**（其余读取全部走内嵌快照）：
+					// 照片目录 + 外链清单 + 相册列表一起重同步。
+					// 相册列表也要拉 —— 否则网站端新增的相册本地永远看不到。
+					showMsg("正在从仓库刷新…", "info");
+					state.loadedFor = state.selected;
 					reloadPhotos();
 					loadUrls();
+					loadFromRemote();
 				}
 			});
 		}
@@ -2606,7 +2770,6 @@ aria-labelledby="ge-confirm-title"
 				state.dirty = false;
 				state.idTouched = false;
 				state.tab = "info";
-				state.urlsSha = "";
 				state.loadedFor = "";
 				// 清掉上一次新建遗留的暂存封面
 				if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
@@ -2765,6 +2928,13 @@ aria-labelledby="ge-confirm-title"
 				state.photoCounts = counts && typeof counts === "object" ? counts : {};
 			} catch (e) {
 				state.photoCounts = {};
+			}
+			// 内嵌照片清单（读取零请求的数据源）
+			try {
+				var mf = JSON.parse(root.getAttribute("data-photo-manifest") || "{}");
+				state.photoManifest = mf && typeof mf === "object" ? mf : {};
+			} catch (e) {
+				state.photoManifest = {};
 			}
 			if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
 			render();

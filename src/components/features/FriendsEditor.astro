@@ -155,13 +155,23 @@ const initialJson = JSON.stringify(items);
 			<div
 				class="flex shrink-0 flex-col gap-2 border-t border-(--line-divider) px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
 			>
-				<button
-					id="fe-add"
-					type="button"
-					class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
-				>
-					+ 添加友链
-				</button>
+				<div class="flex items-center gap-2">
+					<button
+						id="fe-add"
+						type="button"
+						class="rounded-xl border border-dashed border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:border-(--primary)/50 hover:bg-(--primary)/5 hover:text-(--primary) dark:text-neutral-300"
+					>
+						+ 添加友链
+					</button>
+					<!-- [OURS] 唯一的主动拉取入口：读取全部走页面内嵌快照（打开弹窗零请求） -->
+					<button
+						id="fe-refresh"
+						type="button"
+						class="rounded-xl border border-(--line-divider) px-3.5 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+					>
+						刷新
+					</button>
+				</div>
 				<div class="flex items-center gap-2">
 					<button
 						id="fe-cancel"
@@ -361,6 +371,7 @@ const initialJson = JSON.stringify(items);
 		var msgEl = document.getElementById("fe-msg");
 		var subtitleEl = document.getElementById("fe-subtitle");
 		var btnAdd = document.getElementById("fe-add");
+		var btnRefresh = document.getElementById("fe-refresh");
 		var btnSave = document.getElementById("fe-save");
 		var btnCancel = document.getElementById("fe-cancel");
 		var btnClose = document.getElementById("fe-close");
@@ -841,6 +852,17 @@ const initialJson = JSON.stringify(items);
 			);
 		}
 
+		/**
+		 * GitHub API 失败的**全站统一**提示 —— 只分两类（相册 / 友链 / 动态三个编辑器同一套口径）：
+		 *  ① Token 类（401 / 403）⇒ 返回**唯一那一句**（用户只需去更新 Token）；
+		 *  ② 其它（404 / 409 / 5xx / 网络）⇒ 返回 ""，由调用方补上动作名。
+		 */
+		function tokenHint(res) {
+			if (res.status === 401 || res.status === 403)
+				return "Token 无效或已过期，请到编辑器页更新后再试。";
+			return "";
+		}
+
 		function readRemote() {
 			var c = cfg();
 			// 用 Promise.reject 而不是同步 throw：调用方是 readRemote().then(...).catch(...)，
@@ -852,10 +874,9 @@ const initialJson = JSON.stringify(items);
 			return fetch(contentsUrl(c.repo, FILE_PATH) + "?ref=" + encodeURIComponent(c.branch), {
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
-				if (res.status === 401) throw new Error("Token 无效或已过期，请到编辑器页更新后再试。");
-				if (res.status === 403) throw new Error("Token 权限不足（需要该仓库的 Contents 读写权限）。");
-				if (res.status === 404) throw new Error("仓库或文件不存在：" + c.repo + "/" + FILE_PATH);
-				if (!res.ok) throw new Error("读取失败（HTTP " + res.status + "）");
+				// 统一口径：Token 类只有一句；其它（含 404 配置路径写错）一律"读取失败"+点刷新
+				if (!res.ok)
+					throw new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。");
 				return res.json().then(function (data) {
 					var text = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
 					return { text: text, sha: data.sha };
@@ -878,16 +899,8 @@ const initialJson = JSON.stringify(items);
 			}).then(function (res) {
 				if (res.status === 409 || res.status === 422)
 					throw new Error("文件已被改动，请点「重新读取」后再保存。");
-				if (!res.ok) {
-					return res.json().then(
-						function (err) {
-							throw new Error("提交失败：" + (err.message || "HTTP " + res.status));
-						},
-						function () {
-							throw new Error("提交失败（HTTP " + res.status + "）");
-						},
-					);
-				}
+				if (!res.ok)
+					throw new Error(tokenHint(res) || "提交失败，请重试。");
 				return res.json();
 			});
 		}
@@ -945,8 +958,18 @@ const initialJson = JSON.stringify(items);
 							/* ignore */
 						}
 					}
-					showMsg(e.message || "读取失败，请重试。", "error");
+					showMsg(e.message || "读取失败，请点「刷新」后重试。", "error");
 				});
+		}
+
+		/**
+		 * 「刷新」：本编辑器的**唯一主动拉取入口**。
+		 * 打开弹窗本身走页面内嵌快照（零请求、秒开），需要与仓库同步时点这里。
+		 */
+		function onRefreshClick() {
+			if (state.busy) return;
+			showMsg("正在从仓库刷新…", "info");
+			loadFromRemote();
 		}
 
 		function openModal() {
@@ -969,7 +992,8 @@ const initialJson = JSON.stringify(items);
 					/* ignore */
 				}
 			}
-			loadFromRemote();
+			// ⚠️ 打开弹窗**不再自动拉远端**：列表首屏就用页面内嵌的快照渲染（零请求、秒开）。
+			// 需要与仓库同步时点底部的「刷新」（唯一的主动拉取入口）。
 		}
 
 		// 直接关闭：无动画（不做位移/缩放过渡，也不延迟隐藏）
@@ -1233,6 +1257,9 @@ const initialJson = JSON.stringify(items);
 			}
 		}
 		bindOnce(btnAdd, "click", onAddClick);
+		// ⚠️ 必须**同时**在首屏这里绑一次：attachEntry 只在 swup 换页时执行，
+		// 只写在那里会导致"页面首次加载后按钮点了没反应"（实测踩过）。
+		bindOnce(btnRefresh, "click", onRefreshClick);
 
 		function onListClick(e) {
 			var btn = e.target.closest ? e.target.closest("[data-act]") : null;
@@ -1436,6 +1463,7 @@ const initialJson = JSON.stringify(items);
 				if (e.target === confirmEl) settleConfirm(false);
 			});
 			bindOnce(btnAdd, "click", onAddClick);
+			bindOnce(btnRefresh, "click", onRefreshClick);
 			bindOnce(listEl, "click", onListClick);
 			bindOnce(listEl, "input", onListInput);
 			bindOnce(btnSave, "click", onSaveClick);
@@ -1456,6 +1484,7 @@ const initialJson = JSON.stringify(items);
 				msgEl = mask.querySelector("#fe-msg") || msgEl;
 				subtitleEl = mask.querySelector("#fe-subtitle") || subtitleEl;
 				btnAdd = mask.querySelector("#fe-add") || btnAdd;
+				btnRefresh = mask.querySelector("#fe-refresh") || btnRefresh;
 				btnSave = mask.querySelector("#fe-save") || btnSave;
 				btnCancel = mask.querySelector("#fe-cancel") || btnCancel;
 				btnClose = mask.querySelector("#fe-close") || btnClose;
