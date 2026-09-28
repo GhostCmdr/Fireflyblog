@@ -265,6 +265,11 @@ body.wallpaper-transparent #right-icon-bar {
      动态元素由 JS 生成，必须 is:global，否则 Astro 摇树整段删除。效果与原 JS 注入一致。 */
   body.editor-page .toc-item:hover { background: color-mix(in srgb, var(--primary) 15%, transparent) !important; }
   body.editor-page .syntax-item:hover { border-color: var(--primary) !important; background: color-mix(in srgb, var(--primary) 5%, transparent) !important; }
+  /* 面板内容里的按钮是 JS innerHTML 生成的 ⇒ 拿不到 Astro 的 scoped 标识（data-astro-cid-*）⇒
+     上面那个（非 global 的）`button:focus-visible { outline: none }` 匹配不到它们，会残留焦点圈
+     （实测：meta 面板 2 个 / drafts 面板 6 个 / github 面板 2 个按钮，带 scoped 标识的数量为 0）。
+     这里用 body.editor-page 前缀补一条：只收面板内容，不波及导航栏/页脚的正常焦点提示。 */
+  body.editor-page #panel-content :focus-visible { outline: none; }
 </style>
 
 <!-- 高度 = 100vh - 父级 Main content 的 top:5.5rem（= 79.2px @14.4），使容器底部恰好贴视口底。

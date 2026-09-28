@@ -121,34 +121,6 @@ const initialManifestJson = JSON.stringify(photoManifest);
 			</button>
 		</div>
 
-		<!-- 状态提示条（浮层，不占文档流 ⇒ 出现/消失不推挤内容） -->
-		<div
-			id="ge-msg"
-			class="absolute inset-x-0 top-[4.875rem] z-10 hidden px-5 py-2.5 pr-11 text-sm"
-			role="status"
-			aria-live="polite"
-		>
-			<span id="ge-msg-text"></span>
-			<button
-				id="ge-msg-close"
-				type="button"
-				class="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded p-1 text-lg opacity-70 transition-opacity hover:opacity-100"
-				aria-label="关闭提示"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					width="1em"
-					height="1em"
-					fill="currentColor"
-					aria-hidden="true"
-					><path
-						d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-					></path></svg
-			>
-		</button>
-		</div>
-
 		<!-- ── 内容区：左列相册导航 + 右侧双 Tab（信息 / 图片）── -->
 		<div class="flex min-h-0 grow">
 			<!-- 左列：搜索 + 相册列表（独立滚动） -->
@@ -428,6 +400,7 @@ const initialManifestJson = JSON.stringify(photoManifest);
 </div>
 
 <!-- ── 上传弹窗（独立浮层：本地上传 + 外链清单） ── -->
+<!-- 遮罩不加背景色也不加 blur（规范 2-1；与友链/动态的二次确认框同款），blur 只在面板自身 -->
 <div
 	id="ge-upload"
 	class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
@@ -436,8 +409,11 @@ const initialManifestJson = JSON.stringify(photoManifest);
 	aria-modal="true"
 	aria-label="添加图片"
 >
+	<!-- ⚠️ 宽高**固定**（副弹窗规范：尺寸不得随内容变化，且必须**明显小于**主弹窗 720×max-h-[92vh]）：
+	     固定 500×440（宽约为主弹窗的 70%、高约 86%），小屏用 max-w/max-h 兜底；
+	     待提交清单只在右栏内部滚动，不会拉伸整个弹窗 -->
 	<div
-		class="card-base flex max-h-[85vh] w-full max-w-[480px] flex-col overflow-hidden shadow-2xl backdrop-blur-sm"
+		class="card-base flex h-[410px] max-h-[80vh] w-full max-w-[500px] flex-col overflow-hidden border border-(--line-divider) shadow-2xl backdrop-blur-sm"
 	>
 		<div class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-3.5">
 			<div class="min-w-0">
@@ -467,75 +443,114 @@ const initialManifestJson = JSON.stringify(photoManifest);
 				>
 			</button>
 		</div>
+		<!-- 左右两栏：左＝添加（本地文件 + 外链），右＝待上传清单 -->
 		<div
-			class="ge-scroll min-h-0 grow overflow-y-auto p-4"
-			style="overscroll-behavior: contain;"
+			class="grid min-h-0 grow grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
 		>
-			<!-- ① 本地上传 -->
+			<!-- ══ 左栏：添加 ══ -->
 			<div
-				id="ge-dropzone"
-				class="cursor-pointer rounded-lg border-2 border-dashed border-(--line-divider) px-4 py-5 text-center transition hover:border-(--primary)/50 hover:bg-(--primary)/5"
+				class="ge-scroll min-h-0 overflow-y-auto border-b border-(--line-divider) p-4 sm:border-r sm:border-b-0"
+				style="overscroll-behavior: contain;"
 			>
-				<svg
-					class="mx-auto mb-1.5 text-black/30 dark:text-white/30"
-					width="28"
-					height="28"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline
-						points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg
+				<!-- ① 本地上传 -->
+				<div
+					id="ge-dropzone"
+					class="cursor-pointer rounded-lg border-2 border-dashed border-(--line-divider) px-3 py-2.5 text-center transition hover:border-(--primary)/50 hover:bg-(--primary)/5"
 				>
-				<p class="text-sm text-neutral-600 dark:text-neutral-300">
-					拖拽图片到这里，或<span class="font-medium text-(--primary)">点击选择文件</span>（可多选）
-				</p>
-				<p class="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
-					jpg / png / webp / avif / gif，单张不超过 10MB
-				</p>
-				<input
-				id="ge-file-input"
-				type="file"
-				accept="image/*"
-				multiple
-				tabindex="-1"
-				class="hidden"
-			/>
+					<svg
+						class="mx-auto mb-1 text-black/30 dark:text-white/30"
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline
+							points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg
+					>
+					<p class="text-[13px] leading-5 text-neutral-600 dark:text-neutral-300">
+						拖拽或<span class="font-medium text-(--primary)">点击选择</span>（可多选）
+					</p>
+					<p class="mt-0.5 text-[11px] leading-4 text-neutral-400 dark:text-neutral-500">
+						jpg / png / webp / avif / gif，≤ 10MB
+					</p>
+					<input
+						id="ge-file-input"
+						type="file"
+						accept="image/*"
+						multiple
+						tabindex="-1"
+						class="hidden"
+					/>
+				</div>
+
+				<!-- ② 或 -->
+				<div class="my-2 flex items-center gap-2">
+					<span class="h-px grow bg-(--line-divider)"></span>
+					<span class="text-[11px] text-neutral-400 dark:text-neutral-500">或</span>
+					<span class="h-px grow bg-(--line-divider)"></span>
+				</div>
+
+				<!-- ③ 外链图片地址：每行一个，可一次粘贴多条；「添加」与输入框同行（省高度） -->
+				<div class="flex items-start gap-2">
+					<label class="flex min-w-0 grow flex-col gap-1">
+						<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+							>外链地址（每行一个）</span
+						>
+						<textarea
+							id="ge-url-input"
+							rows="3"
+							placeholder="https://example.com/a.jpg"
+							class="ge-scroll w-full resize-none rounded-lg border border-(--line-divider) bg-transparent px-2.5 py-1.5 text-[13px] leading-5 text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
+							style="overscroll-behavior: contain;"></textarea>
+					</label>
+					<button
+						id="ge-url-add"
+						type="button"
+						class="mt-[22px] shrink-0 cursor-pointer rounded-lg border border-(--line-divider) px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+					>
+						添加
+					</button>
+				</div>
 			</div>
 
-			<!-- ② 或 -->
-			<div class="my-3 flex items-center gap-2">
-				<span class="h-px grow bg-(--line-divider)"></span>
-				<span class="text-[11px] text-neutral-400 dark:text-neutral-500">或</span>
-				<span class="h-px grow bg-(--line-divider)"></span>
-			</div>
-
-			<!-- ③ 远程图片清单（urls.txt）：粘贴外链，一行一个 -->
-			<label class="flex flex-col gap-1">
-				<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
-					>外链图片地址（每行一个，以 # 开头的行会被忽略）</span
+			<!-- ══ 右栏：待上传清单 ══ -->
+			<div
+				class="ge-scroll flex min-h-0 flex-col overflow-y-auto p-4"
+				style="overscroll-behavior: contain;"
+			>
+				<div class="mb-2 flex shrink-0 items-center justify-between">
+					<span class="text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+						>待上传</span
+					>
+					<span id="ge-stage-count" class="text-[11px] text-neutral-400"></span>
+				</div>
+				<!-- 提交结果提示（**唯一一处**）：推送中 / 推送成功 / 推送失败 -->
+				<div id="ge-stage-result" class="mb-2 hidden shrink-0 rounded-lg px-2.5 py-1.5 text-xs"></div>
+				<div id="ge-upload-queue" class="min-h-0 space-y-1.5"></div>
+				<div
+					id="ge-stage-empty"
+					class="flex grow flex-col items-center justify-center gap-1.5 py-8 text-neutral-400 dark:text-neutral-500"
 				>
-				<textarea
-					id="ge-urls"
-					rows="3"
-					placeholder="https://example.com/photo.jpg"
-					class="ge-scroll w-full resize-none rounded-lg border border-(--line-divider) bg-transparent px-3 py-2 text-sm leading-6 text-neutral-900 outline-none transition-all focus:border-(--primary) focus:ring-1 focus:ring-(--primary)/40 dark:text-neutral-100"
-					style="overscroll-behavior: contain;"></textarea>
-			</label>
-			<div class="mt-2 flex justify-end">
-				<button
-					id="ge-save-urls"
-					type="button"
-					class="cursor-pointer rounded-lg bg-(--primary) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-				>
-					保存外链清单
-				</button>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="26"
+						height="26"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+						><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"
+						></circle><polyline points="21 15 16 10 5 21"></polyline></svg
+					>
+					<span class="text-xs">还没有待上传的内容</span>
+				</div>
 			</div>
-
-			<!-- ④ 上传队列 -->
-			<div id="ge-upload-queue" class="mt-3 hidden space-y-1.5"></div>
 		</div>
 		<div class="flex shrink-0 items-center justify-end gap-2 border-t border-(--line-divider) px-5 py-3.5">
 			<button
@@ -543,13 +558,21 @@ const initialManifestJson = JSON.stringify(photoManifest);
 				type="button"
 				class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
 			>
-				关闭
+				取消
+			</button>
+			<button
+				id="ge-upload-commit"
+				type="button"
+				disabled
+				class="cursor-pointer rounded-lg bg-(--primary) px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				提交
 			</button>
 		</div>
 	</div>
 </div>
 
-<!-- ── 站内确认框：与动态编辑器**完全同款**（遮罩不加背景色，只靠面板自身的 backdrop-blur 模糊背后） ── -->
+<!-- ── 站内确认框：与动态编辑器**完全同款**（遮罩不加背景色，blur 只在面板自身） ── -->
 <div
 id="ge-confirm"
 class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
@@ -636,8 +659,6 @@ aria-labelledby="ge-confirm-title"
 </div>
 
 <style is:global>
-	/* 提示条配色由 JS 内联 cssText 设置（与动态编辑器同一套 palette、无圆角）⇒
-	   这里不再写 #ge-msg 的样式，避免与内联样式打架。 */
 
 	/* 弹窗内滚动条：细 + 圆角，颜色接近系统默认灰（不跟随主色） */
 	.ge-scroll {
@@ -665,12 +686,6 @@ aria-labelledby="ge-confirm-title"
 	}
 	#ge-body-list {
 		scrollbar-gutter: stable;
-	}
-
-	/* 确认框内的按钮不显示键盘焦点环（与友链/动态一致：避免按 Esc 唤出时出现橙圈） */
-	#ge-confirm button:focus,
-	#ge-confirm button:focus-visible {
-		outline: none;
 	}
 
 	/* 浮层被 append 到 body 后类选择器会失效 ⇒ 用 id 选择器给按钮手型光标 */
@@ -814,8 +829,6 @@ aria-labelledby="ge-confirm-title"
 		var mask = document.getElementById("ge-mask");
 		var titleEl = document.getElementById("ge-title");
 		var subtitleEl = document.getElementById("ge-subtitle");
-		var msgEl = document.getElementById("ge-msg");
-		var msgTextEl = document.getElementById("ge-msg-text");
 		// 左列导航 + 搜索
 		var navEl = document.getElementById("ge-nav");
 		var emptyEl = document.getElementById("ge-empty");
@@ -843,10 +856,14 @@ aria-labelledby="ge-confirm-title"
 		var dropzoneEl = document.getElementById("ge-dropzone");
 		var fileInputEl = document.getElementById("ge-file-input");
 		var queueEl = document.getElementById("ge-upload-queue");
+		var stageEmptyEl = document.getElementById("ge-stage-empty");
+		var stageCountEl = document.getElementById("ge-stage-count");
+		var stageResultEl = document.getElementById("ge-stage-result");
+		var urlInputEl = document.getElementById("ge-url-input");
+		var btnUrlAdd = document.getElementById("ge-url-add");
+		var btnUploadCommit = document.getElementById("ge-upload-commit");
 		var photoGridEl = document.getElementById("ge-photo-grid");
 		var photoEmptyEl = document.getElementById("ge-photo-empty");
-		var urlsEl = document.getElementById("ge-urls");
-		var btnSaveUrls = document.getElementById("ge-save-urls");
 		var confirmEl = document.getElementById("ge-confirm");
 		var confirmIconEl = document.getElementById("ge-confirm-icon");
 		var confirmTitleEl = document.getElementById("ge-confirm-title");
@@ -877,6 +894,14 @@ aria-labelledby="ge-confirm-title"
 			// saved：进入编辑 / 读取成功时的快照（取消编辑、提交失败回滚用）
 			saved: null,
 			busy: false,
+			// 忙碌时的过程文案（显示在按钮上，不再用提示条）
+			busyLabel: "",
+			// 「刷新」专用标记：驱动「刷新」按钮显示"刷新中…"
+			refreshing: false,
+			// 待上传区的**唯一一处**结果提示：{ tone: "busy"|"ok"|"fail", text }
+			stageResult: null,
+			// 上次提交是否有失败项 ⇒「提交」按钮据此显示「重试 (N)」
+			lastCommitFailed: false,
 			// 右侧 Tab："info"（信息）| "photos"（图片）
 			tab: "info",
 			// 左列选中的相册 id；"" = 未选中（新建态也没有选中项）
@@ -898,6 +923,11 @@ aria-labelledby="ge-confirm-title"
 			// 照片/外链数据是"为哪个相册"加载的：切 Tab 时据此跳过重复请求
 			// （点「刷新」按钮、或切换相册后会强制重拉）
 			loadedFor: "",
+			// 「添加图片」弹窗的**待提交清单**：选中的本地文件 / 输入的外链先入队，
+			// 点弹窗「提交」才真正写入仓库（用户要求：添加图片后要再提交一次才上传）。
+			// 项结构：{ kind:"file", file:File, name, size, thumbUrl, status }
+			//       | { kind:"url", url, status }
+			stagedUploads: [],
 		};
 
 		/* 三个"内容签名"：内容没变就不重建对应 DOM。
@@ -940,30 +970,13 @@ aria-labelledby="ge-confirm-title"
 			return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, ""))));
 		}
 
-		// 提示条配色：**与动态编辑器逐字相同**（内联 cssText，无圆角）——
-		// 之前相册走的是 CSS 类（带 10.8px 圆角 + color-mix 配色），与动态不一致。
-		// 用户明确要求"提示条统一成动态的"，故改为同一套 palette。
-		var MSG_PALETTE = {
-			info: "background: rgba(59,130,246,0.10); color: #2563EB;",
-			success: "background: rgba(22,163,74,0.12); color: #15803D;",
-			warn: "background: rgba(217,119,6,0.12); color: #B45309;",
-			error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
-		};
-
-		function showMsg(text, kind) {
-			// 注意：必须写进 #ge-msg-text 而不是 #ge-msg —— 对父元素赋 textContent 会清空所有子节点，
-			// 把里面的关闭按钮一起抹掉。
-			msgEl.style.cssText = MSG_PALETTE[kind] || MSG_PALETTE.info;
-			if (msgTextEl) msgTextEl.textContent = text;
-			else msgEl.textContent = text;
-			msgEl.classList.remove("hidden");
-		}
-		function hideMsg() {
-			msgEl.classList.add("hidden");
-		}
+		/**
+		 * 忙碌态。label 是**过程性反馈**（"正在上传 1/3…"）——
+		 * 显示在**按钮文案**上（见 renderStagedList / applyActions）。
+		 */
 		function setBusy(on, label) {
 			state.busy = !!on;
-			if (on && label) showMsg(label, "info");
+			state.busyLabel = on && label ? label : "";
 			render();
 		}
 
@@ -1075,10 +1088,26 @@ aria-labelledby="ge-confirm-title"
 				path.split("/").map(encodeURIComponent).join("/")
 			);
 		}
+
+		/**
+		 * 带超时的 GitHub 请求。⚠️ 必须有超时：否则网络挂起时 fetch 会一直 pending，
+		 * `state.busy` 永远不恢复 ⇒ 上传弹窗的「取消」点不动、网页滚动被锁死
+		 * （用户实测："点了上传后无法关闭弹窗、整个网页不能操作"）。
+		 */
+		var GH_TIMEOUT_MS = 20000;
+		function ghFetch(url, opts) {
+			opts = opts || {};
+			try {
+				if (typeof AbortSignal !== "undefined" && AbortSignal.timeout)
+					opts.signal = AbortSignal.timeout(GH_TIMEOUT_MS);
+			} catch (e) {
+				/* 老浏览器不支持 ⇒ 退化为不设超时 */
+			}
+			return fetch(url, opts);
+		}
 		function requireToken() {
 			var c = cfg();
 			if (!c.token) {
-				showMsg("请先在编辑器页面配置 GitHub Token（点击「发布到 GitHub」设置）", "error");
 				return null;
 			}
 			return c;
@@ -1097,7 +1126,7 @@ aria-labelledby="ge-confirm-title"
 		}
 
 		function getFile(c, path) {
-			return fetch(contentsUrl(c.repo, path) + "?ref=" + encodeURIComponent(c.branch), {
+			return ghFetch(contentsUrl(c.repo, path) + "?ref=" + encodeURIComponent(c.branch), {
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
 				if (res.status === 404) return { missing: true, sha: "", content: "" };
@@ -1109,7 +1138,7 @@ aria-labelledby="ge-confirm-title"
 			});
 		}
 		function listDir(c, dir) {
-			return fetch(contentsUrl(c.repo, dir) + "?ref=" + encodeURIComponent(c.branch), {
+			return ghFetch(contentsUrl(c.repo, dir) + "?ref=" + encodeURIComponent(c.branch), {
 				headers: apiHeaders(c.token),
 			}).then(function (res) {
 				if (res.status === 404) return [];
@@ -1123,7 +1152,7 @@ aria-labelledby="ge-confirm-title"
 		function putFile(c, path, text, sha, message) {
 			var body = { message: message, content: toB64(text), branch: c.branch };
 			if (sha) body.sha = sha;
-			return fetch(contentsUrl(c.repo, path), {
+			return ghFetch(contentsUrl(c.repo, path), {
 				method: "PUT",
 				headers: apiHeaders(c.token),
 				body: JSON.stringify(body),
@@ -1135,7 +1164,7 @@ aria-labelledby="ge-confirm-title"
 		function putFileRaw(c, path, base64, sha, message) {
 			var body = { message: message, content: base64, branch: c.branch };
 			if (sha) body.sha = sha;
-			return fetch(contentsUrl(c.repo, path), {
+			return ghFetch(contentsUrl(c.repo, path), {
 				method: "PUT",
 				headers: apiHeaders(c.token),
 				body: JSON.stringify(body),
@@ -1145,7 +1174,7 @@ aria-labelledby="ge-confirm-title"
 			});
 		}
 		function deleteFile(c, path, sha, message) {
-			return fetch(contentsUrl(c.repo, path), {
+			return ghFetch(contentsUrl(c.repo, path), {
 				method: "DELETE",
 				headers: apiHeaders(c.token),
 				body: JSON.stringify({ message: message, sha: sha, branch: c.branch }),
@@ -1397,6 +1426,8 @@ aria-labelledby="ge-confirm-title"
 			renderPhotoPanel();
 			applyTab();
 			applyActions();
+			// 待提交清单 / 「提交」按钮文案要跟着 busy 状态走（过程文案显示在按钮上）
+			renderStagedList();
 			updateSubtitle();
 			// 「删除相册」：没有选中相册（或正在编辑 / 新建）时不显示
 			if (btnDelAlbum)
@@ -1471,7 +1502,6 @@ aria-labelledby="ge-confirm-title"
 				// 快照里没有这个相册（例如刚在网站端建的相册、尚未重新构建）
 				state.photoFiles = [];
 				state.remotePhotos = [];
-				if (urlsEl) urlsEl.value = "";
 				renderPhotoPanel();
 				syncPhotoCount();
 				return;
@@ -1485,7 +1515,6 @@ aria-labelledby="ge-confirm-title"
 				};
 			});
 			state.remotePhotos = (m.urls || []).slice();
-			if (urlsEl) urlsEl.value = state.remotePhotos.join("\n");
 			renderPhotoPanel();
 			syncPhotoCount();
 		}
@@ -1559,13 +1588,31 @@ aria-labelledby="ge-confirm-title"
 			if (tabPhotosEl) tabPhotosEl.setAttribute("data-active", isPhotos ? "1" : "0");
 		}
 
-		/** Tab 栏右侧的操作区：随「是否编辑中」变化 */
+		/**
+		 * Tab 栏右侧的操作区 —— 按 Tab 分区（用户要求：「编辑 / 提交」只管基本信息）。
+		 *  ·「基本信息」：只读 ⇒「编辑」；编辑中 ⇒「取消 / 提交」（管相册元数据）
+		 *  ·「图片管理」：只「刷新」—— 图片操作（添加 / 设封面 / 删除）是**点击即生效**的，
+		 *    不需要提交态，所以这里不出现「编辑 / 提交」。
+		 * 编辑态下 setTab() 禁止切到图片 Tab ⇒ 这个分支不会遇到"编辑中"。
+		 */
 		function applyActions() {
 			if (!actionsEl) return;
 			var busy = state.busy ? " disabled" : "";
 			var html = "";
-			if (state.editing !== null) {
-				// 编辑中：取消 / 提交
+			if (state.tab === "photos") {
+				// 「刷新」只要选中了相册就给（早先用 state.photoFiles.length 判断，
+				// 导致"只有外链的相册"和"照片还没加载完"时按钮根本不出现）
+				// 刷新中把过程文案显示在按钮上（替代原来的蓝色提示条）
+				if (state.selected)
+					html +=
+						'<button type="button" data-act="reload" class="' +
+						BTN_CLS +
+						'"' +
+						busy +
+						">" +
+						(state.refreshing ? "刷新中…" : "刷新") +
+						"</button>";
+			} else if (state.editing !== null) {
 				html +=
 					'<button type="button" data-act="cancel" class="' +
 					BTN_CLS +
@@ -1578,17 +1625,7 @@ aria-labelledby="ge-confirm-title"
 					'"' +
 					busy +
 					">提交</button>";
-			} else {
-				// 只读：图片页多一个「刷新」（**只要选中了相册就给** ——
-				// 早先用 state.photoFiles.length 判断，导致"只有外链的相册"和
-				// "照片还没加载完"时按钮根本不出现，且 reloadPhotos 结束后没重画操作区）
-				if (state.tab === "photos" && state.selected)
-					html +=
-						'<button type="button" data-act="reload" class="' +
-						BTN_CLS +
-						'"' +
-						busy +
-						">刷新</button>";
+			} else if (state.selected) {
 				html +=
 					'<button type="button" data-act="edit" class="' +
 					BTN_CLS +
@@ -1601,32 +1638,31 @@ aria-labelledby="ge-confirm-title"
 
 		function updateSubtitle() {
 			if (!subtitleEl) return;
-			var n = state.albums.length;
 			if (state.editing === "") {
-				subtitleEl.textContent = "共 " + n + " 个相册 · 新建中，填好后点「提交」";
+				subtitleEl.textContent = "新建中，填好后点「提交」";
 				return;
 			}
 			var a = currentAlbum();
 			if (a) {
 				subtitleEl.textContent =
 					(a.name || a.id) +
-					" · " +
-					(state.tab === "photos"
-						? "public/gallery/" + a.id + "/"
-						: "共 " + n + " 个相册") +
+					(state.tab === "photos" ? " · public/gallery/" + a.id + "/" : "") +
 					(state.editing !== null ? " · 编辑中" : "");
 				return;
 			}
-			subtitleEl.textContent = "共 " + n + " 个相册";
+			subtitleEl.textContent = "";
 		}
 
-		/** 选中某个相册（编辑中有未提交改动时不许切，避免静默丢弃） */
+		/** 选中某个相册（编辑中有未提交改动时先弹放弃确认，避免静默丢弃） */
 		function selectAlbum(id) {
 			// 左列的「新建相册」项（data-nav=""）不可点选，避免把新建态切走
 			if (id === "") return;
 			if (id === state.selected && state.editing !== "") return;
 			if (state.editing !== null && state.editing !== id) {
-				showMsg("请先提交或取消当前相册的修改。", "warn");
+				// 弹确认（不再用悬浮提示条拦人）；确认放行后 editing 已归零 ⇒ 递归走正常流程
+				confirmLeaveEdit().then(function (ok) {
+					if (ok) selectAlbum(id);
+				});
 				return;
 			}
 			state.selected = id;
@@ -1635,14 +1671,12 @@ aria-labelledby="ge-confirm-title"
 			state.photoFiles = [];
 			state.remotePhotos = [];
 			state.loadedFor = ""; // 换了相册 ⇒ 照片/外链数据作废，需重新拉
-			if (urlsEl) urlsEl.value = "";
 			if (queueEl) {
 				queueEl.classList.add("hidden");
 				queueEl.innerHTML = "";
 			}
 			if (photoGridEl) photoGridEl.innerHTML = "";
 			resetRenderCache(); // 网格刚被清空，必须让签名失效
-			hideMsg();
 			render();
 			if (state.tab === "photos") {
 				// 零请求：直接用内嵌快照渲染（不再 reloadPhotos + loadUrls）
@@ -1653,6 +1687,15 @@ aria-labelledby="ge-confirm-title"
 		/** 切换 Tab */
 		function setTab(tab) {
 			if (tab === state.tab) return;
+			// ⚠️ 编辑态只作用于「基本信息」：切到图片 Tab 会没有「取消 / 提交」按钮 ⇒
+			// 先弹「放弃未提交的修改？」（用户要求用弹窗，不用悬浮提示条）；
+			// 确认放行后 editing 已归零 ⇒ 递归走正常流程
+			if (state.editing !== null && tab !== "info") {
+				confirmLeaveEdit().then(function (ok) {
+					if (ok) setTab(tab);
+				});
+				return;
+			}
 			state.tab = tab;
 			// 切过去时补画目标面板（否则 applyTab 只切显隐，面板内容还是旧的）
 			if (tab === "photos") {
@@ -1669,7 +1712,6 @@ aria-labelledby="ge-confirm-title"
 		/* ═══════════════ 打开 / 关闭弹窗 ═══════════════ */
 
 		function openModal() {
-			hideMsg();
 			state.tab = "info";
 			state.editing = null;
 			state.dirty = false;
@@ -1686,7 +1728,7 @@ aria-labelledby="ge-confirm-title"
 			// ⚠️ 主弹窗**不锁**页面滚动（项目铁律：主弹窗打开时鼠标移出去仍能滚网页）；
 			// 只有"确认框 / 上传弹窗"这类二次浮层才锁。
 			if (!cfg().token && subtitleEl)
-				subtitleEl.textContent = "共 " + state.albums.length + " 个相册（只读：未配置 Token）";
+				subtitleEl.textContent = "只读：未配置 Token";
 			try {
 				var closeBtn = document.getElementById("ge-close");
 				if (closeBtn) closeBtn.focus({ preventScroll: true });
@@ -1708,7 +1750,7 @@ aria-labelledby="ge-confirm-title"
 		/** 关闭弹窗（有未提交改动时先确认；沿用动态编辑器那套确认框逻辑） */
 		function requestClose(force) {
 			if (state.dirty && !force) {
-				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+				askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
 					title: "放弃未提交的修改？",
 					okText: "确定",
 					cancelText: "取消",
@@ -1727,27 +1769,70 @@ aria-labelledby="ge-confirm-title"
 		/* ═══════════════ 上传弹窗（独立浮层） ═══════════════ */
 
 		function openUpload() {
-			if (!state.selected) {
-				showMsg("请先在左侧选择一个相册。", "warn");
-				return;
-			}
+			// 兜底：入口「＋ 添加图片」格本就只在有选中相册时渲染 ⇒ 这里静默返回即可
+			// （不再弹"请先在左侧选择一个相册"——网格空态已经在说同一件事）
+			if (!state.selected) return;
 			if (uploadSubEl) uploadSubEl.textContent = (currentAlbum() || {}).name || state.selected;
-			if (queueEl) {
-				queueEl.classList.add("hidden");
-				queueEl.innerHTML = "";
-			}
+			// ⚠️ 只有"没有正在进行的提交、也没有上次失败的待重试项"时才从空清单开始。
+			// 否则保留 —— 提交中点「关闭」跑后台、回来时要能看到进度 / 失败项。
+			if (!state.busy && !state.lastCommitFailed) clearStaged();
+			if (urlInputEl) urlInputEl.value = "";
 			uploadEl.classList.remove("hidden");
 			uploadEl.classList.add("flex");
 			lockPageScroll();
-			// 零请求：外链文本框已由内嵌快照填充（需要最新清单时点「刷新」）
+			// 零请求：照片/外链清单都来自内嵌快照（需要最新时点右上「刷新」）
 			ensurePhotoData();
+			// 后台提交过 / 留下失败项时，重新打开要把结果与清单对齐一遍
+			renderStagedList();
 		}
 
-		function closeUpload(force) {
+		/**
+		 * 关闭上传弹窗。
+		 * force=true 用于 swup 切页 / 整体重入：跳过确认、直接收拾干净。
+		 * keepStaged=true 用于**提交中**关闭（用户要求：隐藏弹窗、后台继续提交）：
+		 *   只隐藏弹窗、**保留清单**（否则失败项被丢弃、用户无从重试）。
+		 * ⚠️ 普通关闭即**丢弃**待提交清单（缩略图的 blob 一并释放）。
+		 */
+		function closeUpload(force, keepStaged) {
 			if (!uploadEl || uploadEl.classList.contains("hidden")) return;
 			uploadEl.classList.add("hidden");
 			uploadEl.classList.remove("flex");
+			if (!keepStaged) {
+				clearStaged();
+				// 用户明确放弃 ⇒ 结果提示也一并清掉（提交中关闭 keepStaged=true 则保留）
+				state.stageResult = null;
+				state.lastCommitFailed = false;
+				if (urlInputEl) urlInputEl.value = "";
+			}
+			// 焦点会留在入口按钮上，但焦点圈已由 src/styles/main.css 统一抑制
+			//（搜「编辑器浮层：统一收掉键盘焦点圈」）⇒ 这里**不再 blur**，
+			// 保留"关闭浮层后焦点回到触发按钮"这一可访问性惯例。
 			if (!force) unlockPageScroll();
+		}
+
+		/**
+		 * 用户主动关闭上传弹窗的**唯一入口**（取消按钮 / 右上 × / 点遮罩 / Esc）。
+		 * 清单非空 ⇒ 复用站内确认框（与「放弃未提交的修改？」同款）问一句再放弃。
+		 * ⚠️ **提交中允许直接关闭**（用户要求）：隐藏弹窗、提交在后台继续，清单留着。
+		 */
+		function requestCloseUpload() {
+			if (!uploadEl || uploadEl.classList.contains("hidden")) return;
+			if (state.busy) {
+				closeUpload(false, true);
+				return;
+			}
+			if (!(state.stagedUploads || []).length) {
+				closeUpload(false);
+				return;
+			}
+			// ⚠️ 文案必须与「基本信息」放弃修改**完全同一句**（MEMORY 2-4 定稿，不许自创）；
+			// 确认框的**外貌**（外壳/图标/按钮/尺寸）也一律沿用既定设计，不得改动。
+			askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
+				title: "放弃未提交的修改？",
+				kind: "warning",
+			}).then(function (ok) {
+				if (ok) closeUpload(false);
+			});
 		}
 
 		/** 回滚到"已保存"快照（放弃修改用） */
@@ -1756,12 +1841,39 @@ aria-labelledby="ge-confirm-title"
 			state.dirty = false;
 		}
 
+		/**
+		 * 离开编辑态前的**统一守卫**（切 Tab / 切相册 / 关闭弹窗共用）。
+		 *  · 不在编辑态 ⇒ 直接放行
+		 *  · 在编辑态但没有改动 ⇒ 静默退出编辑态并放行
+		 *  · 有未提交改动 ⇒ 弹站内确认框（用户要求：这种场景用**弹窗**，不要用悬浮提示条）
+		 * @returns {Promise<boolean>} 是否放行
+		 */
+		function confirmLeaveEdit() {
+			if (state.editing === null) return Promise.resolve(true);
+			if (!state.dirty) {
+				state.editing = null;
+				return Promise.resolve(true);
+			}
+			return askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
+				title: "放弃未提交的修改？",
+				kind: "warning",
+			}).then(function (ok) {
+				if (ok) {
+					restoreSaved();
+					state.editing = null;
+					clearPendingCover();
+					render();
+				}
+				return ok;
+			});
+		}
+
 		/* ═══════════════ 读取云端数据 ═══════════════ */
 
 		function loadFromRemote() {
 			var c = requireToken();
 			if (!c) {
-				subtitleEl.textContent = "共 " + state.albums.length + " 个相册（只读：未配置 Token）";
+				subtitleEl.textContent = "只读：未配置 Token";
 				return;
 			}
 			return getFile(c, CONFIG_PATH)
@@ -1774,7 +1886,6 @@ aria-labelledby="ge-confirm-title"
 					try {
 						parsed = JSON.parse(f.content);
 					} catch (e) {
-						showMsg("配置文件解析失败，已保留本地快照显示。", "error");
 						return;
 					}
 					if (!Array.isArray(parsed)) return;
@@ -1782,10 +1893,8 @@ aria-labelledby="ge-confirm-title"
 					state.saved = JSON.parse(JSON.stringify(state.albums));
 					if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
 					render();
-					hideMsg();
 				})
 				.catch(function (e) {
-					showMsg(e.message || "读取配置失败，请重试。", "error");
 				});
 		}
 
@@ -1856,7 +1965,6 @@ aria-labelledby="ge-confirm-title"
 			var a = collectInfo();
 			var err = validateAlbum(a, isNew);
 			if (err) {
-				showMsg(err, "error");
 				return;
 			}
 			setBusy(true, "正在写入…");
@@ -1939,7 +2047,6 @@ aria-labelledby="ge-confirm-title"
 								a.cover = rel; // a 已是 state.albums 里的同一个对象 ⇒ 直接生效
 							})
 							.catch(function () {
-								showMsg("相册已创建，但封面图上传失败，可在「图片管理」里重新上传。", "warn");
 							});
 					});
 				}
@@ -1965,7 +2072,6 @@ aria-labelledby="ge-confirm-title"
 					state.pendingCoverUrl = "";
 					setBusy(false);
 					render();
-					showMsg(isNew ? "已新建相册 ✓" : "已提交修改 ✓", "success");
 				})
 				.catch(function (e) {
 					state.albums = state.saved ? JSON.parse(JSON.stringify(state.saved)) : state.albums;
@@ -1973,10 +2079,8 @@ aria-labelledby="ge-confirm-title"
 					render();
 					// 用户在"目录已存在"确认框里主动取消 ⇒ 回滚后静默退出，不报错
 					if (e && e.message === ABORT_CREATE) {
-						hideMsg();
 						return;
 					}
-					showMsg(e.message || "提交失败，请重试。", "error");
 				});
 		}
 
@@ -2013,18 +2117,15 @@ aria-labelledby="ge-confirm-title"
 						state.albums = state.albums.filter(function (x) {
 							return x.id !== a.id;
 						});
-						showMsg("照片已清理，正在更新配置…", "info");
 						return commitConfig(c, "feat(gallery): 网站端删除相册（" + a.id + "）");
 					})
 					.then(function () {
 						setBusy(false);
 						render();
-						showMsg("已删除相册 ✓", "success");
 					})
 					.catch(function (e) {
 						setBusy(false);
 						render();
-						showMsg(e.message || "删除失败，请重试。", "error");
 					});
 			});
 		}
@@ -2034,7 +2135,6 @@ aria-labelledby="ge-confirm-title"
 		function reloadPhotos() {
 			var c = cfg();
 			if (!c.token) {
-				showMsg("请先配置 GitHub Token 后再管理照片。", "error");
 				return;
 			}
 			// ⚠️ 捕获发起时的相册：请求返回时用户可能已切走 ⇒ 若不判断，会把 A 相册的
@@ -2058,7 +2158,6 @@ aria-labelledby="ge-confirm-title"
 				})
 				.catch(function (e) {
 					if (target !== state.selected) return;
-					showMsg(e.message || "读取失败，请点「刷新」后重试。", "error");
 				});
 		}
 
@@ -2077,7 +2176,8 @@ aria-labelledby="ge-confirm-title"
 		/** 图片面板：本地上传的照片 + 外链照片，混排在同一网格里 */
 		function renderPhotoPanel() {
 			if (!photoGridEl) return;
-			var isEditing = state.editing !== null;
+			// ⚠️ 图片 Tab **不再依赖编辑态**（用户要求：打开即可操作）——
+			// 添加图片 / 设为封面 / 删除全部常驻显示。「编辑 / 提交」只属于「基本信息」Tab。
 			var base = "/gallery/" + encodeURIComponent(state.selected) + "/";
 			var locals = state.photoFiles.filter(function (f) {
 				return IMG_RE.test(f.name) && !COVER_RE.test(f.name);
@@ -2090,7 +2190,8 @@ aria-labelledby="ge-confirm-title"
 
 			if (photoEmptyEl) {
 				// hidden 与 flex 必须成对切（只切 hidden 的话元素是 block，justify-center 不生效）
-				var noPhotos = total === 0 && !isEditing;
+				// 有选中相册时网格里永远有「＋ 添加图片」格 ⇒ 不算空 ⇒ 只有"没选相册"才提示
+				var noPhotos = !state.selected;
 				photoEmptyEl.classList.toggle("hidden", !noPhotos);
 				photoEmptyEl.classList.toggle("flex", noPhotos);
 				// 快照里没有这个相册（如网站端刚建、尚未重新构建）⇒ 给可行动的引导，
@@ -2140,12 +2241,12 @@ aria-labelledby="ge-confirm-title"
 					'">' +
 					escHtml(label) +
 					"</span>" +
-					(isEditing && !isCover
+					(!isCover
 						? '<button type="button" data-photo-act="cover" data-src="' +
 							escHtml(src) +
 							'" title="设为封面" class="shrink-0 cursor-pointer rounded border border-(--line-divider) px-1 py-0.5 text-[9px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">★</button>'
 						: "") +
-					(isEditing
+					(state.selected
 						? '<button type="button" data-photo-act="del" data-src="' +
 							escHtml(src) +
 							'" data-key="' +
@@ -2163,7 +2264,6 @@ aria-labelledby="ge-confirm-title"
 			// 每张 <img> 重建都会重新解码/请求，而 setBusy() → render() 一次操作就会触发两次。
 			var gridSig = [
 				state.selected,
-				isEditing ? "1" : "0",
 				coverField,
 				locals
 					.map(function (f) {
@@ -2176,10 +2276,10 @@ aria-labelledby="ge-confirm-title"
 			lastGridSig = gridSig;
 
 			var html = "";
-			// 「＋ 添加图片」固定在第一格（只在编辑态出现）。
+			// 「＋ 添加图片」固定在第一格（**常驻**：有选中相册就显示，不再要求先点编辑）。
 			// 结构与照片卡片**逐字同构**（4:3 图区 + h-8 名称行）⇒ 两者高度天然一致，
 			// 且不会因为"网格里没有别的照片"而被拉伸。
-			if (isEditing && state.selected) {
+			if (state.selected) {
 				html +=
 					'<button type="button" data-act="upload" class="ge-add-photo" title="添加图片">' +
 					'<span class="ge-add-photo-frame">' +
@@ -2212,7 +2312,6 @@ aria-labelledby="ge-confirm-title"
 				.then(function (f) {
 					if (target !== state.selected) return;
 					var text = f.missing ? "" : f.content;
-					if (urlsEl) urlsEl.value = text;
 					state.remotePhotos = parseRemote(text);
 					renderPhotoPanel();
 					// 外链到齐后同样收敛一次张数（与"拉目录"两路收敛 ⇒ 不再漏算外链）
@@ -2228,23 +2327,32 @@ aria-labelledby="ge-confirm-title"
 				});
 		}
 
-		function saveUrls() {
+		/**
+		 * 把外链清单文本写入仓库（**提交**与**移除单条外链**共用）。
+		 *  · 文本非空 ⇒ 写 urls.txt；文本为空 ⇒ 删掉 urls.txt
+		 *  · silent=true 时不弹提示（由调用方统一汇总，避免一次操作弹两条）
+		 */
+		function writeUrlsText(text, silent) {
 			var c = requireToken();
-			if (!c || !state.selected) return;
-			var path = PHOTO_DIR + "/" + state.selected + "/urls.txt";
-			var text = String((urlsEl && urlsEl.value) || "")
+			if (!c || !state.selected) return Promise.resolve();
+			var albumId = state.selected;
+			var path = PHOTO_DIR + "/" + albumId + "/urls.txt";
+			var body = String(text || "")
 				.replace(/\r\n/g, "\n")
 				.trim();
-			setBusy(true, "正在保存外链清单…");
+			// ⚠️ silent=true 时**绝不碰 busy**：该模式由调用方（commitUploads）统一管理忙碌态，
+			// 这里再 setBusy(true) 会清空按钮文案，而 silent 分支又不负责恢复 ⇒ 忙碌态被污染、
+			// 「取消」按钮一直点不动（实测用户报"点了上传后无法关闭弹窗、网页也不能操作"）。
+			if (!silent) setBusy(true, "正在保存外链清单…");
 			var chain;
-			if (text) {
+			if (body) {
 				chain = getFile(c, path).then(function (f) {
 					return putFile(
 						c,
 						path,
-						text + "\n",
+						body + "\n",
 						f.sha || "",
-						"feat(gallery): 网站端更新外链清单（" + state.selected + "）",
+						"feat(gallery): 网站端更新外链清单（" + albumId + "）",
 					);
 				});
 			} else {
@@ -2256,134 +2364,395 @@ aria-labelledby="ge-confirm-title"
 						c,
 						path,
 						f.sha,
-						"chore(gallery): 网站端清空外链清单（" + state.selected + "）",
+						"chore(gallery): 网站端清空外链清单（" + albumId + "）",
 					);
 				});
 			}
-			chain
+			return chain
 				.then(function () {
-					setBusy(false);
-					showMsg("外链清单已保存 ✓", "success");
+					if (!silent) {
+						setBusy(false);
+					}
 					return loadUrls();
 				})
 				.catch(function (e) {
-					setBusy(false);
-					showMsg(e.message || "保存清单失败。", "error");
+					if (!silent) {
+						setBusy(false);
+					}
+					throw e; // 让 silent 的调用方能感知失败并标记该项
 				});
 		}
 
-		function uploadFiles(files) {
-			var c = requireToken();
-			if (!c) return;
+		/* ═══════════════ 待提交清单（「添加图片」弹窗） ═══════════════
+		   用户要求：选中的本地文件 / 输入的外链**先入队**，点弹窗「提交」才真正写入仓库。
+		   队列只存内存，来源仍是构建期快照 ⇒ 打开弹窗依旧**零请求**。
+		   每项带稳定 id（行 DOM 用 data-stage-id 定位），避免移除后索引错位。 */
+
+		var stageSeq = 0;
+
+		/** 本地文件入队：只校验、不发请求 */
+		function stageFiles(files) {
 			var list = Array.prototype.slice.call(files || []);
 			if (!list.length) return;
-			// ⚠️ 捕获发起上传时的相册：上传过程中用户可能切走 ⇒ 若不固定，会把照片写进
-			// 另一个相册的目录（路径用 state.selected 拼的）。
+			if (!state.selected) return; // 入口只在有选中相册时可达，静默兜底
+			var added = 0;
+			var skipped = 0;
+			list.forEach(function (f) {
+				// 不合格的在入队时就拦掉 —— 否则用户点「提交」才发现被跳过
+				if (!IMG_RE.test(f.name || "") || f.size > MAX_UPLOAD_BYTES) {
+					skipped++;
+					return;
+				}
+				state.stagedUploads.push({
+					id: ++stageSeq,
+					kind: "file",
+					file: f,
+					name: f.name,
+					size: f.size,
+					thumbUrl: URL.createObjectURL(f),
+					status: "ready",
+				});
+				added++;
+			});
+			renderStagedList();
+			// 入队反馈只靠右栏清单 + 计数（用户要求：不再有任何悬浮提示）
+		}
+
+		/**
+		 * 外链入队：**支持一次粘贴多条**（一行一个，`#` 开头的行忽略）。
+		 * 逐行校验 + 去重 ⇒ 合法的全部入队，最后给一次汇总反馈。
+		 * @returns {boolean} 是否有内容被加入
+		 */
+		function stageUrl(rawText) {
+			var lines = String(rawText || "")
+				.split("\n")
+				.map(function (l) {
+					return l.trim();
+				})
+				.filter(function (l) {
+					return l && l.charAt(0) !== "#";
+				});
+			if (!lines.length) return false;
+			if (!state.selected) return false; // 入口只在有选中相册时可达，静默兜底
+			var added = 0;
+			var dups = 0;
+			var bad = 0;
+			lines.forEach(function (u) {
+				if (!/^https?:\/\//i.test(u)) {
+					bad++;
+					return;
+				}
+				var exists =
+					(state.remotePhotos || []).indexOf(u) >= 0 ||
+					state.stagedUploads.some(function (it) {
+						return it.kind === "url" && it.url === u;
+					});
+				if (exists) {
+					dups++;
+					return;
+				}
+				state.stagedUploads.push({ id: ++stageSeq, kind: "url", url: u, status: "ready" });
+				added++;
+			});
+			renderStagedList();
+			// 入队反馈只靠右栏清单 + 计数（用户要求：不再有任何悬浮提示）
+			return added > 0;
+		}
+
+		/** 原地刷新某一项的右侧状态文字（不重建整个清单） */
+		function paintStageRow(id, text, tone) {
+			if (!queueEl) return;
+			var row = queueEl.querySelector('[data-stage-id="' + id + '"]');
+			if (!row) return;
+			row.style.opacity = tone === "fail" ? "0.6" : "";
+			var badge = row.querySelector("[data-stage-status]");
+			if (!badge) return;
+			badge.textContent = text;
+			badge.className =
+				"shrink-0 text-[11px] " +
+				(tone === "ok"
+					? "text-green-600 dark:text-green-400"
+					: tone === "fail"
+						? "text-red-500"
+						: "text-neutral-400");
+		}
+
+		/** 渲染待提交清单 + 同步「提交」按钮状态 */
+		function renderStagedList() {
+			var list = state.stagedUploads || [];
+			if (btnUploadCommit) {
+				btnUploadCommit.disabled = !list.length || state.busy;
+				// 忙碌时把过程文案显示在按钮上；上次有失败项 ⇒「重试 (N)」
+				btnUploadCommit.textContent =
+					state.busy && state.busyLabel
+						? state.busyLabel
+						: list.length
+							? (state.lastCommitFailed ? "重试 (" : "提交 (") + list.length + ")"
+							: "提交";
+			}
+			// 待上传区的**唯一一处**结果提示：推送中 / 推送成功 / 推送失败
+			if (stageResultEl) {
+				var rs = state.stageResult;
+				if (rs && rs.text) {
+					stageResultEl.textContent = rs.text;
+					stageResultEl.className =
+						"mb-2 shrink-0 rounded-lg px-2.5 py-1.5 text-xs " +
+						(rs.tone === "ok"
+							? "bg-green-500/12 text-green-700 dark:text-green-400"
+							: rs.tone === "fail"
+								? "bg-red-500/12 text-red-600 dark:text-red-400"
+								: "bg-(--primary)/10 text-(--primary)");
+				} else {
+					stageResultEl.textContent = "";
+					stageResultEl.className = "mb-2 hidden shrink-0 rounded-lg px-2.5 py-1.5 text-xs";
+				}
+			}
+			// 右栏的空态 / 计数。⚠️ 空态模板带 `flex`，必须 hidden/flex 成对切，
+			// 否则（带 grow）会一直抢占空间，把上面的清单挤成 0 高 ⇒ 看不见已添加的文件。
+			if (stageEmptyEl) {
+				stageEmptyEl.classList.toggle("hidden", !!list.length);
+				stageEmptyEl.classList.toggle("flex", !list.length);
+			}
+			if (stageCountEl)
+				stageCountEl.textContent = list.length ? list.length + " 项" : "";
+			// 提交中「取消」**保持可点**（用户要求：可以关 —— 隐藏弹窗、后台继续提交）；
+			// 文案随之改成「关闭」，避免被误读成"中断提交"。
+			if (btnUploadDone) {
+				btnUploadDone.disabled = false;
+				btnUploadDone.textContent = state.busy ? "关闭" : "取消";
+			}
+			if (urlInputEl) urlInputEl.disabled = state.busy;
+			if (btnUrlAdd) btnUrlAdd.disabled = state.busy;
+			if (!queueEl) return;
+			if (!list.length) {
+				queueEl.innerHTML = "";
+				return;
+			}
+			var html = "";
+			list.forEach(function (it) {
+				var isFile = it.kind === "file";
+				var label = isFile ? it.name : it.url;
+				var meta = isFile
+					? Math.round(it.size / 1024) + " KB"
+					: "外链";
+				var thumb = isFile
+					? '<img src="' +
+						escHtml(it.thumbUrl) +
+						'" alt="" class="h-9 w-9 shrink-0 rounded object-cover" />'
+					: '<span class="grid h-9 w-9 shrink-0 place-items-center rounded bg-amber-500/15 text-[10px] font-medium text-amber-600 dark:text-amber-400">外链</span>';
+				var locked = it.status !== "ready" ? " disabled" : "";
+				html +=
+					'<div data-stage-id="' +
+					it.id +
+					'" class="flex items-center gap-2.5 rounded-lg border border-(--line-divider) px-2.5 py-1.5">' +
+					thumb +
+					'<span class="min-w-0 grow truncate text-xs text-neutral-600 dark:text-neutral-300" title="' +
+					escHtml(label) +
+					'">' +
+					escHtml(label) +
+					'</span>' +
+					'<span class="shrink-0 text-[11px] text-neutral-400">' +
+					meta +
+					"</span>" +
+					'<span data-stage-status class="shrink-0 text-[11px] text-neutral-400"></span>' +
+					'<button type="button" data-stage-remove="' +
+					it.id +
+					'"' +
+					locked +
+					' title="移出清单" class="shrink-0 cursor-pointer rounded border border-(--line-divider) px-1.5 py-0.5 text-[11px] leading-none text-neutral-500 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-700">&times;</button>' +
+					"</div>";
+			});
+			queueEl.innerHTML = html;
+		}
+
+		/** 移出清单（释放缩略图的 blob 地址，避免泄漏） */
+		function removeStaged(id) {
+			var hit = state.stagedUploads.filter(function (it) {
+				return it.id === id;
+			})[0];
+			if (!hit || hit.status !== "ready") return;
+			if (hit.thumbUrl) URL.revokeObjectURL(hit.thumbUrl);
+			state.stagedUploads = state.stagedUploads.filter(function (it) {
+				return it.id !== id;
+			});
+			renderStagedList();
+		}
+
+		/** 清空清单（关闭弹窗 / 切相册 / swup 重入时调用） */
+		function clearStaged() {
+			(state.stagedUploads || []).forEach(function (it) {
+				if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
+			});
+			state.stagedUploads = [];
+			// ⚠️ 这里**不清** stageResult / lastCommitFailed：
+			// 后台提交完成后重新打开弹窗，还要能看到「推送成功 / 推送失败」。
+			// 真正"放弃"的路径（closeUpload 且 keepStaged=false）会显式清。
+			renderStagedList();
+		}
+
+		/**
+		 * 「提交」：本地文件**逐个**上传（串行，避免并发写同一目录）⇒
+		 * 外链与既有清单合并去重后**一次**写入 urls.txt ⇒ 成功项移出、失败项保留可重试。
+		 */
+		// 「推送成功」提示的自动消失令牌：避免旧的定时器把新状态覆盖掉
+		var resultToken = 0;
+
+		function commitUploads() {
+			if (state.busy) return;
+			var c = requireToken();
+			if (!c) return;
+			// ⚠️ 固定发起时的相册：提交过程中用户可能切走 ⇒ 否则会把照片写进另一个相册
 			var albumId = state.selected;
 			if (!albumId) return;
-			if (queueEl) {
-				queueEl.classList.remove("hidden");
-				queueEl.innerHTML = "";
-			}
-
-			var rows = list.map(function (f) {
-				var row = document.createElement("div");
-				row.className = "flex items-center gap-3 rounded-lg border border-(--line-divider) px-3 py-2";
-				row.innerHTML =
-					'<span class="min-w-0 grow truncate text-xs text-neutral-600 dark:text-neutral-300">' +
-					escHtml(f.name) +
-					'</span><span class="shrink-0 text-[11px] text-neutral-400">' +
-					Math.round(f.size / 1024) +
-					" KB</span>";
-				if (queueEl) queueEl.appendChild(row);
-				return row;
+			var files = (state.stagedUploads || []).filter(function (it) {
+				return it.kind === "file";
 			});
+			var urls = (state.stagedUploads || []).filter(function (it) {
+				return it.kind === "url";
+			});
+			if (!files.length && !urls.length) return;
 
-			var okCount = 0;
-			var skipCount = 0;
-			var total = list.length;
-			showMsg("正在上传 0/" + total + " …", "info");
+			var total = files.length;
+			var okFiles = 0;
+			var failFiles = 0;
+			var doneFiles = 0;
+			// 唯一一处结果提示：先置「推送中」（读屏与视觉都在同一处）
+			state.lastCommitFailed = false;
+			state.stageResult = {
+				tone: "busy",
+				text: total ? "正在上传 0/" + total + "…" : "正在推送…",
+			};
+			// 进度同时显示在「提交」按钮上
+			setBusy(true, total ? "上传中 0/" + total : "提交中…");
 
-			list
-				.reduce(function (p, f, i) {
-					return p
-						.then(function () {
-							var row = rows[i];
-							if (!IMG_RE.test(f.name)) {
-								skipCount++;
-								row.style.opacity = "0.5";
-								row.insertAdjacentHTML(
-									"beforeend",
-									'<span class="shrink-0 text-[11px] text-red-500">不支持的类型</span>',
-								);
-								return;
-							}
-							if (f.size > MAX_UPLOAD_BYTES) {
-								skipCount++;
-								row.style.opacity = "0.5";
-								row.insertAdjacentHTML(
-									"beforeend",
-									'<span class="shrink-0 text-[11px] text-red-500">超过 10MB</span>',
-								);
-								return;
-							}
-							var ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-							var fileName =
-								Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
-							var path = PHOTO_DIR + "/" + albumId + "/" + fileName;
-							return new Promise(function (resolve) {
-								var reader = new FileReader();
-								reader.onload = function () {
-									resolve(String(reader.result).split(",")[1] || "");
-								};
-								reader.onerror = function () {
-									resolve("");
-								};
-								reader.readAsDataURL(f);
-							}).then(function (b64) {
-								if (!b64) {
-									skipCount++;
-									row.insertAdjacentHTML(
-										"beforeend",
-										'<span class="shrink-0 text-[11px] text-red-500">读取失败</span>',
-									);
-									return;
-								}
+			files
+				.reduce(function (p, it) {
+					return p.then(function () {
+						paintStageRow(it.id, "上传中…", "busy");
+						return readB64(it.file)
+							.then(function (b64) {
+								if (!b64) throw new Error("读取失败");
+								var ext = (it.name.split(".").pop() || "jpg").toLowerCase();
+								var fileName =
+									Date.now() +
+									"-" +
+									Math.random().toString(36).slice(2, 8) +
+									"." +
+									ext;
 								return putFileRaw(
 									c,
-									path,
+									PHOTO_DIR + "/" + albumId + "/" + fileName,
 									b64,
 									"",
 									"feat(gallery): 网站端上传照片（" + albumId + "）",
 								).then(function () {
-									okCount++;
+									okFiles++;
+									it.status = "done";
+									it.savedAs = fileName;
 									// 乐观写入内存快照 ⇒ 即使随后的校正请求失败，切走再切回也不丢
 									addManifestFile(albumId, fileName);
-									row.insertAdjacentHTML(
-										"beforeend",
-										'<span class="shrink-0 text-[11px] text-green-600">已上传</span>',
-									);
+									paintStageRow(it.id, "已上传", "ok");
 								});
+							})
+							.catch(function () {
+								// 失败项**保留在清单里**，用户可以再点一次「提交」重试
+								failFiles++;
+								it.status = "fail";
+								paintStageRow(
+									it.id,
+									it.status === "fail" ? "失败，可重试" : "失败",
+									"fail",
+								);
+							})
+							.then(function () {
+								doneFiles++;
+								// 只改按钮文案 —— 不能走 renderStagedList()，那会重建清单 HTML
+								// 并抹掉刚 paint 上去的「上传中 / 已上传」行状态
+								if (total && btnUploadCommit)
+									btnUploadCommit.textContent =
+										"上传中 " + doneFiles + "/" + total;
+								// 唯一一处提示同步进度（直接改文本 —— 不能走 renderStagedList，
+								// 那会重建清单并抹掉刚 paint 上的行状态）
+								if (total && state.stageResult) {
+									state.stageResult.text =
+										"正在上传 " + doneFiles + "/" + total + "…";
+									if (stageResultEl)
+										stageResultEl.textContent = state.stageResult.text;
+								}
 							});
-						})
-						.then(function () {
-							showMsg("正在上传 " + (i + 1) + "/" + total + " …", "info");
-						});
+					});
 				}, Promise.resolve())
 				.then(function () {
-					setBusy(false);
-					showMsg(
-						"上传完成 ✓ 成功 " +
-							okCount +
-							" 张" +
-							(skipCount ? "，跳过 " + skipCount + " 张" : ""),
-						okCount ? "success" : "error",
+					// 外链：与既有清单合并去重，**一次**写入（用户要求外链合并提交）
+					if (!urls.length) return null;
+					var merged = (state.remotePhotos || []).slice();
+					urls.forEach(function (it) {
+						if (merged.indexOf(it.url) < 0) merged.push(it.url);
+					});
+					return writeUrlsText(merged.join("\n"), true).then(
+						function () {
+							urls.forEach(function (it) {
+								it.status = "done";
+							});
+							return true;
+						},
+						function () {
+							urls.forEach(function (it) {
+								it.status = "fail";
+							});
+							return false;
+						},
 					);
+				})
+				.then(function (urlsOk) {
+					// 成功项移出清单（含刚上传成功、`status==="done"` 且是新文件的那些）
+					var keep = [];
+					(state.stagedUploads || []).forEach(function (it) {
+						if (it.status === "done") {
+							if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
+						} else {
+							keep.push(it);
+						}
+					});
+					state.stagedUploads = keep;
+					// 失败项恢复到「可重试」状态（下次提交仍会尝试）
+					keep.forEach(function (it) {
+						it.status = "ready";
+					});
+					var urlTotal = urls.length;
+					var urlFail = urlsOk === false ? urlTotal : 0;
+					var okTotal =
+						okFiles + (urlTotal && urlsOk !== false ? urlTotal : 0);
+					var failed = failFiles + urlFail;
+					state.lastCommitFailed = failed > 0;
+					if (failed) {
+						// 失败项**保留**在清单里（清单不清空）；提示常驻到下次提交
+						var bits = [];
+						if (okTotal) bits.push("成功 " + okTotal + " 项");
+						bits.push("推送失败 " + failed + " 项，请重试");
+						state.stageResult = { tone: "fail", text: bits.join("，") };
+					} else if (okTotal) {
+						// 全部成功 ⇒ 成功项已移出、清单自然清空；提示 4 秒后自动消失
+						state.stageResult = { tone: "ok", text: "推送成功 ✓ 共 " + okTotal + " 项" };
+						var myToken = ++resultToken;
+						window.setTimeout(function () {
+							if (myToken !== resultToken) return; // 期间又提交过 ⇒ 别覆盖
+							state.stageResult = null;
+							if (!uploadEl || uploadEl.classList.contains("hidden")) return;
+							renderStagedList();
+						}, 4000);
+					} else {
+						state.stageResult = null;
+					}
+					setBusy(false);
+					renderStagedList();
 					return reloadPhotos();
 				})
 				.catch(function (e) {
+					state.lastCommitFailed = true;
+					state.stageResult = { tone: "fail", text: "推送失败，请重试。" };
 					setBusy(false);
-					showMsg(e.message || "上传失败，请重试。", "error");
+					renderStagedList();
 					return reloadPhotos();
 				});
 		}
@@ -2402,11 +2771,11 @@ aria-labelledby="ge-confirm-title"
 					kind: "danger",
 				}).then(function (ok) {
 					if (!ok) return;
-					var rest = (state.remotePhotos || []).filter(function (u) {
+					// 外链的就地移除**即时生效**（和删除照片一致），走同一条写入函数
+					state.remotePhotos = (state.remotePhotos || []).filter(function (u) {
 						return u !== label;
 					});
-					if (urlsEl) urlsEl.value = rest.join("\n");
-					saveUrls();
+					writeUrlsText(state.remotePhotos.join("\n"));
 				});
 				return;
 			}
@@ -2414,7 +2783,6 @@ aria-labelledby="ge-confirm-title"
 				return f.name === key;
 			})[0];
 			if (!hit) {
-				showMsg("找不到该文件，请刷新列表。", "error");
 				return;
 			}
 			// 确认框文案统一格式：「xxx」+ 一句陈述
@@ -2442,7 +2810,6 @@ aria-labelledby="ge-confirm-title"
 					})
 					.then(function () {
 						setBusy(false);
-						showMsg("已删除 ✓", "success");
 						// 界面与内存快照立刻同步移除（乐观更新，不必等校正请求）
 						removeManifestFile(albumId, key);
 						if (albumId === state.selected) {
@@ -2457,7 +2824,6 @@ aria-labelledby="ge-confirm-title"
 					})
 					.catch(function (e) {
 						setBusy(false);
-						showMsg(e.message || "删除失败，请重试。", "error");
 					});
 			});
 		}
@@ -2471,7 +2837,6 @@ aria-labelledby="ge-confirm-title"
 			for (var i = 0; i < state.albums.length; i++)
 				if (state.albums[i].id === state.selected) idx = i;
 			if (idx < 0) {
-				showMsg("找不到相册配置，请重试。", "error");
 				return;
 			}
 			setBusy(true, "正在设置封面…");
@@ -2479,13 +2844,11 @@ aria-labelledby="ge-confirm-title"
 			commitConfig(c, "feat(gallery): 网站端设置相册封面（" + state.selected + "）")
 				.then(function () {
 					setBusy(false);
-					showMsg("封面已设置 ✓", "success");
 					renderInfo();
 					renderPhotoPanel();
 				})
 				.catch(function (e) {
 					setBusy(false);
-					showMsg(e.message || "设置封面失败。", "error");
 				});
 		}
 
@@ -2519,11 +2882,9 @@ aria-labelledby="ge-confirm-title"
 		function pickCover(file) {
 			if (!file || state.busy) return;
 			if (!IMG_RE.test(file.name)) {
-				showMsg("封面必须是图片文件（jpg / png / webp / avif / gif）。", "error");
 				return;
 			}
 			if (file.size > MAX_UPLOAD_BYTES) {
-				showMsg("封面不能超过 10MB。", "error");
 				return;
 			}
 			if (state.editing !== null && !state.selected) {
@@ -2532,7 +2893,7 @@ aria-labelledby="ge-confirm-title"
 				state.pendingCoverUrl = URL.createObjectURL(file);
 				state.dirty = true;
 				renderInfo();
-				showMsg("封面已选好 —— 点右上「提交」会和相册一起保存。", "info");
+				// 不弹提示：封面预览区已即时显示所选图片，本身就是反馈
 				return;
 			}
 			uploadCover(file);
@@ -2547,18 +2908,15 @@ aria-labelledby="ge-confirm-title"
 			var c = requireToken();
 			if (!c || !state.selected) return;
 			if (!IMG_RE.test(file.name)) {
-				showMsg("封面必须是图片文件（jpg / png / webp / avif / gif）。", "error");
 				return;
 			}
 			if (file.size > MAX_UPLOAD_BYTES) {
-				showMsg("封面不能超过 10MB。", "error");
 				return;
 			}
 			var idx = -1;
 			for (var i = 0; i < state.albums.length; i++)
 				if (state.albums[i].id === state.selected) idx = i;
 			if (idx < 0) {
-				showMsg("找不到相册配置，请重试。", "error");
 				return;
 			}
 			setBusy(true, "正在上传封面…");
@@ -2621,13 +2979,11 @@ aria-labelledby="ge-confirm-title"
 				})
 				.then(function () {
 					setBusy(false);
-					showMsg("封面已更新 ✓", "success");
 					render();
 					if (state.tab === "photos") reloadPhotos();
 				})
 				.catch(function (e) {
 					setBusy(false);
-					showMsg(e.message || "封面上传失败，请重试。", "error");
 				});
 		}
 
@@ -2637,7 +2993,6 @@ aria-labelledby="ge-confirm-title"
 			if (state.editing !== null) return;
 			if (!state.selected && state.albums.length) state.selected = state.albums[0].id;
 			if (!state.selected) {
-				showMsg("请先选择或新建一个相册。", "warn");
 				return;
 			}
 			state.editing = state.selected;
@@ -2653,14 +3008,13 @@ aria-labelledby="ge-confirm-title"
 					/* ignore */
 				}
 			}
-			hideMsg();
 		}
 
 		// 取消编辑（有未提交改动时先确认；沿用动态编辑器那套确认框逻辑）
 		function cancelEdit() {
 			if (state.editing === null) return;
 			if (state.dirty) {
-				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+				askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
 					title: "放弃未提交的修改？",
 					okText: "确定",
 					cancelText: "取消",
@@ -2671,14 +3025,12 @@ aria-labelledby="ge-confirm-title"
 					state.editing = null;
 					clearPendingCover();
 					render();
-					hideMsg();
 				});
 				return;
 			}
 			state.editing = null;
 			clearPendingCover();
 			render();
-			hideMsg();
 		}
 
 		/* ═══════════════ 事件绑定 ═══════════════ */
@@ -2728,11 +3080,18 @@ aria-labelledby="ge-confirm-title"
 					// 「刷新」是**唯一的主动拉取入口**（其余读取全部走内嵌快照）：
 					// 照片目录 + 外链清单 + 相册列表一起重同步。
 					// 相册列表也要拉 —— 否则网站端新增的相册本地永远看不到。
-					showMsg("正在从仓库刷新…", "info");
+					// 过程反馈走**按钮文案**（refreshing 独立标记，避免"正在删除…"等文案串进来）
+					state.refreshing = true;
+					applyActions();
 					state.loadedFor = state.selected;
-					reloadPhotos();
-					loadUrls();
-					loadFromRemote();
+					Promise.all([reloadPhotos(), loadUrls(), loadFromRemote()])
+						.catch(function () {
+							/* 各分支内部的错误提示已处理 */
+						})
+						.then(function () {
+							state.refreshing = false;
+							applyActions();
+						});
 				}
 			});
 		}
@@ -2775,9 +3134,7 @@ aria-labelledby="ge-confirm-title"
 				if (state.pendingCoverUrl) URL.revokeObjectURL(state.pendingCoverUrl);
 				state.pendingCoverFile = null;
 				state.pendingCoverUrl = "";
-				if (urlsEl) urlsEl.value = "";
 				render();
-				hideMsg();
 			});
 
 		if (btnDelAlbum)
@@ -2802,24 +3159,18 @@ aria-labelledby="ge-confirm-title"
 				if (e.target === mask) requestClose(false);
 			});
 
-		var msgClose = document.getElementById("ge-msg-close");
-		if (msgClose)
-			msgClose.addEventListener("click", function () {
-				hideMsg();
-			});
-
-		/* 上传弹窗 */
+		/* 上传弹窗：四个"用户主动关闭"入口统一走 requestCloseUpload（清单非空会先确认） */
 		if (btnUploadDone)
 			btnUploadDone.addEventListener("click", function () {
-				closeUpload(false);
+				requestCloseUpload();
 			});
 		if (btnUploadClose)
 			btnUploadClose.addEventListener("click", function () {
-				closeUpload(false);
+				requestCloseUpload();
 			});
 		if (uploadEl)
 			uploadEl.addEventListener("click", function (e) {
-				if (e.target === uploadEl) closeUpload(false);
+				if (e.target === uploadEl) requestCloseUpload();
 			});
 		if (dropzoneEl)
 			dropzoneEl.addEventListener("click", function () {
@@ -2827,7 +3178,8 @@ aria-labelledby="ge-confirm-title"
 			});
 		if (fileInputEl)
 			fileInputEl.addEventListener("change", function () {
-				uploadFiles(fileInputEl.files);
+				// 只入队，不发请求 —— 点弹窗「提交」才真正上传
+				stageFiles(fileInputEl.files);
 				fileInputEl.value = "";
 			});
 		if (dropzoneEl) {
@@ -2841,7 +3193,7 @@ aria-labelledby="ge-confirm-title"
 			dropzoneEl.addEventListener("drop", function (e) {
 				e.preventDefault();
 				dropzoneEl.classList.remove("border-(--primary)");
-				if (e.dataTransfer && e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
+				if (e.dataTransfer && e.dataTransfer.files) stageFiles(e.dataTransfer.files);
 			});
 		}
 
@@ -2866,7 +3218,23 @@ aria-labelledby="ge-confirm-title"
 					setCover(src);
 				}
 			});
-		if (btnSaveUrls) btnSaveUrls.addEventListener("click", saveUrls);
+		// 外链：多行文本框，点「添加」把里面所有合法地址一次性入队
+		// （textarea 里回车是换行 ⇒ 不拦截 Enter）
+		if (btnUrlAdd)
+			btnUrlAdd.addEventListener("click", function () {
+				if (urlInputEl && stageUrl(urlInputEl.value)) {
+					urlInputEl.value = "";
+					urlInputEl.focus();
+				}
+			});
+		// 待提交清单：点 × 移出（委托；清单内容会随入队/提交重建）
+		if (queueEl)
+			queueEl.addEventListener("click", function (e) {
+				var b = e.target.closest ? e.target.closest("[data-stage-remove]") : null;
+				if (!b) return;
+				removeStaged(Number(b.getAttribute("data-stage-remove")));
+			});
+		if (btnUploadCommit) btnUploadCommit.addEventListener("click", commitUploads);
 
 		if (confirmOkBtn)
 			confirmOkBtn.addEventListener("click", function () {
@@ -2889,7 +3257,8 @@ aria-labelledby="ge-confirm-title"
 				return;
 			}
 			if (uploadEl && !uploadEl.classList.contains("hidden")) {
-				closeUpload(false);
+				// 走守卫：清单里有东西时先问一句，避免误按 Esc 丢掉待提交内容
+				requestCloseUpload();
 				return;
 			}
 			if (!mask || mask.classList.contains("hidden")) return;
@@ -2978,6 +3347,11 @@ aria-labelledby="ge-confirm-title"
 				/* ignore */
 			}
 			while (scrollLockCount > 0) unlockPageScroll();
+			// 释放待提交清单的缩略图 blob 地址（切页时组件整体作废，不释放会泄漏）
+			(state.stagedUploads || []).forEach(function (it) {
+				if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
+			});
+			state.stagedUploads = [];
 			if (mask && mask.parentNode) mask.parentNode.removeChild(mask);
 			if (uploadEl && uploadEl.parentNode) uploadEl.parentNode.removeChild(uploadEl);
 			if (confirmEl && confirmEl.parentNode) confirmEl.parentNode.removeChild(confirmEl);
@@ -3051,22 +3425,39 @@ aria-labelledby="ge-confirm-title"
 				var uq = uploadEl.querySelector("#ge-upload-queue");
 				var uf = uploadEl.querySelector("#ge-file-input");
 				var uz = uploadEl.querySelector("#ge-dropzone");
-				var us = uploadEl.querySelector("#ge-urls");
-				var ub = uploadEl.querySelector("#ge-save-urls");
+				var ui = uploadEl.querySelector("#ge-url-input");
+				var ua = uploadEl.querySelector("#ge-url-add");
+				var ucm = uploadEl.querySelector("#ge-upload-commit");
 				var ut = uploadEl.querySelector("#ge-upload-sub");
 				if (uq) queueEl = uq;
 				if (uf) fileInputEl = uf;
 				if (uz) dropzoneEl = uz;
-				if (us) urlsEl = us;
-				if (ub) btnSaveUrls = ub;
+				if (ui) urlInputEl = ui;
+				if (ua) btnUrlAdd = ua;
+				if (ucm) btnUploadCommit = ucm;
 				if (ut) uploadSubEl = ut;
+				// ⚠️ uploadEl 被整体替换 ⇒ 新元素没有监听器，必须在这里重新绑（与 uc/ud 同理）
 				if (uc)
 					uc.addEventListener("click", function () {
-						closeUpload(false);
+						requestCloseUpload();
 					});
 				if (ud)
 					ud.addEventListener("click", function () {
-						closeUpload(false);
+						requestCloseUpload();
+					});
+				if (ua)
+					ua.addEventListener("click", function () {
+						if (urlInputEl && stageUrl(urlInputEl.value)) {
+							urlInputEl.value = "";
+							urlInputEl.focus();
+						}
+					});
+				if (ucm) ucm.addEventListener("click", commitUploads);
+				if (uq)
+					uq.addEventListener("click", function (e) {
+						var b = e.target.closest ? e.target.closest("[data-stage-remove]") : null;
+						if (!b) return;
+						removeStaged(Number(b.getAttribute("data-stage-remove")));
 					});
 			}
 			if (confirmEl) {

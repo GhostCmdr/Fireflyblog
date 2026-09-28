@@ -105,36 +105,6 @@ const initialJson = JSON.stringify(items);
 				</button>
 			</div>
 
-			<!-- 状态提示条（浮层，不占文档流 ⇒ 出现/消失不会把内容推下再弹回）：
-			     位置＝头部正下方（即它原本的视觉位置），会盖住内容第一行上沿，这是"不占位"的代价。
-			     top 的 4.875rem 等于头部实测高度，头部改版需同步此值。 -->
-			<div
-				id="de-msg"
-				class="absolute inset-x-0 top-[4.875rem] z-10 hidden px-5 py-2.5 pr-11 text-sm"
-				role="status"
-				aria-live="polite"
-			>
-				<span id="de-msg-text"></span>
-				<button
-					id="de-msg-close"
-					type="button"
-					class="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-lg opacity-70 transition-opacity hover:opacity-100"
-					aria-label="关闭提示"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 24 24"
-						width="1em"
-						height="1em"
-						fill="currentColor"
-						aria-hidden="true"
-						><path
-							d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-						></path></svg
-					>
-				</button>
-			</div>
-
 			<!-- 内容（独立滚动）：列表 + 可移动的内联编辑块（#de-editor 会被搬进正在编辑的那张卡片） -->
 			<div
 				id="de-body"
@@ -376,15 +346,7 @@ const initialJson = JSON.stringify(items);
 		display: none;
 	}
 
-	/* ── 确认框内的按钮不显示键盘焦点环 ──
-	   askConfirm() 打开时会把焦点程序化给「取消」按钮；若这次唤出由键盘触发（如按 Esc），
-	   全站焦点基线（main.css 的 :focus-visible ⇒ outline: 2px solid var(--primary)）就会在
-	   按钮外画出一圈橙框 —— 看起来像"按钮被框选"。确认框是一次性决策、按钮固定两个，这里抑制掉。
-	   纯 CSS、零运行时开销；与 editor.astro 的「焦点黑边统一方案」同源同解法。 */
-	#de-confirm button:focus,
-	#de-confirm button:focus-visible {
-		outline: none;
-	}
+	/* 确认框的键盘焦点圈抑制已统一收到 src/styles/main.css（搜「编辑器浮层：统一收掉键盘焦点圈」） */
 </style>
 
 <script is:inline>
@@ -408,10 +370,7 @@ const initialJson = JSON.stringify(items);
 		var panel = document.getElementById("de-panel");
 		var listEl = document.getElementById("de-list");
 		var emptyEl = document.getElementById("de-empty");
-		var msgEl = document.getElementById("de-msg");
 		var subtitleEl = document.getElementById("de-subtitle");
-		var msgCloseBtn = document.getElementById("de-msg-close");
-		var msgTextEl = document.getElementById("de-msg-text");
 		var btnAdd = document.getElementById("de-add");
 		var btnRefresh = document.getElementById("de-refresh");
 		var btnCancel = document.getElementById("de-cancel");
@@ -424,6 +383,8 @@ const initialJson = JSON.stringify(items);
 
 		// editing: null = 全部只读；"" = 新建；否则为被编辑条目的文件名（编辑时文件名不变）
 		var state = {
+			// 忙碌过程文案（显示在卡片「提交」按钮上，不再用提示条）
+			busyLabel: "",
 			items: [],
 			saved: null,
 			dirty: false,
@@ -468,30 +429,16 @@ const initialJson = JSON.stringify(items);
 			el.addEventListener(type, fn);
 		}
 
-		function showMsg(text, kind) {
-			// 底色沿用占位版的原始半透明语义色：靠与背后面板底色叠加呈现淡彩。
-			var palette = {
-				info: "background: rgba(59,130,246,0.10); color: #2563EB;",
-				success: "background: rgba(22,163,74,0.12); color: #15803D;",
-				warn: "background: rgba(217,119,6,0.12); color: #B45309;",
-				error: "background: rgba(220,38,38,0.12); color: #B91C1C;",
-			};
-			msgEl.style.cssText = palette[kind] || palette.info;
-			// 注意：必须写进 #de-msg-text 而不是 #de-msg —— 对父元素赋 textContent 会清空所有子节点，
-			// 把里面的关闭按钮一起抹掉。
-			if (msgTextEl) msgTextEl.textContent = text;
-			else msgEl.textContent = text;
-			msgEl.classList.remove("hidden");
-		}
-
-		function hideMsg() {
-			msgEl.classList.add("hidden");
-		}
-
 		function setBusy(on, label) {
-			// 提交 / 删除的进度反馈走提示条（浮层不占位）；卡片内的「提交」由 state.busy 防重入
+			// 提交 / 删除的进度反馈走**按钮文案**（用户要求：提示条只留"成功 / 失败"两种结果形态）；
+			// 卡片内的「提交」同时承担防重入（disabled）。
 			state.busy = !!on;
-			if (on && label) showMsg(label, "info");
+			state.busyLabel = on && label ? label : "";
+			var btn = listEl ? listEl.querySelector('[data-act="save"]') : null;
+			if (btn) {
+				btn.disabled = !!on;
+				btn.textContent = state.busyLabel || "提交";
+			}
 		}
 
 		/* ───────────── 二次确认框期间的滚动拦截 ─────────────
@@ -1116,7 +1063,6 @@ const initialJson = JSON.stringify(items);
 				key && it ? String(it.published || "").slice(17, 19) : pad2(new Date().getSeconds());
 			applyEditable();
 			setSubtitle();
-			hideMsg();
 			if (key === null) return;
 			var card = findCard(key);
 			var body = card ? card.querySelector('[data-f="body"]') : null;
@@ -1174,7 +1120,7 @@ const initialJson = JSON.stringify(items);
 			var key = state.editing;
 			if (key === null) return;
 			if (state.dirty) {
-				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+				askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
 					title: "放弃未提交的修改？",
 					okText: "确定",
 					cancelText: "取消",
@@ -1262,20 +1208,14 @@ const initialJson = JSON.stringify(items);
 					markSaved();
 					if (same) setSubtitle();
 					else render();
-					hideMsg();
-					// 全部条目都读失败（多为 Token 过期 / 网络异常）⇒ 明确说一次原因，
-					// 否则界面只是"每条都不可编辑"，用户不知道问题在哪，还会以为动态丢了。
-					if (failMsg) showMsg(failMsg, "error");
 				})
 				.catch(function (e) {
 					state.loaded = true;
 					setSubtitle();
-					showMsg(e.message || "读取失败，请点「刷新」后重试。", "error");
 				});
 		}
 
 		function openModal() {
-			hideMsg(); // 先清掉上一次残留的提示（否则旧错误消息会带进本次打开的弹窗）
 			setEditing(null);
 			// 只在"需要清掉残留的新建卡"时才重建列表：无条件 render 会在打开瞬间造成一次
 			// innerHTML 重建（瞬时空帧），这正是"点开时闪一下"的来源之一。
@@ -1305,7 +1245,7 @@ const initialJson = JSON.stringify(items);
 
 		function closeModal(force) {
 			if (state.dirty && !force) {
-				askConfirm("改动还没提交到 GitHub，放弃后改动会丢失。", {
+				askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
 					title: "放弃未提交的修改？",
 					okText: "确定",
 					cancelText: "取消",
@@ -1327,7 +1267,6 @@ const initialJson = JSON.stringify(items);
 			var item = collectCard(state.editing);
 			var err = validateForm(item);
 			if (err) {
-				showMsg(err, "warn");
 				return;
 			}
 			var isEdit = !!state.editing;
@@ -1335,7 +1274,6 @@ const initialJson = JSON.stringify(items);
 			var text = buildDynamic(item);
 			var bad = selfCheck(item, text);
 			if (bad) {
-				showMsg("保存前自检未通过：「" + bad + "」读回后与填写不一致，已阻止提交。", "error");
 				return;
 			}
 			setBusy(true, isEdit ? "正在提交修改…" : "正在发布…");
@@ -1387,12 +1325,10 @@ const initialJson = JSON.stringify(items);
 					setEditing(null);
 					markSaved();
 					render();
-					showMsg((isEdit ? "已提交修改" : "已提交") + " ✓", "success");
 					// 快照模式下**不再需要预存 sha**（提交 / 删除都在操作时当场取）⇒
 					// 这里原来那次"静默重拉目录拿新 sha"已经多余，去掉可少一轮 N 个请求。
 				})
 				.catch(function (e) {
-					showMsg(e.message || "提交失败，请重试。", "error");
 				})
 				.then(function () {
 					setBusy(false);
@@ -1427,10 +1363,8 @@ const initialJson = JSON.stringify(items);
 						}
 						markSaved();
 						render();
-						showMsg("已提交删除 ✓", "success");
 					})
 					.catch(function (e) {
-						showMsg(e.message || "删除失败，请重试。", "error");
 					})
 					.then(function () {
 						setBusy(false);
@@ -1543,13 +1477,6 @@ const initialJson = JSON.stringify(items);
 		}
 		bindOpen();
 
-		// 提示条右侧的关闭按钮：同样用元素级标记做幂等
-		function bindMsgClose() {
-			if (!msgCloseBtn || msgCloseBtn.__deBound) return;
-			msgCloseBtn.__deBound = true;
-			msgCloseBtn.addEventListener("click", hideMsg);
-		}
-		bindMsgClose();
 
 		state.secBase = pad2(new Date().getSeconds());
 
@@ -1566,14 +1493,19 @@ const initialJson = JSON.stringify(items);
 			bindOnce(btnRefresh, "click", function () {
 				// 「刷新」：唯一主动拉取入口（打开弹窗走内嵌快照，零请求）
 				if (state.busy) return;
-				showMsg("正在从仓库刷新…", "info");
-				loadFromRemote();
+				// 过程性反馈走**按钮文案**（不再用提示条）
+				btnRefresh.disabled = true;
+				btnRefresh.textContent = "刷新中…";
+				var restore = function () {
+					btnRefresh.disabled = false;
+					btnRefresh.textContent = "刷新";
+				};
+				loadFromRemote().then(restore, restore);
 			});
 		bindOnce(btnAdd, "click", function () {
 			// 已有编辑中的卡片：先让它提交或取消，避免未提交内容被静默丢弃
 			if (state.editing !== null) {
 				if (state.dirty) {
-					showMsg("请先提交或取消当前正在编辑的那条动态。", "warn");
 					return;
 				}
 				setEditing(null);
@@ -1605,7 +1537,6 @@ const initialJson = JSON.stringify(items);
 			var act = btn.getAttribute("data-act");
 			if (act === "edit") {
 				if (state.dirty && state.editing !== key) {
-					showMsg("请先提交或取消当前正在编辑的那条动态。", "warn");
 					return;
 				}
 				setEditing(key);
@@ -1749,10 +1680,7 @@ const initialJson = JSON.stringify(items);
 				panel = mask.querySelector("#de-panel") || panel;
 				listEl = mask.querySelector("#de-list") || listEl;
 				emptyEl = mask.querySelector("#de-empty") || emptyEl;
-				msgEl = mask.querySelector("#de-msg") || msgEl;
 				subtitleEl = mask.querySelector("#de-subtitle") || subtitleEl;
-				msgCloseBtn = mask.querySelector("#de-msg-close") || msgCloseBtn;
-				msgTextEl = mask.querySelector("#de-msg-text") || msgTextEl;
 				btnAdd = mask.querySelector("#de-add") || btnAdd;
 			btnRefresh = mask.querySelector("#de-refresh") || btnRefresh;
 				btnCancel = mask.querySelector("#de-cancel") || btnCancel;

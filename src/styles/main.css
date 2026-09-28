@@ -683,3 +683,52 @@ html {
 .pagination-info {
   @apply text-sm text-(--text-secondary) text-center mb-2;
 }
+
+/* ══ 编辑器浮层：统一收掉键盘焦点圈（全站唯一一处，勿在组件里再各写一份）══
+   背景：上面的 @layer components 基线会给所有可聚焦元素加 2px 主色 outline。
+   "关闭浮层后焦点回落到触发按钮"（尤其按 Esc）会命中它 ⇒ 用户看到"按钮被莫名框了一圈"。
+   该现象历史复发 6 次（08-31 / 09-01 / 09-02 / 09-22 / 09-26 / 09-27），故集中在此维护。
+   作用域取最小：只限三个编辑器的浮层与它们的入口按钮。
+   不影响：浮层外的普通按钮（仍有焦点圈）、浮层内输入框的聚焦提示（走 focus:ring-* 的 box-shadow）。
+   ⚠️ 入口按钮的焦点圈用的是 Tailwind ring（box-shadow），`outline:none` 收不掉 ⇒ 必须单独清；
+      这三个按钮本身没有装饰阴影，所以清 box-shadow 是安全的。
+   ⚠️ 本段必须在 @layer 之外（未分层样式优先于所有分层样式），否则可能被 Tailwind 分层顺序压掉。 */
+#ge-mask :focus-visible,
+#ge-upload :focus-visible,
+#ge-confirm :focus-visible,
+#fe-mask :focus-visible,
+#fe-confirm :focus-visible,
+#de-mask :focus-visible,
+#de-confirm :focus-visible {
+  outline: none;
+}
+#ge-open:focus-visible,
+#fe-open:focus-visible,
+#de-open:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ══ 编辑器浮层：禁止「尺寸类」过渡（跨 768px 断点不再"拉伸放大缩小"）══
+   成因：跨 768px 断点时 root font-size 会从 12.6px 跳到 14.4px（Layout 里 md: 断点），
+   于是浮层内所有 rem 尺寸（宽高 / 字号 / 内边距）**瞬间**变化；而 `transition-all`
+   （Tailwind 的 `transition-all` / 自写的 `transition: all`）会把这次变化变成一段动画 ——
+   用户实测：在「拖到左半屏 ⇄ 放大到全屏」来回时，能看到输入框、输入框里的文字、
+   提交/取消按钮一起"拉伸放大缩小"。
+   这里统一把浮层内元素的过渡属性收窄为**不涉及尺寸**的白名单
+   （颜色 / 边框 / 阴影 / 透明度 / 变换 / SVG 填充描边），
+   既消掉该动画，又保留 hover / 聚焦高亮 / 按下缩放等正常反馈。
+   ⚠️ 只覆盖 `transition-property`，各元素自己的 duration / timing 不变
+      ⇒ 原本就没有过渡的元素仍然没有过渡。 */
+#ge-mask *,
+#ge-upload *,
+#ge-confirm *,
+#fe-mask *,
+#fe-confirm *,
+#de-mask *,
+#de-confirm * {
+  /* ⚠️ 必须含 fill / stroke / text-decoration-color：浮层内 Tailwind 的 `transition-colors`
+     原本过渡的正是 color, background-color, border-color, text-decoration-color, fill, stroke；
+     漏掉后三个会让"用 fill/stroke 变色的 SVG 图标"hover 时瞬间变色（丢过渡）。 */
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform, fill, stroke, text-decoration-color;
+}
