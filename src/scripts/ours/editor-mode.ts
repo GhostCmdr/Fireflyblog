@@ -47,7 +47,7 @@ function freezeWallpaperForEditor(scrollbarWidth: number) {
 			".slide-item.hidden.lg\\:block img",
 		) as HTMLImageElement) ||
 		(ww.querySelector("img") as HTMLImageElement);
-	if (!img || !img.src) return;
+	if (!img?.src) return;
 	// 用主页真实内容宽高计算 cover，保证与主页 object-fit:cover 像素级一致：
 	// homeVW 取 window.innerWidth - scrollbarWidth（= 主页内容区宽 W-s，enter 前在带滚动条的主页测得），
 	// 不能用 clientWidth（编辑器 overflow:hidden 无滚动条，clientWidth 会返回整窗宽 W，导致 cover 按更宽算而放大/拉伸）。
@@ -110,9 +110,9 @@ function freezeWallpaperForEditor(scrollbarWidth: number) {
 			layer.id = "editor-bg-layer";
 			ww.insertBefore(layer, ww.firstChild);
 		}
-		layer.style.backgroundImage = "url(" + img.src + ")";
-		layer.style.backgroundSize = swScaled + "px " + shScaled + "px";
-		layer.style.backgroundPosition = bgX + "px " + bgY + "px";
+		layer.style.backgroundImage = `url(${img.src})`;
+		layer.style.backgroundSize = `${swScaled}px ${shScaled}px`;
+		layer.style.backgroundPosition = `${bgX}px ${bgY}px`;
 		layer.style.backgroundRepeat = "no-repeat";
 		// 1.05x 已由 background-size 烘焙，无需 transform（避免持久合成层导致的编辑器输入卡顿）
 		layer.style.transform = "none";
@@ -155,7 +155,7 @@ function applyEditorModeLayout() {
 	// 只有一套测量值来源（measureScrollbarWidth），不要在 CSS 里硬写 15px。
 	document.documentElement.style.setProperty(
 		"--editor-scrollbar-width",
-		scrollbarWidth + "px",
+		`${scrollbarWidth}px`,
 	);
 	// 编辑器导航栏与主页"同宽同位置"（2026-09-15 重做：宽度交回 CSS，JS 只补"编辑器少一条滚动条"）
 	// #top-row 宽度完全由上游 CSS 决定：`w-full xl:w-[92vw] max-w-(--page-width)`（HeaderTopRow.astro）。
@@ -238,7 +238,7 @@ function applyEditorModeLayout() {
 		// 清掉可能残留的旧 max-width（上一版实现写过），确保宽度完全由 CSS 决定
 		row.style.removeProperty("max-width");
 		row.style.setProperty("left", "0px", "important");
-		row.style.setProperty("right", rightInset + "px", "important");
+		row.style.setProperty("right", `${rightInset}px`, "important");
 	}
 	// 冻结壁纸视觉状态（仅全屏透明模式需要；纯色背景不冻结，wrapper 由 hideAllWallpapers 隐藏透出 body 纯色）
 	if (
@@ -256,7 +256,7 @@ function applyEditorModeLayout() {
 			// 与进入编辑器时同一把尺子：窗口尺寸变化后同步刷新（缩放/系统滚动条设置可能变）
 			document.documentElement.style.setProperty(
 				"--editor-scrollbar-width",
-				sw2 + "px",
+				`${sw2}px`,
 			);
 			var rightInset2 = sw2;
 			var r = document.getElementById("top-row");
@@ -266,14 +266,14 @@ function applyEditorModeLayout() {
 				// 同样必须 important，否则被 body.sticky/dynamic-navbar #top-row 的 right:0 !important 压制
 				r.style.removeProperty("max-width");
 				r.style.setProperty("left", "0px", "important");
-				r.style.setProperty("right", rightInset2 + "px", "important");
+				r.style.setProperty("right", `${rightInset2}px`, "important");
 			}
 			if (editorStyleEl) {
 				// biome(noInnerDeclarations)：块内只用 var 会造成作用域困惑 → 改 let（作用域本就限于本块）
 				let rules = editorStyleEl.textContent || "";
 				rules = rules.replace(
 					/left: [\d.]+px !important; right: [\d.]+px !important;/,
-					"left: 0px !important; right: " + rightInset2 + "px !important;",
+					`left: 0px !important; right: ${rightInset2}px !important;`,
 				);
 				editorStyleEl.textContent = rules;
 			}

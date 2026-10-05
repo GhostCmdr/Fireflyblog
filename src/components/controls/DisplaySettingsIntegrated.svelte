@@ -488,8 +488,13 @@ function checkIsEditor() {
 onMount(() => {
 	checkIsEditor();
 	const register = () => {
-		const swup = (window as any).swup;
-		if (!swup || !swup.hooks) return false;
+		// swup 由外部脚本注入、没有类型声明 ⇒ 用最小结构类型断言（避免 noExplicitAny）
+		const swup = (
+			window as unknown as {
+				swup?: { hooks?: { on: (event: string, cb: () => void) => void } };
+			}
+		).swup;
+		if (!swup?.hooks) return false;
 		swup.hooks.on("page:view", checkIsEditor);
 		return true;
 	};
