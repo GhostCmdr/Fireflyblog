@@ -27,7 +27,7 @@ const initialJson = JSON.stringify(items);
 	<button
 		id="fe-open"
 		type="button"
-		class="ml-auto hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
+		class="absolute right-9 top-6 hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
 		aria-label="编辑友链"
 		>
 		<svg
@@ -95,7 +95,7 @@ const initialJson = JSON.stringify(items);
 			<!-- 列表（独立滚动）。flex + 空态 grow ⇒ 空态提示垂直居中于弹窗 -->
 			<div
 				id="fe-body"
-				class="fe-scroll flex h-[380px] grow flex-col overflow-y-auto px-5 py-4"
+				class="fe-scroll flex h-[380px] grow flex-col overflow-y-auto pl-5 pr-[8px] py-4"
 				style="overscroll-behavior: contain;"
 			>
 				<div id="fe-list" class="flex flex-col gap-3"></div>
