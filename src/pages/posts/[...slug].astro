@@ -304,6 +304,11 @@ const seriesData = await getSeriesPosts(entry);
                 tags={entry.data.tags}
                 id={entry.id}
               />
+              {/* [OURS] 站长专属「编辑此文」入口：覆盖在信息行右侧（实现见 src/components/ours/EditPostButton.astro） */}
+              <EditPostButton
+                slug={(entry.filePath || entry.id).split('/').pop() || ''}
+                variant="cover"
+              />
             </div>
           </div>
         )
@@ -375,16 +380,14 @@ const seriesData = await getSeriesPosts(entry);
                         before:absolute before:top-3 before:-left-4.5"
             >
               {entry.data.title}
-              {/* [OURS] 站长专属「编辑此文」入口：放在标题文字末尾（流内排列）⇒ 标题再长也不会被遮挡，
-                  也不会让标题提前换行；按钮自带 data-pagefind-ignore，避免「编辑」二字被 Pagefind 计入文章标题。
-                  （实现见 src/components/ours/EditPostButton.astro） */}
-              <EditPostButton slug={(entry.filePath || entry.id).split('/').pop() || ''} />
             </div>
           </div>
         )
       }
 
       <!-- metadata -->
+      {/* [OURS] 「编辑此文」按钮挂在本容器内；它的定位上下文由 overrides.css 的
+          `.onload-animation:has(> .edit-this-post-btn){position:relative}` 提供（上游此行保持原样） */}
       {
         !usePostCoverOverlay && (
           <div class="onload-animation">
@@ -396,6 +399,8 @@ const seriesData = await getSeriesPosts(entry);
               category={entry.data.category || undefined}
               id={entry.id}
             />
+            {/* [OURS] 站长专属「编辑此文」入口（实现见 src/components/ours/EditPostButton.astro） */}
+            <EditPostButton slug={(entry.filePath || entry.id).split('/').pop() || ''} />
             {
               !showPostCover && (
                 <div class="border-(--line-divider) border-dashed border-b mt-3 mb-5" />

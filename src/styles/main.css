@@ -688,10 +688,10 @@ html {
    背景：上面的 @layer components 基线会给所有可聚焦元素加 2px 主色 outline。
    "关闭浮层后焦点回落到触发按钮"（尤其按 Esc）会命中它 ⇒ 用户看到"按钮被莫名框了一圈"。
    该现象历史复发 6 次（08-31 / 09-01 / 09-02 / 09-22 / 09-26 / 09-27），故集中在此维护。
-   作用域取最小：只限三个编辑器的浮层与它们的入口按钮。
+   作用域取最小：只限四个编辑器的浮层与它们的入口按钮。
    不影响：浮层外的普通按钮（仍有焦点圈）、浮层内输入框的聚焦提示（走 focus:ring-* 的 box-shadow）。
    ⚠️ 入口按钮的焦点圈用的是 Tailwind ring（box-shadow），`outline:none` 收不掉 ⇒ 必须单独清；
-      这三个按钮本身没有装饰阴影，所以清 box-shadow 是安全的。
+      这几个按钮本身没有装饰阴影，所以清 box-shadow 是安全的。
    ⚠️ 本段必须在 @layer 之外（未分层样式优先于所有分层样式），否则可能被 Tailwind 分层顺序压掉。 */
 #ge-mask :focus-visible,
 #ge-upload :focus-visible,
@@ -699,12 +699,15 @@ html {
 #fe-mask :focus-visible,
 #fe-confirm :focus-visible,
 #de-mask :focus-visible,
-#de-confirm :focus-visible {
+#de-confirm :focus-visible,
+#bo-mask :focus-visible,
+#bo-confirm :focus-visible {
   outline: none;
 }
 #ge-open:focus-visible,
 #fe-open:focus-visible,
-#de-open:focus-visible {
+#de-open:focus-visible,
+#bo-open:focus-visible {
   outline: none;
   box-shadow: none;
 }
@@ -726,7 +729,9 @@ html {
 #fe-mask *,
 #fe-confirm *,
 #de-mask *,
-#de-confirm * {
+#de-confirm *,
+#bo-mask *,
+#bo-confirm * {
   /* ⚠️ 必须含 fill / stroke / text-decoration-color：浮层内 Tailwind 的 `transition-colors`
      原本过渡的正是 color, background-color, border-color, text-decoration-color, fill, stroke；
      漏掉后三个会让"用 fill/stroke 变色的 SVG 图标"hover 时瞬间变色（丢过渡）。 */

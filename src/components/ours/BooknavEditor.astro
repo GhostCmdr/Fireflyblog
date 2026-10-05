@@ -1,0 +1,1898 @@
+---
+// [OURS] 书签导航就地编辑器：数据保存在上游原位（src/config/booknavConfig.ts 的 _baseBooknav 数组）。
+// 读写机制与 FriendsEditor 同构（定位数组 → 整块重写），但只重写 [OURS-DATA-BEGIN]/[OURS-DATA-END]
+// 标记之间的数据块，标记外（类型/页面/工具函数）字节级不动 —— 上游更新时「格式取上游、数据保我方」。
+import { booknavConfig } from "@/config";
+
+const initialJson = JSON.stringify(booknavConfig);
+---
+
+<div id="bo-root" class="ml-auto flex shrink-0 items-center" data-items={initialJson}>
+	<button
+		id="bo-open"
+		type="button"
+		class="absolute right-9 top-6 hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-(--primary) px-3 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--primary)/40 focus-visible:outline-none dark:text-black/80"
+	>
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+		<span class="hidden sm:inline">管理</span>
+	</button>
+
+	<!-- 主弹窗：单列折叠（分组为可折叠卡片，展开见组内书签行；行内展开编辑） -->
+	<div
+		id="bo-mask"
+		class="fixed inset-0 z-[999] hidden items-center justify-center p-4 backdrop-blur-sm sm:p-6"
+		style="background: rgba(0, 0, 0, 0.45); overscroll-behavior: contain;"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="bo-title"
+	>
+		<div
+			id="bo-panel"
+			class="card-base relative flex max-h-[92vh] w-full max-w-[720px] flex-col shadow-2xl sm:max-h-[85vh]"
+		>
+			<!-- 头部 -->
+			<div class="flex shrink-0 items-start justify-between gap-3 border-b border-(--line-divider) px-5 py-4">
+				<div class="min-w-0">
+					<div id="bo-title" class="text-lg font-bold text-neutral-900 dark:text-neutral-100">管理书签</div>
+					<div id="bo-subtitle" class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400"></div>
+				</div>
+				<button
+					id="bo-close"
+					type="button"
+					class="shrink-0 cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+					aria-label="关闭"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+				</button>
+			</div>
+
+			<!-- 列表区：单列折叠 —— 每个分组 = 一张可折叠卡片。
+			     容器固定 h-[380px]（与友链/动态一致）⇒ 内容清空时弹窗也不会塌缩，空态在其中垂直居中 -->
+			<div
+				class="bo-scroll flex h-[380px] grow flex-col overflow-y-auto pl-5 pr-[8px] py-4"
+				style="overscroll-behavior: contain;"
+			>
+				<div id="bo-list" class="flex flex-col"></div>
+				<div
+					id="bo-empty"
+					class="hidden grow flex-col items-center justify-center text-center text-sm text-neutral-400 dark:text-neutral-500"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						width="36"
+						height="36"
+						fill="currentColor"
+						aria-hidden="true"
+						class="mb-2 opacity-60"
+						><path
+							d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+						></path></svg
+					>
+					还没有书签，点下方「＋ 添加分组」开始。
+				</div>
+			</div>
+
+			<!-- 底部操作条 -->
+			<div class="flex shrink-0 items-center justify-between gap-2 border-t border-(--line-divider) px-5 py-3.5">
+				<button id="bo-add-group" type="button" class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">＋ 添加分组</button>
+				<div class="flex items-center gap-2">
+					<button id="bo-refresh" type="button" class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">刷新</button>
+					<button id="bo-cancel" type="button" class="cursor-pointer rounded-xl border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">取消</button>
+					<button id="bo-save" type="button" class="cursor-pointer rounded-xl bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 dark:text-black/80">提交到云端</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- 站内确认框：与友链/相册/动态完全同款 -->
+	<div
+		id="bo-confirm"
+		class="fixed inset-0 z-[1000] hidden items-center justify-center p-4"
+		style="overscroll-behavior: contain;"
+		role="alertdialog"
+		aria-modal="true"
+		aria-labelledby="bo-confirm-title"
+	>
+		<div class="card-base w-full max-w-[380px] border border-(--line-divider) shadow-2xl backdrop-blur-sm">
+			<div class="px-5 pt-5 pb-4">
+				<div class="flex items-start gap-3">
+					<span id="bo-confirm-icon" class="shrink-0" style="color: #DC2626;" aria-hidden="true">
+						<svg data-kind="danger" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+						<svg data-kind="warning" class="hidden" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+						<svg data-kind="info" class="hidden" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+					</span>
+					<div class="min-w-0 flex-1">
+						<div id="bo-confirm-title" class="text-[1.0625rem] leading-6 font-bold text-neutral-900 dark:text-neutral-100">请确认</div>
+						<div id="bo-confirm-text" class="mt-1.5 text-sm leading-6 break-words text-neutral-600 dark:text-neutral-400"></div>
+					</div>
+				</div>
+			</div>
+			<div class="flex items-center justify-end gap-2 px-5 py-3.5">
+				<button id="bo-confirm-cancel" type="button" class="cursor-pointer rounded-lg border border-(--line-divider) px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700">取消</button>
+				<button id="bo-confirm-ok" type="button" class="cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110">确定</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<style is:global>
+	/* 浮层挂到 body 后类选择器失效 ⇒ 用 id 选择器给按钮手型光标 */
+	#bo-mask button,
+	#bo-confirm button {
+		cursor: pointer;
+	}
+	/* 弹窗内滚动条：细 + 圆角 + 系统灰（与三兄弟逐条同款：
+	   Chrome/Edge/Safari 走 ::-webkit-scrollbar；Firefox 走 scrollbar-width/color。
+	   8px 槽 + 2px 透明边 + content-box ⇒ 视觉 4px 圆角条） */
+	#bo-mask .bo-scroll {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+		/* 始终预留滚动条槽位，避免"无滚动条→有滚动条"时宽度瞬跳（实测 720 → 710） */
+		scrollbar-gutter: stable;
+	}
+	:root.dark #bo-mask .bo-scroll {
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+	}
+	#bo-mask .bo-scroll::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	#bo-mask .bo-scroll::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	#bo-mask .bo-scroll::-webkit-scrollbar-thumb {
+		background: rgba(0, 0, 0, 0.3);
+		background-clip: content-box;
+		border: 2px solid transparent;
+		border-radius: 999px;
+	}
+	#bo-mask .bo-scroll::-webkit-scrollbar-thumb:hover {
+		background: rgba(0, 0, 0, 0.45);
+		background-clip: content-box;
+	}
+	:root.dark #bo-mask .bo-scroll::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.28);
+		background-clip: content-box;
+	}
+	:root.dark #bo-mask .bo-scroll::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.42);
+		background-clip: content-box;
+	}
+	/* ── 分组卡片（单列折叠）── */
+	#bo-list .bo-group {
+		border: 1px solid var(--line-divider);
+		border-radius: 0.75rem;
+		margin-bottom: 0.75rem;
+		overflow: hidden;
+	}
+	#bo-list .bo-group[data-disabled="1"] {
+		opacity: 0.6;
+	}
+	/* 分组头 */
+	#bo-list .bo-ghead {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.625rem 0.75rem;
+		cursor: pointer;
+		background: rgba(115, 115, 115, 0.05);
+	}
+	#bo-list .bo-ghead:hover {
+		background: rgba(115, 115, 115, 0.09);
+	}
+	#bo-list .bo-chev {
+		line-height: 0;
+		color: var(--text-secondary, #737373);
+		transition: transform 0.18s ease;
+	}
+	#bo-list .bo-group[data-open="1"] .bo-chev {
+		transform: rotate(90deg);
+	}
+	#bo-list .bo-gicon {
+		display: grid;
+		height: 1.5rem;
+		width: 1.5rem;
+		place-items: center;
+		overflow: hidden;
+		border-radius: 0.375rem;
+		background: rgba(115, 115, 115, 0.12);
+		font-size: 0.625rem;
+		color: var(--text-secondary, #737373);
+		flex-shrink: 0;
+	}
+	#bo-list .bo-gicon img {
+		height: 100%;
+		width: 100%;
+		object-fit: cover;
+	}
+	#bo-list .bo-gname {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	#bo-list .bo-gcount {
+		font-size: 0.6875rem;
+		color: var(--text-secondary, #737373);
+		flex-shrink: 0;
+	}
+	#bo-list .bo-gactions {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.125rem;
+		flex-shrink: 0;
+	}
+	/* 通用图标按钮 */
+	#bo-list .bo-ico {
+		cursor: pointer;
+		border-radius: 0.375rem;
+		padding: 0.25rem;
+		color: var(--text-secondary, #737373);
+		line-height: 0;
+		transition: background-color 0.15s ease, color 0.15s ease;
+	}
+	#bo-list .bo-ico:hover {
+		background: rgba(115, 115, 115, 0.12);
+		color: var(--primary);
+	}
+	#bo-list .bo-ico:disabled {
+		opacity: 0.3;
+		cursor: default;
+	}
+	#bo-list .bo-ico:disabled:hover {
+		background: transparent;
+		color: var(--text-secondary, #737373);
+	}
+	#bo-list .bo-ico.bo-danger {
+		color: #dc2626;
+	}
+	#bo-list .bo-ico.bo-danger:hover {
+		background: rgba(220, 38, 38, 0.1);
+	}
+	/* ── 书签行（只读展示，点 ✎ 才展开表单）── */
+	#bo-list .bo-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border-top: 1px solid var(--line-divider);
+	}
+	#bo-list .bo-item[data-disabled="1"] {
+		opacity: 0.55;
+	}
+	#bo-list .bo-iicon {
+		display: grid;
+		height: 1.5rem;
+		width: 1.5rem;
+		place-items: center;
+		overflow: hidden;
+		border-radius: 0.375rem;
+		background: rgba(115, 115, 115, 0.12);
+		font-size: 0.625rem;
+		color: var(--text-secondary, #737373);
+		flex-shrink: 0;
+	}
+	#bo-list .bo-iicon img {
+		height: 100%;
+		width: 100%;
+		object-fit: cover;
+	}
+	#bo-list .bo-ititle {
+		font-size: 0.8125rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	#bo-list .bo-ihost {
+		font-size: 0.6875rem;
+		color: var(--text-secondary, #737373);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	#bo-list .bo-iactions {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.125rem;
+		flex-shrink: 0;
+	}
+	/* ── 行内表单（编辑书签 / 编辑分组）── */
+	#bo-list .bo-form {
+		border-top: 1px solid var(--line-divider);
+		background: rgba(115, 115, 115, 0.04);
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	#bo-list .bo-field {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	#bo-list .bo-field > label {
+		width: 3.25rem;
+		flex-shrink: 0;
+		font-size: 0.75rem;
+		color: var(--text-secondary, #737373);
+	}
+	#bo-list .bo-form input[type="text"],
+	#bo-list .bo-form select {
+		width: 100%;
+		min-width: 0;
+		border: 1px solid var(--line-divider);
+		border-radius: 0.5rem;
+		padding: 0.375rem 0.625rem;
+		font-size: 0.8125rem;
+		outline: none;
+		transition: border-color 0.15s ease;
+		background: transparent;
+		color: var(--text-main, currentColor);
+	}
+	#bo-list .bo-form input[type="text"]:focus,
+	#bo-list .bo-form select:focus {
+		border-color: var(--primary);
+	}
+	#bo-list .bo-hint {
+		margin-left: 3.75rem;
+		font-size: 0.6875rem;
+		line-height: 1.4;
+		color: var(--text-secondary, #737373);
+	}
+	#bo-list .bo-factions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		margin-top: 0.125rem;
+	}
+	#bo-list .bo-btn {
+		cursor: pointer;
+		border-radius: 0.5rem;
+		border: 1px solid var(--line-divider);
+		padding: 0.3125rem 0.75rem;
+		font-size: 0.75rem;
+		color: var(--text-secondary, #737373);
+		background: transparent;
+		transition: background-color 0.15s ease;
+	}
+	#bo-list .bo-btn:hover {
+		background: rgba(115, 115, 115, 0.1);
+	}
+	#bo-list .bo-btn.bo-btn-primary {
+		background: var(--primary);
+		border-color: var(--primary);
+		color: #fff;
+		font-weight: 600;
+	}
+	#bo-list .bo-btn.bo-btn-primary:hover {
+		opacity: 0.9;
+	}
+	/* 加书签（组内底部虚线按钮） */
+	#bo-list .bo-additem {
+		display: block;
+		width: 100%;
+		border: 0;
+		border-top: 1px dashed var(--line-divider);
+		background: transparent;
+		padding: 0.5rem 0.75rem;
+		text-align: left;
+		font-size: 0.75rem;
+		color: var(--text-secondary, #737373);
+		cursor: pointer;
+		transition: color 0.15s ease, background-color 0.15s ease;
+	}
+	#bo-list .bo-additem:hover {
+		color: var(--primary);
+		background: rgba(115, 115, 115, 0.05);
+	}
+</style>
+
+<script is:inline>
+	(function () {
+		/* ── swup 重入：先执行上一次登记的清理，避免监听器累积 ──
+		   ⚠️ 传 true ⇒ **保留浮层**：本页（切回本页 / 同页重放）马上还要用它；
+		   若这里把浮层删掉，会出现"从别的页切回书签页后，弹窗打不开"。 ── */
+		if (typeof window.__boCleanup === "function") {
+			try {
+				window.__boCleanup(true);
+			} catch (e) {}
+		}
+		window.__boCleanup = null;
+
+		var root = document.getElementById("bo-root");
+		if (!root) return;
+
+		var seed = [];
+		try {
+			seed = JSON.parse(root.getAttribute("data-items") || "[]");
+		} catch (e) {
+			seed = [];
+		}
+
+		/* ── 元素引用 ── */
+		var btnOpen = document.getElementById("bo-open");
+		var mask = document.getElementById("bo-mask");
+		var panel = document.getElementById("bo-panel");
+		var btnClose = document.getElementById("bo-close");
+		var btnCancel = document.getElementById("bo-cancel");
+		var btnSave = document.getElementById("bo-save");
+		var btnRefresh = document.getElementById("bo-refresh");
+		var btnAddGroup = document.getElementById("bo-add-group");
+		var listEl = document.getElementById("bo-list");
+		var emptyEl = document.getElementById("bo-empty");
+		var subtitleEl = document.getElementById("bo-subtitle");
+		var confirmEl = document.getElementById("bo-confirm");
+		var confirmTitleEl = document.getElementById("bo-confirm-title");
+		var confirmTextEl = document.getElementById("bo-confirm-text");
+		var confirmOkBtn = document.getElementById("bo-confirm-ok");
+		var confirmCancelBtn = document.getElementById("bo-confirm-cancel");
+		var confirmIconEl = document.getElementById("bo-confirm-icon");
+		var confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+		var confirmResolve = null;
+
+		/* ── GitHub 配置（与三兄弟同一套 key）── */
+		var FILE_PATH = "src/config/booknavConfig.ts";
+		var DATA_BEGIN = "// [OURS-DATA-BEGIN]";
+		var DATA_END = "// [OURS-DATA-END]";
+		var DEFAULT_REPO = "GhostCmdr/Fireflyblog";
+
+		function cfg() {
+			var ls = window.localStorage;
+			return {
+				token: ls.getItem("gh-token") || ls.getItem("gh-editor-token") || "",
+				repo: ls.getItem("gh-repo") || ls.getItem("gh-editor-repo") || DEFAULT_REPO,
+				branch: ls.getItem("gh-branch") || "main",
+			};
+		}
+
+		function escHtml(s) {
+			return String(s == null ? "" : s)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+
+		function bindOnce(el, type, fn) {
+			if (!el || !el.addEventListener) return;
+			var flag = "__boBound_" + type;
+			if (el[flag]) return;
+			el[flag] = true;
+			el.addEventListener(type, fn);
+		}
+
+		/* ── 状态 ── */
+		var state = {
+			groups: [],
+			saved: null,
+			dirty: false,
+			busy: false,
+			// 单列折叠 UI：哪些分组是展开的 { gid: true }
+			open: {},
+			// 行内编辑中的目标：{ gid, idx }；idx = -1 表示"在编辑这个分组本身"
+			editing: null,
+		};
+
+		function findGroup(gid) {
+			for (var i = 0; i < state.groups.length; i++) {
+				if (state.groups[i].id === gid) return state.groups[i];
+			}
+			return null;
+		}
+
+		function findGroupIndex(gid) {
+			for (var i = 0; i < state.groups.length; i++) {
+				if (state.groups[i].id === gid) return i;
+			}
+			return -1;
+		}
+
+		function isEditing(gid, idx) {
+			return !!state.editing && state.editing.gid === gid && state.editing.idx === idx;
+		}
+
+		function markDirty() {
+			state.dirty = true;
+			renderAll();
+		}
+
+		function setSubtitle() {
+			var g = 0,
+				n = 0;
+			for (var i = 0; i < state.groups.length; i++) {
+				g++;
+				n += (state.groups[i].items || []).length;
+			}
+			subtitleEl.textContent =
+				"共 " + g + " 个分组 · " + n + " 条书签 · 列表顺序 = 页面显示顺序（权重自动生成）";
+			// 空态与列表同处固定高度容器内：列表空就空着，空态自己的 grow 负责垂直居中
+			emptyEl.classList.toggle("hidden", state.groups.length > 0);
+			emptyEl.classList.toggle("flex", state.groups.length === 0);
+		}
+
+		function setBusy(on, label) {
+			state.busy = !!on;
+			btnSave.disabled = !!on;
+			btnRefresh.disabled = !!on;
+			btnAddGroup.disabled = !!on;
+			btnSave.textContent = on ? label || "提交中…" : "提交到云端";
+		}
+
+		/* ── 滚动锁（与三兄弟逐字一致）── */
+		var scrollLockCount = 0;
+		var SCROLL_KEYS = { ArrowUp: 1, ArrowDown: 1, PageUp: 1, PageDown: 1, Home: 1, End: 1, " ": 1 };
+		function preventScrollInput(e) {
+			if (scrollLockCount <= 0) return;
+			e.preventDefault();
+		}
+		function preventScrollKey(e) {
+			if (scrollLockCount <= 0 || !SCROLL_KEYS[e.key]) return;
+			e.preventDefault();
+		}
+		function lockPageScroll() {
+			scrollLockCount++;
+			if (scrollLockCount > 1) return;
+			window.addEventListener("wheel", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("touchmove", preventScrollInput, { passive: false, capture: true });
+			window.addEventListener("keydown", preventScrollKey, { capture: true });
+		}
+		function unlockPageScroll() {
+			if (scrollLockCount > 0) scrollLockCount--;
+			if (scrollLockCount > 0) return;
+			scrollLockCount = 0;
+			window.removeEventListener("wheel", preventScrollInput, { capture: true });
+			window.removeEventListener("touchmove", preventScrollInput, { capture: true });
+			window.removeEventListener("keydown", preventScrollKey, { capture: true });
+		}
+
+		/* ── 站内确认框（照抄三兄弟：Promise + Esc 优先 + 点遮罩取消）── */
+		var CONFIRM_SKINS = {
+			danger: { fg: "#DC2626", btn: "#DC2626" },
+			warning: { fg: "#B45309", btn: "#DC2626" },
+			info: { fg: "var(--primary)", btn: "var(--primary)" },
+		};
+		function askConfirm(text, opts) {
+			opts = opts || {};
+			var kind = opts.kind || "danger";
+			var skin = CONFIRM_SKINS[kind] || CONFIRM_SKINS.danger;
+			confirmTitleEl.textContent = opts.title || "请确认";
+			confirmTextEl.textContent = text;
+			confirmOkBtn.textContent = opts.okText || "确定";
+			confirmCancelBtn.textContent = opts.cancelText || "取消";
+			confirmOkBtn.style.backgroundColor = skin.btn;
+			confirmIconEl.style.color = skin.fg;
+			for (var i = 0; i < confirmIcons.length; i++) {
+				confirmIcons[i].classList.toggle("hidden", confirmIcons[i].getAttribute("data-kind") !== kind);
+			}
+			confirmEl.classList.remove("hidden");
+			confirmEl.classList.add("flex");
+			lockPageScroll();
+			try {
+				confirmCancelBtn.focus({ preventScroll: true });
+			} catch (e) {}
+			return new Promise(function (resolve) {
+				confirmResolve = resolve;
+			});
+		}
+		function settleConfirm(result) {
+			var fn = confirmResolve;
+			confirmResolve = null;
+			confirmEl.classList.add("hidden");
+			confirmEl.classList.remove("flex");
+			unlockPageScroll();
+			// ⚠️ confirmResolve 里存的是 Promise 的 resolve 函数 —— 必须调用它，否则等待方永远不结案
+			if (typeof fn === "function") fn(!!result);
+		}
+		function onConfirmKeydown(e) {
+			if (e.key !== "Escape") return;
+			if (confirmEl && !confirmEl.classList.contains("hidden")) {
+				settleConfirm(false);
+				return;
+			}
+			if (!mask || mask.classList.contains("hidden")) return;
+			requestClose(false);
+		}
+
+		/* ── GitHub API（照抄友链）── */
+		function contentsUrl(c, path) {
+			return (
+				"https://api.github.com/repos/" +
+				c.repo +
+				"/contents/" +
+				path
+					.split("/")
+					.map(encodeURIComponent)
+					.join("/")
+			);
+		}
+		function tokenHint(res) {
+			if (res.status === 401 || res.status === 403)
+				return "Token 无效或已过期，请到编辑器页更新后再试。";
+			return "";
+		}
+		function requireToken() {
+			var c = cfg();
+			if (!c.token) return null;
+			return c;
+		}
+		function fromB64(b64) {
+			return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, ""))));
+		}
+		function toB64(text) {
+			return btoa(unescape(encodeURIComponent(String(text))));
+		}
+		function readRemote() {
+			var c = requireToken();
+			if (!c) return Promise.reject(new Error("未检测到 GitHub Token，请先在编辑器页面配置。"));
+			return fetch(contentsUrl(c, FILE_PATH) + "?ref=" + encodeURIComponent(c.branch), {
+				headers: {
+					Authorization: "Bearer " + c.token,
+					Accept: "application/vnd.github+json",
+				},
+			}).then(function (res) {
+				if (!res.ok) throw new Error(tokenHint(res) || "读取失败，请点「刷新」后重试。");
+				return res.json().then(function (data) {
+					return { sha: data.sha, text: fromB64(data.content) };
+				});
+			});
+		}
+		function writeRemote(newText, sha) {
+			var c = requireToken();
+			if (!c) return Promise.reject(new Error("未检测到 GitHub Token，请先在编辑器页面配置。"));
+			return fetch(contentsUrl(c, FILE_PATH), {
+				method: "PUT",
+				headers: {
+					Authorization: "Bearer " + c.token,
+					Accept: "application/vnd.github+json",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					message:
+						"feat(booknav): 网站端更新书签导航（" +
+						state.groups.length +
+						" 组 " +
+						totalItems() +
+						" 条）",
+					content: toB64(newText),
+					sha: sha,
+					branch: c.branch,
+				}),
+			}).then(function (res) {
+				var th = tokenHint(res);
+				if (th) throw new Error(th);
+				if (res.status === 409 || res.status === 422)
+					throw new Error("文件已被改动，请点「刷新」后再保存。");
+				if (!res.ok) throw new Error("提交失败，请重试。");
+				return res.json();
+			});
+		}
+		function totalItems() {
+			var n = 0;
+			for (var i = 0; i < state.groups.length; i++) n += (state.groups[i].items || []).length;
+			return n;
+		}
+
+		/* ── 定位数据块（标记 + 数组）── */
+		// 返回 { begin, open, close, end }：
+		//   [begin] [OURS-DATA-BEGIN] … const _baseBooknav… = [ (open) …数据… ] ; [end] [OURS-DATA-END]
+		//   编辑器只替换 [open+1, close) 之间的数组体；标记行与声明行、类型标注字节级不动。
+		function locateDataBlock(src) {
+			var begin = src.indexOf(DATA_BEGIN);
+			if (begin === -1) return null;
+			var decl = src.indexOf("const _baseBooknav", begin);
+			if (decl === -1) return null;
+			var eq = src.indexOf("= [", decl);
+			if (eq === -1) return null;
+			var open = eq + 2;
+			var close = src.indexOf("\n];", open);
+			if (close === -1) return null;
+			var end = src.indexOf(DATA_END, close);
+			if (end === -1) return null;
+			return { begin: begin, open: open, close: close, end: end };
+		}
+
+		/* ── 解析（读回远端数据块 → 结构化）── */
+		function splitTopLevel(s) {
+			var out = [];
+			var buf = "";
+			var quote = "";
+			for (var i = 0; i < s.length; i++) {
+				var ch = s.charAt(i);
+				if (quote) {
+					buf += ch;
+					if (ch === "\\") {
+						buf += s.charAt(i + 1) || "";
+						i++;
+						continue;
+					}
+					if (ch === quote) quote = "";
+					continue;
+				}
+				if (ch === '"' || ch === "'") {
+					quote = ch;
+					buf += ch;
+					continue;
+				}
+				if (ch === "," || ch === "[") {
+					out.push(buf);
+					out.push(ch === "[" ? "[" : "");
+					buf = ch === "[" ? "" : "";
+					if (ch === "[") {
+						// 数组开始：找到与之配对的 ]
+						var depth = 1;
+						var q2 = "";
+						var j = i + 1;
+						for (; j < s.length; j++) {
+							var c2 = s.charAt(j);
+							if (q2) {
+								if (c2 === "\\") {
+									j++;
+									continue;
+								}
+								if (c2 === q2) q2 = "";
+								continue;
+							}
+							if (c2 === '"' || c2 === "'") {
+								q2 = c2;
+								continue;
+							}
+							if (c2 === "[") depth++;
+							if (c2 === "]") {
+								depth--;
+								if (depth === 0) break;
+							}
+						}
+						var inside = s.slice(i + 1, j);
+						out[out.length - 1] = "[" + inside + "]";
+						buf = "";
+						i = j;
+						continue;
+					}
+					continue;
+				}
+				buf += ch;
+			}
+			out.push(buf);
+			return out;
+		}
+
+		function parseValue(raw) {
+			var v = raw.trim().replace(/,$/, "").trim();
+			var first = v.charAt(0);
+			if (first === '"' || first === "'") {
+				var end = v.lastIndexOf(first);
+				if (end > 0) return v.slice(1, end).replace(/\\(["'\\])/g, "$1");
+			}
+			if (first === "[") {
+				var last = v.lastIndexOf("]");
+				var inside = last > 0 ? v.slice(1, last) : "";
+				if (!inside.trim()) return [];
+				return splitTopLevel(inside)
+					.map(parseValue)
+					.filter(function (x) {
+						return x !== "";
+					});
+			}
+			if (v === "true") return true;
+			if (v === "false") return false;
+			if (v !== "" && !isNaN(Number(v))) return Number(v);
+			return v;
+		}
+
+		// 解析组对象块（含嵌套 items 数组）—— 格式由本编辑器生成，结构固定
+		function parseGroupBlock(block) {
+			var g = { items: [] };
+			var lines = block.split("\n");
+			var inItems = false;
+			var item = null;
+			for (var i = 0; i < lines.length; i++) {
+				var t = lines[i].trim();
+				if (!t || t.indexOf("//") === 0) continue;
+				if (t === "{") continue; // 组开括号
+				if (t === "},") {
+					// 组闭括号
+					if (item) {
+						g.items.push(item);
+						item = null;
+					}
+					inItems = false;
+					continue;
+				}
+				// 进入 items 数组（items: [ 独占一行时）
+				if (/^items\s*:\s*\[\s*$/.test(t)) {
+					inItems = true;
+					continue;
+				}
+				if (inItems) {
+					if (t === "{" || t === "{,") {
+						item = {};
+						continue;
+					}
+					if (t === "}," || t === "}") {
+						if (item) {
+							g.items.push(item);
+							item = null;
+						}
+						continue;
+					}
+					var mm = t.match(/^(title|url|desc|icon|weight|enabled)\s*:\s*([\s\S]*?),?$/);
+					if (mm && item) item[mm[1]] = parseValue(mm[2]);
+					continue;
+				}
+				// 单行 items: [...]（空数组等情况）
+				var single = t.match(/^items\s*:\s*(\[[^\]]*\])\s*,?\s*$/);
+				if (single) {
+					g.items = parseValue(single[1]) || [];
+					continue;
+				}
+				var kv = t.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\s\S]*)$/);
+				if (kv) g[kv[1]] = parseValue(kv[2]);
+			}
+			return g;
+		}
+
+		function parseDataBody(body) {
+			var out = [];
+			var cur = null;
+			var buf = "";
+			var depth = 0;
+			var started = false;
+			var lines = body.split("\n");
+			for (var i = 0; i < lines.length; i++) {
+				var line = lines[i];
+				var t = line.trim();
+				if (!t || t.indexOf("//") === 0) continue;
+				if (t === "[" ) continue;
+				if (t === "];" || t === "]") break;
+				depth += (t.match(/\{/g) || []).length - (t.match(/\}/g) || []).length;
+				if (!started) {
+					if (t === "{") {
+						started = true;
+						cur = line;
+						continue;
+					}
+					continue;
+				}
+				buf += "\n" + line;
+				if (depth <= 0) {
+					out.push(parseGroupBlock(buf));
+					cur = null;
+					buf = "";
+					depth = 0;
+					started = false;
+				}
+			}
+			return out;
+		}
+
+		function normalizeGroup(raw) {
+			var g = {
+				id: String(raw.id == null ? "" : raw.id),
+				name: String(raw.name == null ? "" : raw.name),
+				weight: 0,
+				enabled: raw.enabled !== false,
+				items: [],
+			};
+			if (raw.icon) g.icon = String(raw.icon);
+			if (raw.desc) g.desc = String(raw.desc);
+			if (raw.weight) g.weight = Number(raw.weight) || 0;
+			var items = Array.isArray(raw.items) ? raw.items : [];
+			for (var i = 0; i < items.length; i++) g.items.push(normalizeItem(items[i]));
+			return g;
+		}
+		function normalizeItem(raw) {
+			var it = {
+				title: String(raw.title == null ? "" : raw.title),
+				url: String(raw.url == null ? "" : raw.url),
+				weight: 0,
+				enabled: raw.enabled !== false,
+			};
+			if (raw.desc) it.desc = String(raw.desc);
+			if (raw.icon) it.icon = String(raw.icon);
+			if (raw.weight) it.weight = Number(raw.weight) || 0;
+			return it;
+		}
+		function sortGroups(arr) {
+			return arr.slice().sort(function (a, b) {
+				return (Number(b.weight) || 0) - (Number(a.weight) || 0);
+			});
+		}
+
+		/* ── 序列化（Biome 对齐：tab 缩进、双引号、每行 ≤80）── */
+		var LINE_WIDTH = 80;
+		var INDENT_WIDTH = 2;
+		function charWidth(cp) {
+			if (
+				cp >= 0x1100 &&
+				(cp <= 0x115f ||
+					cp === 0x2329 ||
+					cp === 0x232a ||
+					(cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
+					(cp >= 0xac00 && cp <= 0xd7a3) ||
+					(cp >= 0xf900 && cp <= 0xfaff) ||
+					(cp >= 0xfe30 && cp <= 0xfe6f) ||
+					(cp >= 0xff00 && cp <= 0xff60) ||
+					(cp >= 0xffe0 && cp <= 0xffe6) ||
+					(cp >= 0x1f300 && cp <= 0x1faff) ||
+					(cp >= 0x20000 && cp <= 0x3fffd))
+			)
+				return 2;
+			return 1;
+		}
+		function textWidth(s) {
+			var w = 0;
+			for (var i = 0; i < s.length; i++) {
+				var cp = s.codePointAt(i);
+				if (cp > 0xffff) i++;
+				w += charWidth(cp);
+			}
+			return w;
+		}
+		function quote(s) {
+			var v = String(s == null ? "" : s);
+			if (v.indexOf('"') !== -1 && v.indexOf("'") === -1) {
+				return "'" + v.replace(/\\/g, "\\\\") + "'";
+			}
+			return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+		}
+		function tabs(n) {
+			var s = "";
+			for (var i = 0; i < n; i++) s += "\t";
+			return s;
+		}
+		function fits(tabCount, text) {
+			return tabCount * INDENT_WIDTH + textWidth(text) <= LINE_WIDTH;
+		}
+		function scalarField(tabCount, key, valueText) {
+			var oneLine = key + ": " + valueText + ",";
+			if (fits(tabCount, oneLine)) return tabs(tabCount) + oneLine + "\n";
+			return tabs(tabCount) + key + ":\n" + tabs(tabCount + 1) + valueText + ",\n";
+		}
+
+		// 生成数据块体（组字段 2 tabs；items 多行；项字段 4 tabs；weight 按顺序生成）
+		function buildDataBody(groups) {
+			var out = "\n";
+			for (var gi = 0; gi < groups.length; gi++) {
+				var g = groups[gi];
+				var items = g.items || [];
+				out += "\t{\n";
+				out += scalarField(2, "id", quote(g.id));
+				out += scalarField(2, "name", quote(g.name));
+				if (g.icon) out += scalarField(2, "icon", quote(g.icon));
+				if (g.desc) out += scalarField(2, "desc", quote(g.desc));
+				out += scalarField(2, "weight", String(Math.max(1, 100 - 10 * gi)));
+				if (g.enabled === false) out += scalarField(2, "enabled", "false");
+				if (!items.length) {
+					out += scalarField(2, "items", "[]");
+				} else {
+					out += tabs(2) + "items: [\n";
+					for (var ii = 0; ii < items.length; ii++) {
+						var it = items[ii];
+						out += "\t\t\t{\n";
+						out += scalarField(4, "title", quote(it.title));
+						out += scalarField(4, "url", quote(it.url));
+						if (it.desc) out += scalarField(4, "desc", quote(it.desc));
+						if (it.icon) out += scalarField(4, "icon", quote(it.icon));
+						out += scalarField(4, "weight", String(Math.max(1, 10 - ii)));
+						if (it.enabled === false) out += scalarField(4, "enabled", "false");
+						out += "\t\t\t},\n";
+					}
+					out += "\t\t],\n";
+				}
+				out += "\t},\n";
+			}
+			return out;
+		}
+
+		/* ── 渲染（单列折叠：一个列表走到底）── */
+		var lastSig = "";
+		function resetRenderCache() {
+			lastSig = "";
+		}
+
+		function faviconSrc(url) {
+			var m = String(url || "").match(/^https?:\/\/([^/]+)/);
+			return m ? "https://a.favicon.im/" + m[1] : "";
+		}
+		function hostOf(url) {
+			var m = String(url || "").match(/^https?:\/\/([^/]+)/);
+			return m ? m[1].replace(/^www\./, "") : "";
+		}
+		/** astro-icon 名（如 material-symbols:code-rounded）→ Iconify 公共 API 的 svg */
+		function iconifySrc(name) {
+			var s = String(name || "").trim();
+			var i = s.indexOf(":");
+			if (i <= 0) return "";
+			return "https://api.iconify.design/" + encodeURIComponent(s.slice(0, i)) + "/" + encodeURIComponent(s.slice(i + 1)) + ".svg";
+		}
+		/** 图标解析：图片 URL / public 路径 / astro-icon 名 / 自动 favicon */
+		function resolveIcon(icon, url) {
+			var s = String(icon || "").trim();
+			if (s) {
+				if (/^(https?:)?\/\//.test(s) || s.charAt(0) === "/") return s;
+				var ic = iconifySrc(s);
+				return ic || "";
+			}
+			return faviconSrc(url);
+		}
+		/** 图标格：有图用图（失败自动隐藏）→ 无图用首字母 */
+		function iconCell(src, first, cls) {
+			if (src) {
+				return '<span class="' + cls + '"><img src="' + escHtml(src) + '" alt="" loading="lazy" onerror="this.style.display=&quot;none&quot;" /><span class="text-[10px]">' + escHtml(first) + "</span></span>";
+			}
+			return '<span class="' + cls + '">' + escHtml(first) + "</span>";
+		}
+		function iconBtn(act, gid, idx, disabled, title, path, danger) {
+			return (
+				'<button type="button" class="bo-ico' +
+				(danger ? " bo-danger" : "") +
+				'" data-act="' +
+				act +
+				'" data-gid="' +
+				escHtml(gid) +
+				'" data-idx="' +
+				idx +
+				'"' +
+				(disabled ? " disabled" : "") +
+				' title="' +
+				escHtml(title) +
+				'" aria-label="' +
+				escHtml(title) +
+				'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+				path +
+				"</svg></button>"
+			);
+		}
+		function field(label, ctrl) {
+			return '<div class="bo-field"><label>' + escHtml(label) + "</label>" + ctrl + "</div>";
+		}
+
+		/** 分组编辑表单（就地展开在分组头下方） */
+		function groupForm(g) {
+			return (
+				'<div class="bo-form" data-form="group" data-gid="' +
+				escHtml(g.id) +
+				'">' +
+				field("名称", '<input type="text" data-f="name" value="' + escHtml(g.name || "") + '" placeholder="分组名称" />') +
+				field("标识", '<input type="text" data-f="id" value="' + escHtml(g.id) + '" placeholder="英文标识（用作锚点，不可重复）" />') +
+				field("图标", '<input type="text" data-f="icon" value="' + escHtml(g.icon || "") + '" placeholder="图标（可留空）" />') +
+				'<div class="bo-hint">图标支持：图片 URL / /public 路径 / astro-icon 名（如 material-symbols:code-rounded）</div>' +
+				field("描述", '<input type="text" data-f="desc" value="' + escHtml(g.desc || "") + '" placeholder="分组描述（可留空）" />') +
+				'<div class="bo-factions"><button type="button" class="bo-btn" data-act="form-cancel">取消</button><button type="button" class="bo-btn bo-btn-primary" data-act="g-save">保存分组</button></div>' +
+				"</div>"
+			);
+		}
+
+		/** 书签编辑表单（就地展开在该行下方），"所属组"下拉即换组 */
+		function itemForm(g, it, idx) {
+			var opts = "";
+			for (var i = 0; i < state.groups.length; i++) {
+				var g2 = state.groups[i];
+				opts +=
+					'<option value="' +
+					escHtml(g2.id) +
+					'"' +
+					(g2.id === g.id ? " selected" : "") +
+					">" +
+					escHtml(g2.name || g2.id) +
+					"</option>";
+			}
+			return (
+				'<div class="bo-form" data-form="item" data-gid="' +
+				escHtml(g.id) +
+				'" data-idx="' +
+				idx +
+				'">' +
+				field("标题", '<input type="text" data-f="title" value="' + escHtml(it.title || "") + '" placeholder="书签标题" />') +
+				field("地址", '<input type="text" data-f="url" value="' + escHtml(it.url || "") + '" placeholder="https://…" />') +
+				field("描述", '<input type="text" data-f="desc" value="' + escHtml(it.desc || "") + '" placeholder="描述（可留空）" />') +
+				field("图标", '<input type="text" data-f="icon" value="' + escHtml(it.icon || "") + '" placeholder="图标（留空自动抓 favicon）" />') +
+				'<div class="bo-hint">图标支持：图片 URL / /public 路径 / astro-icon 名；留空则自动抓取该站点 favicon</div>' +
+				field("所属组", '<select data-f="gid">' + opts + "</select>") +
+				'<div class="bo-factions"><button type="button" class="bo-btn" data-act="form-cancel">取消</button><button type="button" class="bo-btn bo-btn-primary" data-act="i-save">保存本条</button></div>' +
+				"</div>"
+			);
+		}
+
+		/** 书签行（只读展示：图标 + 标题 + 域名 + 操作） */
+		function itemRow(g, it, idx, total) {
+			var src = resolveIcon(it.icon, it.url);
+			var host = hostOf(it.url);
+			var html = '<div class="bo-item"' + (it.enabled === false ? ' data-disabled="1"' : "") + ' data-gid="' + escHtml(g.id) + '" data-idx="' + idx + '">';
+			html += iconCell(src, (it.title || "?").charAt(0), "bo-iicon");
+			html += '<span class="bo-ititle">' + escHtml(it.title || "（未命名）") + "</span>";
+			if (host) html += '<span class="bo-ihost hidden sm:inline">' + escHtml(host) + "</span>";
+			html += '<span class="bo-iactions">';
+			html += iconBtn("i-up", g.id, idx, idx === 0, "上移", '<path d="m18 15-6-6-6 6"></path>');
+			html += iconBtn("i-down", g.id, idx, idx === total - 1, "下移", '<path d="m6 9 6 6 6-6"></path>');
+			html += iconBtn("i-edit", g.id, idx, false, "编辑", '<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>');
+			html += iconBtn("i-toggle", g.id, idx, false, it.enabled === false ? "启用" : "停用", '<path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"></path><path d="M12 2v10"></path>');
+			html += iconBtn("i-del", g.id, idx, false, "删除", '<path d="M18 6 6 18M6 6l12 12"></path>', true);
+			html += "</span></div>";
+			return html;
+		}
+
+		function renderAll() {
+			var sig =
+				JSON.stringify(state.groups) +
+				"|" +
+				JSON.stringify(state.open) +
+				"|" +
+				JSON.stringify(state.editing) +
+				"|" +
+				(state.busy ? "1" : "0");
+			if (sig === lastSig) return;
+			lastSig = sig;
+
+			if (!state.groups.length) {
+				listEl.innerHTML = "";
+				setSubtitle();
+				return;
+			}
+
+			var html = "";
+			for (var gi = 0; gi < state.groups.length; gi++) {
+				var g = state.groups[gi];
+				var items = g.items || [];
+				var isOpen = !!state.open[g.id];
+				html +=
+					'<section class="bo-group card-base"' +
+					(g.enabled === false ? ' data-disabled="1"' : "") +
+					(isOpen ? ' data-open="1"' : "") +
+					' data-gid="' +
+					escHtml(g.id) +
+					'">';
+
+				// 分组头（点整行折叠/展开）
+				html += '<div class="bo-ghead" data-act="g-fold" data-gid="' + escHtml(g.id) + '">';
+				html +=
+					'<span class="bo-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></span>';
+				html += iconCell(resolveIcon(g.icon, ""), (g.name || g.id || "?").charAt(0), "bo-gicon");
+				html += '<span class="bo-gname">' + escHtml(g.name || g.id) + "</span>";
+				html +=
+					'<span class="bo-gcount">' + items.length + " 条" + (g.enabled === false ? " · 停用" : "") + "</span>";
+				html += '<span class="bo-gactions">';
+				html += iconBtn("g-up", g.id, -1, gi === 0, "上移分组", '<path d="m18 15-6-6-6 6"></path>');
+				html += iconBtn("g-down", g.id, -1, gi === state.groups.length - 1, "下移分组", '<path d="m6 9 6 6 6-6"></path>');
+				html += iconBtn("g-edit", g.id, -1, false, "编辑分组", '<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>');
+				html += iconBtn("g-toggle", g.id, -1, false, g.enabled === false ? "启用分组" : "停用分组", '<path d="M18.36 6.64A9 9 0 1 1 5.64 6.64"></path><path d="M12 2v10"></path>');
+				html += iconBtn("g-del", g.id, -1, false, "删除分组", '<path d="M18 6 6 18M6 6l12 12"></path>', true);
+				html += "</span></div>";
+
+				if (isOpen) {
+					if (isEditing(g.id, -1)) html += groupForm(g);
+					for (var ii = 0; ii < items.length; ii++) {
+						if (isEditing(g.id, ii)) html += itemForm(g, items[ii], ii);
+						else html += itemRow(g, items[ii], ii, items.length);
+					}
+					html += '<button type="button" class="bo-additem" data-act="i-add" data-gid="' + escHtml(g.id) + '">＋ 加书签</button>';
+				}
+
+				html += "</section>";
+			}
+			listEl.innerHTML = html;
+			setSubtitle();
+		}
+
+		/* ── 交互（单列折叠 + 行内编辑）── */
+		function uniqueGroupId(base) {
+			var id = base;
+			var n = 2;
+			while (
+				state.groups.some(function (g) {
+					return g.id === id;
+				})
+			) {
+				id = base + "-" + n;
+				n++;
+			}
+			return id;
+		}
+
+		function focusFirstInput() {
+			window.setTimeout(function () {
+				var el = listEl.querySelector(".bo-form input[data-f], .bo-form select[data-f]");
+				if (el) {
+					try {
+						el.focus({ preventScroll: true });
+					} catch (e) {}
+				}
+			}, 0);
+		}
+
+		function addGroup() {
+			var g = {
+				id: uniqueGroupId("group"),
+				name: "新分组",
+				weight: 0,
+				enabled: true,
+				items: [],
+			};
+			state.groups.push(g);
+			state.open[g.id] = true;
+			state.editing = { gid: g.id, idx: -1 };
+			state.formGid = g.id;
+			state.formId = g.id;
+			markDirty();
+			focusFirstInput();
+		}
+
+		function addItem(gid) {
+			var g = findGroup(gid);
+			if (!g) return;
+			if (!g.items) g.items = [];
+			g.items.push({ title: "", url: "", weight: 0, enabled: true });
+			state.open[gid] = true;
+			state.editing = { gid: gid, idx: g.items.length - 1 };
+			state.formGid = gid;
+			markDirty();
+			focusFirstInput();
+		}
+
+		function moveItem(gid, idx, dir) {
+			var g = findGroup(gid);
+			if (!g || !g.items) return;
+			var j = idx + dir;
+			if (j < 0 || j >= g.items.length) return;
+			var tmp = g.items[idx];
+			g.items[idx] = g.items[j];
+			g.items[j] = tmp;
+			state.editing = null;
+			markDirty();
+		}
+
+		function moveGroup(gid, dir) {
+			var i = findGroupIndex(gid);
+			if (i < 0) return;
+			var j = i + dir;
+			if (j < 0 || j >= state.groups.length) return;
+			var tmp = state.groups[i];
+			state.groups[i] = state.groups[j];
+			state.groups[j] = tmp;
+			state.editing = null;
+			markDirty();
+		}
+
+		function toggleItem(gid, idx) {
+			var g = findGroup(gid);
+			if (!g || !g.items || !g.items[idx]) return;
+			g.items[idx].enabled = g.items[idx].enabled === false;
+			markDirty();
+		}
+
+		function toggleGroup(gid) {
+			var g = findGroup(gid);
+			if (!g) return;
+			g.enabled = g.enabled === false;
+			markDirty();
+		}
+
+		function delItem(gid, idx) {
+			var g = findGroup(gid);
+			if (!g || !g.items || !g.items[idx]) return;
+			var it = g.items[idx];
+			askConfirm("「" + (it.title || it.url || "这条书签") + "」这条书签将被删除。", {
+				title: "删除这条书签？",
+				kind: "danger",
+				okText: "确定",
+			}).then(function (ok) {
+				if (!ok) return;
+				g.items.splice(idx, 1);
+				state.editing = null;
+				markDirty();
+			});
+		}
+
+		function delGroup(gid) {
+			var g = findGroup(gid);
+			if (!g) return;
+			askConfirm("「" + (g.name || g.id) + "」这个分组将被删除。", {
+				title: "删除这个分组？",
+				kind: "danger",
+				okText: "确定",
+			}).then(function (ok) {
+				if (!ok) return;
+				state.groups = state.groups.filter(function (x) {
+					return x.id !== g.id;
+				});
+				state.open[g.id] = false;
+				state.editing = null;
+				markDirty();
+			});
+		}
+
+		/** 保存分组表单（名称/图标/描述已即时写回；标识在保存时统一处理，要同步各处 key） */
+		function saveGroupForm(gid) {
+			var g = findGroup(gid);
+			if (!g) return;
+			var newId = String(state.formId == null ? g.id : state.formId).trim();
+			if (!newId) {
+				askConfirm("分组的「标识」不能为空。", { title: "无法保存", kind: "info", okText: "确定" });
+				return;
+			}
+			if (newId !== gid) {
+				var dup = state.groups.some(function (x) {
+					return x !== g && x.id === newId;
+				});
+				if (dup) {
+					askConfirm("标识「" + newId + "」已被其它分组占用。", { title: "无法保存", kind: "info", okText: "确定" });
+					return;
+				}
+				if (state.open[gid]) {
+					state.open[newId] = true;
+					state.open[gid] = false;
+				}
+			}
+			g.id = newId;
+			if (!String(g.name || "").trim()) g.name = newId;
+			state.editing = null;
+			state.formId = null;
+			markDirty();
+		}
+
+		/** 保存书签表单（字段已即时写回；"所属组"被改 ⇒ 换组，不用拖拽） */
+		function saveItemForm(gid, idx) {
+			var g = findGroup(gid);
+			if (!g || !g.items || !g.items[idx]) return;
+			var it = g.items[idx];
+			if (!String(it.title || "").trim()) {
+				askConfirm("书签的「标题」不能为空。", { title: "无法保存", kind: "info", okText: "确定" });
+				return;
+			}
+			if (!String(it.url || "").trim()) {
+				askConfirm("书签的「地址」不能为空。", { title: "无法保存", kind: "info", okText: "确定" });
+				return;
+			}
+			var target = state.formGid || gid;
+			if (target !== gid) {
+				var g2 = findGroup(target);
+				if (g2) {
+					g.items.splice(idx, 1);
+					if (!g2.items) g2.items = [];
+					g2.items.push(it);
+					state.open[target] = true;
+				}
+			}
+			state.editing = null;
+			state.formGid = null;
+			markDirty();
+		}
+
+		/** 取消表单 = 回滚到"上次已保存"的快照；若是本次**新建**的组/条目 ⇒ 直接丢弃 */
+		function cancelForm() {
+			var cur = state.editing;
+			if (cur) {
+				var g = findGroup(cur.gid);
+				var s = null;
+				if (state.saved) {
+					for (var i = 0; i < state.saved.length; i++) {
+						if (state.saved[i].id === cur.gid) s = state.saved[i];
+					}
+				}
+				if (!s) {
+					// 不在"上次保存"里 ⇒ 本次新建 ⇒ 取消 = 丢弃
+					if (cur.idx === -1) {
+						state.groups = state.groups.filter(function (x) {
+							return x.id !== cur.gid;
+						});
+						state.open[cur.gid] = false;
+					} else if (g && g.items) {
+						g.items.splice(cur.idx, 1);
+					}
+				} else if (g) {
+					if (cur.idx === -1) {
+						g.name = s.name;
+						g.icon = s.icon;
+						g.desc = s.desc;
+						g.id = s.id;
+					} else if (s.items && s.items[cur.idx]) {
+						g.items[cur.idx] = JSON.parse(JSON.stringify(s.items[cur.idx]));
+					} else if (g.items) {
+						g.items.splice(cur.idx, 1);
+					}
+				}
+			}
+			state.editing = null;
+			state.formGid = null;
+			state.formId = null;
+			markDirty();
+		}
+
+		function onListClick(e) {
+			var btn = e.target.closest ? e.target.closest("[data-act]") : null;
+			if (!btn) return;
+			var act = btn.getAttribute("data-act");
+			var gid = btn.getAttribute("data-gid") || "";
+			var idx = Number(btn.getAttribute("data-idx"));
+			// 表单内的按钮（保存本条 / 保存分组 / 取消）不带 data-gid/data-idx ⇒ 从 .bo-form 上取
+			if (act === "i-save" || act === "g-save" || act === "form-cancel") {
+				var form = btn.closest ? btn.closest(".bo-form") : null;
+				if (form) {
+					var fgid = form.getAttribute("data-gid");
+					var fidx = form.getAttribute("data-idx");
+					if (fgid) gid = fgid;
+					if (fidx !== null) idx = Number(fidx);
+				}
+			}
+			if (act === "g-fold") {
+				state.open[gid] = !state.open[gid];
+				if (!state.open[gid] && state.editing && state.editing.gid === gid) state.editing = null;
+				renderAll();
+			} else if (act === "g-up") moveGroup(gid, -1);
+			else if (act === "g-down") moveGroup(gid, 1);
+			else if (act === "g-edit") {
+				state.open[gid] = true;
+				state.editing = { gid: gid, idx: -1 };
+				state.formGid = gid;
+				state.formId = gid;
+				markDirty();
+				focusFirstInput();
+			} else if (act === "g-toggle") toggleGroup(gid);
+			else if (act === "g-del") delGroup(gid);
+			else if (act === "g-save") saveGroupForm(gid);
+			else if (act === "i-add") addItem(gid);
+			else if (act === "i-up") moveItem(gid, idx, -1);
+			else if (act === "i-down") moveItem(gid, idx, 1);
+			else if (act === "i-edit") {
+				state.editing = { gid: gid, idx: idx };
+				state.formGid = gid;
+				markDirty();
+				focusFirstInput();
+			} else if (act === "i-toggle") toggleItem(gid, idx);
+			else if (act === "i-del") delItem(gid, idx);
+			else if (act === "i-save") saveItemForm(gid, idx);
+			else if (act === "form-cancel") cancelForm();
+		}
+
+		/** 表单字段即时写回 state；**不重建列表**（否则输入框失焦） */
+		function onListInput(e) {
+			var t = e.target;
+			if (!t || !t.getAttribute) return;
+			var f = t.getAttribute("data-f");
+			if (!f) return;
+			var form = t.closest ? t.closest(".bo-form") : null;
+			if (!form) return;
+			var gid = form.getAttribute("data-gid");
+			var g = findGroup(gid);
+			if (!g) return;
+			if (form.getAttribute("data-form") === "group") {
+				if (f === "id") {
+					state.formId = t.value;
+					state.dirty = true;
+					return;
+				}
+				g[f] = t.value;
+			} else {
+				var idx = Number(form.getAttribute("data-idx"));
+				if (!g.items || !g.items[idx]) return;
+				if (f === "gid") {
+					state.formGid = t.value;
+					state.dirty = true;
+					return;
+				}
+				g.items[idx][f] = t.value;
+			}
+			state.dirty = true;
+			setSubtitle();
+		}
+
+		/* ── 打开 / 关闭 ── */
+		/** 默认展开第一个分组（仅当"当前没有任何分组处于展开态"时） */
+		function ensureOneOpen() {
+			if (!state.groups.length) return;
+			var anyOpen = false;
+			for (var k in state.open) {
+				if (state.open[k]) {
+					anyOpen = true;
+					break;
+				}
+			}
+			if (!anyOpen) state.open[state.groups[0].id] = true;
+		}
+
+		function openModal() {
+			resetRenderCache();
+			if (!state.groups.length && seed.length) {
+				state.groups = sortGroups(seed.map(normalizeGroup));
+			}
+			state.editing = null;
+			state.formGid = null;
+			state.formId = null;
+			ensureOneOpen();
+			mask.classList.remove("hidden");
+			mask.classList.add("flex");
+			// ⚠️ 主弹窗**不锁**页面滚动（与三兄弟一致）：lockPageScroll 只给确认框用。
+			//    锁了会把弹窗内的滚轮也一起拦掉（表现为"弹窗里只能用拖动滚动条滚动"）。
+			//    弹窗内滚动不带动网页靠 ① overscroll-behavior: contain ② 面板 wheel 兜底。
+			renderAll();
+			btnClose.focus({ preventScroll: true });
+		}
+		function doClose() {
+			mask.classList.add("hidden");
+			mask.classList.remove("flex");
+			// 主弹窗未锁滚动 ⇒ 这里无需 unlock（确认框的 lock/unlock 自成对）
+			try {
+				if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+			} catch (e) {}
+		}
+		function requestClose(force) {
+			if (!mask || mask.classList.contains("hidden")) return;
+			if (state.dirty && !force) {
+				askConfirm("改动还没提交到云端，放弃后改动会丢失。", {
+					title: "放弃未提交的修改？",
+					kind: "warning",
+				}).then(function (ok) {
+					if (ok) {
+						restoreSaved();
+						doClose();
+					}
+				});
+				return;
+			}
+			doClose();
+		}
+		function restoreSaved() {
+			if (!state.saved) return;
+			state.groups = sortGroups(JSON.parse(JSON.stringify(state.saved)).map(normalizeGroup));
+			state.dirty = false;
+			state.editing = null;
+			state.formGid = null;
+			state.formId = null;
+			resetRenderCache();
+			renderAll();
+		}
+		function markSaved() {
+			state.saved = JSON.parse(JSON.stringify(state.groups));
+			state.dirty = false;
+			state.editing = null;
+			state.formGid = null;
+			state.formId = null;
+			ensureOneOpen();
+		}
+
+		/* ── 刷新（唯一的主动拉取入口）── */
+		function loadFromRemote() {
+			return readRemote().then(function (r) {
+				if (state.dirty) return;
+				var loc = locateDataBlock(r.text);
+				if (!loc) throw new Error("未能在 " + FILE_PATH + " 中定位 _baseBooknav 数据块。");
+				var body = r.text.slice(loc.open + 1, loc.close);
+				var groups = parseDataBody(body).map(normalizeGroup);
+				var sig = JSON.stringify(groups.map(function (g) {
+					return [g.id, g.name, g.items.length];
+				}));
+				var cur = JSON.stringify(state.groups.map(function (g) {
+					return [g.id, g.name, g.items.length];
+				}));
+				if (sig !== cur) {
+					state.groups = sortGroups(groups);
+					state.editing = null;
+					state.formGid = null;
+					state.formId = null;
+					ensureOneOpen();
+					resetRenderCache();
+					renderAll();
+				}
+			});
+		}
+		function onRefreshClick() {
+			if (state.busy) return;
+			btnRefresh.disabled = true;
+			btnRefresh.textContent = "刷新中…";
+			loadFromRemote()
+				.then(
+					function () {},
+					function () {},
+				)
+				.then(function () {
+					btnRefresh.disabled = false;
+					btnRefresh.textContent = "刷新";
+				});
+		}
+
+		/* ── 校验 + 保存（标记内重写）── */
+		function validate() {
+			for (var i = 0; i < state.groups.length; i++) {
+				var g = state.groups[i];
+				if (!(g.id || "").trim()) return "第 " + (i + 1) + " 个分组的「标识」不能为空";
+				if (!(g.name || "").trim()) return "分组「" + g.id + "」的名称不能为空";
+				var items = g.items || [];
+				for (var j = 0; j < items.length; j++) {
+					if (!(items[j].title || "").trim()) return "分组「" + (g.name || g.id) + "」第 " + (j + 1) + " 条书签的「标题」不能为空";
+					if (!(items[j].url || "").trim()) return "「" + items[j].title + "」的「网址」不能为空";
+				}
+			}
+			return "";
+		}
+		function dupWarning() {
+			var seen = {};
+			var dups = [];
+			for (var i = 0; i < state.groups.length; i++) {
+				var items = state.groups[i].items || [];
+				for (var j = 0; j < items.length; j++) {
+					var u = (items[j].url || "").replace(/\/+$/, "");
+					if (!u) continue;
+					if (seen[u]) dups.push(items[j].url);
+					seen[u] = 1;
+				}
+			}
+			return dups.length ? "检测到 " + dups.length + " 条重复网址：" + dups.slice(0, 2).join("、") : "";
+		}
+
+		function doSave() {
+			// 阶段打点：保存链路任何一步失败都会留下痕迹（浏览器控制台可查 window.__saveLog），
+			// 避免"点了没反应却无从排查"（三兄弟的 catch 空块曾导致同类问题）。
+			window.__saveLog = ["start"];
+			var L = function (m) {
+				window.__saveLog.push(m);
+			};
+			if (state.busy) {
+				L("busy: 已在提交中");
+				return;
+			}
+			var err = validate();
+			if (err) {
+				L("validate: " + err);
+				throw new Error(err);
+			}
+			L("validate ok");
+			var c = requireToken();
+			if (!c) {
+				L("no token");
+				throw new Error("未检测到 GitHub Token，请先在编辑器页面配置。");
+			}
+			L("token ok");
+			if (!state.groups.length) {
+				L("no groups");
+				throw new Error("至少保留一个分组。");
+			}
+			L("groups ok");
+			var dup = dupWarning();
+			var doCommit = function () {
+				L("commit start");
+				setBusy(true, "提交中…");
+				// 保存前自检：序列化 → 解析 → 与内存逐字段比对（weight 不参与）
+				var body = buildDataBody(state.groups);
+				L("body built: " + body.length + " 字符");
+				var parsed = parseDataBody(body).map(normalizeGroup);
+				L("parsed: " + parsed.length + " 组");
+				for (var i = 0; i < parsed.length; i++) {
+					var a = state.groups[i],
+						b = parsed[i];
+					if (a.id !== b.id || a.name !== b.name) {
+						L("selfcheck: 第 " + i + " 组不一致");
+						throw new Error("内部错误：序列化不一致，请刷新后重试。");
+					}
+				}
+				L("selfcheck ok");
+				setBusy(true, "正在提交…");
+				readRemote()
+					.then(function (r) {
+						L("remote ok (sha=" + (r.sha || "").slice(0, 8) + ")");
+						var loc = locateDataBlock(r.text);
+						if (!loc) {
+							L("locate: 未找到数据块");
+							throw new Error("未能在 " + FILE_PATH + " 中定位 _baseBooknav 数据块。");
+						}
+						// 只替换数组体：标记行、声明行、类型标注、文件其余部分字节级不动
+						var newText = r.text.slice(0, loc.open + 1) + body + r.text.slice(loc.close);
+						L("slice ok, 新文本 " + newText.length + " 字符");
+						return writeRemote(newText, r.sha);
+					})
+					.then(function () {
+						L("PUT ok");
+						markSaved();
+					})
+					.catch(function (e) {
+						L("失败: " + (e && e.message ? e.message : String(e)));
+						throw e;
+					})
+					.then(function () {
+						setBusy(false);
+					});
+			};
+			if (dup) {
+				L("dup: " + dup);
+				return askConfirm(dup, { title: "检测到重复", okText: "仍要保存", kind: "warning" }).then(
+					function (ok) {
+						L("dup confirm: " + ok);
+						if (ok) doCommit();
+					},
+				);
+			}
+			L("no dup → commit");
+			doCommit();
+			return Promise.resolve();
+		}
+
+		/* ── 事件绑定（幂等）── */
+		function bindAll() {
+			bindOnce(btnOpen, "click", openModal);
+			bindOnce(btnClose, "click", function () {
+				requestClose(false);
+			});
+			bindOnce(btnCancel, "click", function () {
+				requestClose(false);
+			});
+			bindOnce(btnSave, "click", function () {
+				try {
+					doSave();
+				} catch (e) {}
+			});
+			bindOnce(btnRefresh, "click", onRefreshClick);
+			bindOnce(btnAddGroup, "click", addGroup);
+			bindOnce(listEl, "click", onListClick);
+			bindOnce(listEl, "input", onListInput);
+			bindOnce(listEl, "change", onListInput);
+			bindOnce(confirmOkBtn, "click", function () {
+				settleConfirm(true);
+			});
+			bindOnce(confirmCancelBtn, "click", function () {
+				settleConfirm(false);
+			});
+			bindOnce(confirmEl, "click", function (e) {
+				if (e.target === confirmEl) settleConfirm(false);
+			});
+			// Esc：确认框 → 主弹窗
+			if (!window.__boKeydownBound) {
+				document.addEventListener("keydown", onKeydown);
+				window.__boKeydownBound = true;
+			}
+		}
+		function onKeydown(e) {
+			if (e.key !== "Escape") return;
+			if (confirmEl && !confirmEl.classList.contains("hidden")) {
+				settleConfirm(false);
+				return;
+			}
+			if (!mask || mask.classList.contains("hidden")) return;
+			requestClose(false);
+		}
+
+		/* ── 可见性：配置过 Token 或 ?manage=1 才显示入口 ── */
+		function initVisibility() {
+			if (!btnOpen) return;
+			var hasToken = !!cfg().token;
+			var force = /[?&]manage=1\b/.test(window.location.search);
+			if (!hasToken && !force) return;
+			btnOpen.classList.remove("hidden");
+			btnOpen.classList.add("inline-flex");
+		}
+
+		/**
+		 * swup 重放后文档里是新的一份 DOM ⇒ 闭包里所有引用都要重新取，
+		 * 否则操作的是"已被移出文档的旧节点"（表现为：代码确实跑了、页面却毫无反应）。
+		 * 这一步是三兄弟既有做法的核心（FriendsEditor 的 adoptDialog → refreshRefs）。
+		 */
+		function refreshRefs() {
+			btnOpen = document.getElementById("bo-open");
+			mask = document.getElementById("bo-mask");
+			panel = document.getElementById("bo-panel");
+			btnClose = document.getElementById("bo-close");
+			btnCancel = document.getElementById("bo-cancel");
+			btnSave = document.getElementById("bo-save");
+			btnRefresh = document.getElementById("bo-refresh");
+			btnAddGroup = document.getElementById("bo-add-group");
+			listEl = document.getElementById("bo-list");
+			emptyEl = document.getElementById("bo-empty");
+			subtitleEl = document.getElementById("bo-subtitle");
+			confirmEl = document.getElementById("bo-confirm");
+			confirmTitleEl = document.getElementById("bo-confirm-title");
+			confirmTextEl = document.getElementById("bo-confirm-text");
+			confirmOkBtn = document.getElementById("bo-confirm-ok");
+			confirmCancelBtn = document.getElementById("bo-confirm-cancel");
+			confirmIconEl = document.getElementById("bo-confirm-icon");
+			confirmIcons = confirmIconEl ? confirmIconEl.querySelectorAll("svg[data-kind]") : [];
+		}
+
+		/* ── 接管浮层并挂 body（祖先带 transform/backdrop-filter 会让 fixed 失效）──
+		   同时取"文档里最新的那一份"（swup 会带来新 DOM）+ 刷新闭包引用 —— 顺序与三兄弟一致。 */
+		function adoptDialog() {
+			var masks = document.querySelectorAll("#bo-mask");
+			var confs = document.querySelectorAll("#bo-confirm");
+			var m = masks.length ? masks[masks.length - 1] : null;
+			var c = confs.length ? confs[confs.length - 1] : null;
+			for (var i = 0; i < masks.length - 1; i++) {
+				if (masks[i].parentNode) masks[i].parentNode.removeChild(masks[i]);
+			}
+			for (var j = 0; j < confs.length - 1; j++) {
+				if (confs[j].parentNode) confs[j].parentNode.removeChild(confs[j]);
+			}
+			if (m && m.parentNode !== document.body) {
+				document.body.appendChild(m);
+				m.setAttribute("data-bo-adopted", "1");
+			}
+			if (c && c.parentNode !== document.body) {
+				document.body.appendChild(c);
+				c.setAttribute("data-bo-adopted", "1");
+			}
+			refreshRefs();
+		}
+
+		/* ── teardown（swup 切页清理）──
+		   keepFloaters=true：只解绑监听器/解锁滚动，**保留浮层**（脚本重放时用）。 */
+		function teardown(keepFloaters) {
+			if (window.__boKeydownBound) {
+				document.removeEventListener("keydown", onKeydown);
+				window.__boKeydownBound = false;
+			}
+			while (scrollLockCount > 0) unlockPageScroll();
+			if (keepFloaters) return;
+			// 只删带标记（＝曾被我们接管到 body）的浮层，避免误删本页新生成的浮层
+			var adopted = document.querySelectorAll('[data-bo-adopted="1"]');
+			for (var i = adopted.length - 1; i >= 0; i--) {
+				if (adopted[i].parentNode) adopted[i].parentNode.removeChild(adopted[i]);
+			}
+		}
+		window.__boCleanup = teardown;
+
+		/**
+		 * 面板空白处滚动的兜底（与三兄弟逐字同款）：
+		 *   - 鼠标在面板内、但**不在**列表滚动容器上（头部/底部/卡片间隙）⇒ 拦截，
+		 *     避免滚动链传给网页（"在弹窗里滚，网页也跟着跑"）；
+		 *   - 列表区（`.bo-scroll`）内 ⇒ 放行，正常滚动；
+		 *   - 遮罩空白处 ⇒ 本函数不生效，放行给网页滚动（符合预期）。
+		 * 无 DOM 操作、无布局读取，开销可忽略。
+		 */
+		function initPanelWheelGuard() {
+			if (!panel || panel.__boWheelBound) return; // 同一元素不重复绑
+			panel.__boWheelBound = true;
+			panel.addEventListener(
+				"wheel",
+				function (e) {
+					if (e.target.closest && e.target.closest(".bo-scroll")) return;
+					e.preventDefault();
+				},
+				{ passive: false },
+			);
+		}
+
+		/* ── 启动 ── */
+		adoptDialog();
+		bindAll();
+		initVisibility();
+		initPanelWheelGuard();
+
+		/* ── swup 钩子 ──
+		   ⚠️ 必须用 `window.swup.hooks.on("content:replace", …)`（与 FriendsEditor 同款）。
+		   本站用 @swup/astro：钩子是 **swup 实例 API**，不会以裸名 `content:replace` 派发到 document
+		   （document 上的 DOM 事件名带前缀，是 `swup:content:replace`）。
+		   事件名写错 ⇒ 清理函数永不执行 ⇒ 切页后浮层残留在 body 上。 */
+		function bindSwupHooks() {
+			// 脚本重放会产生多个闭包；钩子只保留最早那个（它的引用由 adoptDialog 持续刷新）
+			if (window.__boSwupHooked) return true;
+			if (!window.swup || !window.swup.hooks || typeof window.swup.hooks.on !== "function") return false;
+			window.swup.hooks.on("content:replace", function () {
+				window.__boReplaceHits = (window.__boReplaceHits || 0) + 1;
+				// ★ 第一步必须先是 adoptDialog —— 顺序反过来（先 teardown）会把刚接管的那份删掉，
+				//   闭包引用随即变成"已移出文档的旧节点"。
+				adoptDialog();
+				if (!document.getElementById("bo-root")) {
+					// 切到没有本组件的页面 ⇒ 关弹窗 + 把浮层/监听一并收拾掉
+					doClose();
+					teardown();
+					return;
+				}
+				bindAll();
+				initPanelWheelGuard(); // DOM 是新的一份 ⇒ 兜底监听要绑到新面板上
+			});
+			window.__boSwupHooked = true;
+			return true;
+		}
+		if (!bindSwupHooks()) {
+			// swup 可能晚于本脚本就绪 ⇒ 用 swup:enable 兜底（与站内 Navbar / FriendsEditor 同款做法）
+			document.addEventListener(
+				"swup:enable",
+				function () {
+					bindSwupHooks();
+				},
+				{ once: true },
+			);
+		}
+	})();
+</script>

@@ -42,3 +42,8 @@ package/
 
 # backups
 .backups/
+
+# 设计稿参考图（AI 生成，不入库）
+generated-images/
+
+# 数据段缓存必须入库（勿忽略）：.ours-data/

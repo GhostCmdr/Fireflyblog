@@ -1,31 +1,3 @@
-import type { BooknavGroup, BooknavPageConfig } from "../types/booknavConfig";
-
-// 书签导航页面配置
-export const booknavPageConfig: BooknavPageConfig = {
-	// 页面标题，如果留空则使用 i18n 中的翻译
-	title: "",
-
-	// 页面描述文本，如果留空则使用 i18n 中的翻译
-	description: "",
-
-	// favicon 自动获取配置
-	favicon: {
-		// 书签未填写 icon 时，是否自动获取目标站点的 favicon 图标
-		enabled: true,
-
-		// favicon 接口地址，{domain} 为占位符，会被替换成目标站点域名
-		// 更换接口只需保证地址里含有 {domain}，例如：
-		//   https://a.favicon.im/{domain}
-		//   https://favicon.im/{domain}
-		api: "https://a.favicon.im/{domain}",
-	},
-};
-
-// [OURS] 数据段 —— 我方书签数据写在**上游原有位置**（不另建 ours 文件）。
-// 拉上游更新后运行 `node scripts/ours/merge-ours-data.mjs`，标记内的数据会被整块还原为我方版本
-// ⇒ 结构取上游、数据保我方。
-// ⚠️ 两行标记必须成对保留，勿删；在线编辑器只重写标记内的数组体。
-// [OURS-DATA-BEGIN]
 // 书签导航配置：每个数组项是一个分类组，组内的 items 是该分类下的书签
 // 分组按 weight 降序排列，组内条目同样按 weight 降序（权重越大越靠前）
 // 条目不填 icon → 由 booknavPageConfig.favicon.api 自动抓目标站点图标（当前已启用）
@@ -142,7 +114,3 @@ const _baseBooknav: BooknavGroup[] = [
 		],
 	},
 ];
-// [OURS-DATA-END]
-
-// 书签导航：直接引用数据段（数组整体替换语义，不做 mergeDeep）
-export const booknavConfig: BooknavGroup[] = _baseBooknav;

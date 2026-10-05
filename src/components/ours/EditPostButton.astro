@@ -7,20 +7,31 @@
  *
  * 可见性：默认隐藏，仅当本机存有 GitHub Token（`body.editor-enabled`，由 MainGridLayout 添加）时显示，
  *        样式在 `src/styles/ours/overrides.css` 的 `.edit-this-post-btn` 规则里。
+ *
+ * 落位（2026-10-01 起）：不再排在标题文字末尾，而是**绝对定位覆盖在信息行右上角**。
+ *   - variant="default"：挂进信息行自己的容器（该容器需 `relative`）⇒ 贴它的右上
+ *   - variant="cover"  ：挂进封面底部浮层容器（本身已是 `absolute`）⇒ 用 bottom 对齐信息行
  */
 interface Props {
 	/** 文章文件名（含扩展名），用于编辑器 `?slug=` 参数 */
 	slug: string;
+	/** 落位形态：default = 信息行容器自身（其父需 `relative`）；cover = 封面底部浮层（本身已是 `absolute`） */
+	variant?: "default" | "cover";
 }
 
-const { slug } = Astro.props;
+const { slug, variant = "default" } = Astro.props;
+
+/** 覆盖在信息行右上角：default 用 top 对齐信息行顶；cover 用 bottom 对齐（信息行在浮层底部） */
+const placement =
+	variant === "cover"
+		? "absolute right-6 bottom-3 md:right-9"
+		: "absolute right-0 top-0";
 ---
 
 <a
 	href={`/editor/?slug=${encodeURIComponent(slug)}`}
 	data-swup-ignore
-	class="edit-this-post-btn ml-2 inline-flex shrink-0 cursor-pointer items-center gap-1.5 align-middle rounded-lg px-3 py-1.5 text-sm font-medium
-				 bg-(--primary) text-white dark:text-black/80 hover:opacity-90 active:scale-95 transition-all"
+	class={`edit-this-post-btn ${placement} shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium bg-(--primary) text-white dark:text-black/80 hover:opacity-90 active:scale-95 transition-all`}
 	title="编辑"
 	data-pagefind-ignore
 >

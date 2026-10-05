@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "savedAt": "2026-09-30T12:04:22.406Z",
+  "savedFrom": "8ea9c4ee",
+  "files": [
+    {
+      "file": "src/config/booknavConfig.ts",
+      "sha256": "8d7b43152f02cf75b205b2d4a018ec5fd80e0ccde7cc3bea06b66b031a05ec7d",
+      "bytes": 2510,
+      "lines": 116
+    }
+  ]
+}

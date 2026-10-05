@@ -1,17 +1,21 @@
 // [OURS] 我方配置值集中文件
 //
-// 设计目的：上游的 `src/config/*.ts` 保持"上游默认值"，只在文件末尾用 mergeDeep 叠加本文件的值。
-// 这样未来从上游更新时，我们只在这些配置文件里留 2~3 行 hook，冲突面极小。
+// ⚠️ 适用范围（2026-09-30 起收紧）：
+//   - **对象类配置**（键级覆盖）：仍走本文件 —— 上游 `src/config/*.ts` 保持"上游默认值"，
+//     在文件末尾用 mergeDeep 叠加本文件的值，我方只留 2~3 行 hook，冲突面极小。
+//   - **成块的纯数据**（数组类，如书签/友链/相册）：**一律写在上游文件的原有位置**，用
+//     `// [OURS-DATA-BEGIN]` / `// [OURS-DATA-END]` 标记圈住，拉上游后由
+//     `node scripts/ours/merge-ours-data.mjs` 回填 ⇒ 结构取上游、数据保我方。
+//     **不要再把这类数据搬进本文件**（首个落地案例 booknavConfig.ts；友链/相册待迁移）。
 //
 // 合并语义（见下方 mergeDeep）：
 //   - 对象：深合并（我方键覆盖，其余保留上游新默认值）
-//   - 数组：整体替换（关键词/导航项/侧栏组件/友链等由我们完全掌控）
+//   - 数组：整体替换（关键词/导航项/侧栏组件等由我们完全掌控）
 //   - 我方写 `undefined`：表示"删除上游该键"（用于上游有、我们不要的字段）
 
 type AnyObj = Record<string, any>;
 
 // 仅类型导入（无运行时代价）：给下面的数组加显式类型，确保结构写错时 astro check 能报出来
-import type { BooknavGroup } from "../../types/booknavConfig";
 import type { FriendLink } from "../../types/friendsConfig";
 import type { GalleryAlbum } from "../../types/galleryConfig";
 import type { ProfileConfig } from "../../types/profileConfig";
@@ -21,7 +25,7 @@ import galleryAlbums from "./gallery-albums.json";
 
 // 【isolatedDeclarations / TS9017】本文件导出的对象里，数组字面量必须写 `as const`：
 // 该修饰只在类型层生效，编译后不留痕迹，运行时行为完全不变。
-// 若该导出本身能引用上游类型（如 oursFriendsConfig / oursBooknavConfig），
+// 若该导出本身能引用上游类型（如 oursFriendsConfig），
 // 则优先用显式类型标注（顺带让 astro check 校验结构），无需 as const。
 
 /** 深合并：对象合并、数组替换、undefined=删除键 */
@@ -268,124 +272,6 @@ export const oursFriendsConfig: FriendLink[] = [
 		tags: ["Web"],
 		weight: 1,
 		enabled: true,
-	},
-];
-
-/* ────────────────────────── booknavConfig（书签导航页 /booknav/）────────────────────────── */
-// 数组 → 整体替换（与 friendsConfig 同一套做法：上游的示例书签不再使用）
-// 分组按 weight 降序排列，组内条目同样按 weight 降序（权重越大越靠前）
-// 条目不填 icon → 由 booknavPageConfig.favicon.api 自动抓目标站点图标（当前已启用）
-export const oursBooknavConfig: BooknavGroup[] = [
-	{
-		id: "dev",
-		name: "开发",
-		icon: "material-symbols:code-rounded",
-		desc: "写代码时常用的站点",
-		weight: 100,
-		items: [
-			{
-				title: "GitHub",
-				url: "https://github.com/",
-				desc: "全球最大的代码托管平台",
-				weight: 10,
-			},
-			{
-				title: "VScode",
-				url: "https://code.visualstudio.com/",
-				desc: "Visual Studio Code 代码编辑器",
-				weight: 9,
-			},
-			{
-				title: "JETBRAINS",
-				url: "https://www.jetbrains.com.cn/",
-				desc: "JetBrains 全家桶（IDEA / PyCharm / WebStorm…）",
-				weight: 8,
-			},
-		],
-	},
-	{
-		id: "ai",
-		name: "AI工具",
-		icon: "material-symbols:smart-toy",
-		desc: "常用大模型与 AI 工具",
-		weight: 90,
-		items: [
-			{
-				title: "DeepSeek",
-				url: "https://chat.deepseek.com/",
-				desc: "DeepSeek 对话",
-				weight: 10,
-			},
-			{
-				title: "ChatGPT",
-				url: "https://chatgpt.com/",
-				desc: "OpenAI ChatGPT",
-				weight: 9,
-			},
-			{
-				title: "Claude",
-				url: "https://claude.ai/downloads",
-				desc: "Anthropic Claude（下载页）",
-				weight: 8,
-			},
-			{
-				title: "WorkBuddy",
-				url: "https://www.workbuddy.cn/app",
-				desc: "AI 效率工具",
-				weight: 7,
-			},
-			{
-				title: "MiMo",
-				url: "https://mimo.mi.com/",
-				desc: "小米 MiMo 大模型",
-				weight: 6,
-			},
-		],
-	},
-	{
-		id: "anime",
-		name: "动漫",
-		icon: "material-symbols:movie",
-		desc: "追番与在线动漫",
-		weight: 80,
-		items: [
-			{
-				title: "Bilibili",
-				url: "https://www.bilibili.com/",
-				desc: "哔哩哔哩弹幕网",
-				weight: 10,
-			},
-			{
-				title: "樱花动漫",
-				url: "https://www.yinhuadm.one/",
-				desc: "在线动漫",
-				weight: 9,
-			},
-			{
-				title: "次元城动漫",
-				url: "https://www.cycani.org/",
-				desc: "在线动漫",
-				weight: 8,
-			},
-			{
-				title: "OmoFun动漫",
-				url: "https://www.omofuns.com/",
-				desc: "在线动漫",
-				weight: 7,
-			},
-			{
-				title: "AGE动漫",
-				url: "https://rentry.org/agefans",
-				desc: "AGE 动漫地址发布页",
-				weight: 6,
-			},
-			{
-				title: "片库网",
-				url: "https://www.988lm.com",
-				desc: "在线影视",
-				weight: 5,
-			},
-		],
 	},
 ];
 

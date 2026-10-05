@@ -16,6 +16,18 @@ body.editor-enabled .edit-this-post-btn {
   display: inline-flex;
 }
 
+/* ── 1-2) 两个「就地编辑」入口的**定位上下文** ──
+   「编辑此文」和动态页「管理」都用绝对定位覆盖在原有区块右上角，需要一个 position 祖先。
+   但**不能**把它写在上游的 HTML class 上 —— 那就成了"修改上游已有的行"，拉上游时会冲突。
+   这里用 :has() 反向命中"含有该按钮的容器"，把给上游元素加样式的责任全部收回本文件。
+   （:has() 支持：Chrome 105+ / Safari 15.4+ / Firefox 121+） */
+.onload-animation:has(> .edit-this-post-btn) {
+  position: relative;
+}
+.dynamic-page-header:has(#de-open) {
+  position: relative;
+}
+
 /* ── 2) 编辑器冻结壁纸的内层背景层 ──
    复刻主页 overlay：背景画在该层、对其做 scale(1.05)+blur，由 #wallpaper-wrapper
    （.wallpaper-overlay 自带 overflow:hidden）裁掉放大的模糊羽化边缘，页面四边不再出现

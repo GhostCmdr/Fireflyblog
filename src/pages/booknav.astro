@@ -1,5 +1,6 @@
 ---
 import { Icon } from "astro-icon/components";
+import BooknavEditor from "@/components/ours/BooknavEditor.astro";
 import { booknavPageConfig, siteConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
@@ -54,6 +55,8 @@ const description =
           <div class="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
             {title}
           </div>
+          {/* [OURS] 书签就地编辑入口：仅当浏览器已配置 GitHub Token 时显示（支持 ?manage=1 兜底） */}
+          <BooknavEditor />
         </div>
         {
           description && (

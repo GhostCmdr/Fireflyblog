@@ -12,7 +12,7 @@
  *   --fetch    先 git fetch upstream --tags（报告会更准）
  *   --out      报告输出路径，默认 .backups/upstream-report-<时间戳>.md
  *
- * 报告内容（九节）：
+ * 报告内容（十节）：
  *   一、上游提交摘要（按 feat/fix/perf/refactor… 分组，带 hash/日期/作者）← 你要的"上游这次加了什么"
  *   二、新功能开关表（上游新增的配置键 → 是否已被我方 ours/ 覆盖 → 建议动作）
  *   三、配置文件键级变化（新增/删除，逐文件）
@@ -28,6 +28,8 @@
  *   九、依赖版本检查＝把"依赖有新版本"也纳入定期提醒（原先靠 dependabot PR，现已改为
  *      `open-pull-requests-limit: 0` 不再自动开 PR ⇒ 由本节在双周体检里提示 ✓）
  *      只列"有更新"的包，并突出 **major 升级** 与 **关键包**（避免 40+ 依赖啰嗦 ✓）
+ *   十、[OURS-DATA] 数据段健康度＝写在上游原位（用标记圈住）的我方数据，是否"标记成对 + 与 .ours-data 缓存一致"，
+ *      并提示合并后要跑的回填命令 `node scripts/ours/merge-ours-data.mjs`（见 .codebuddy/rules/ours-data.md）
  *
  * ⚠️ 说明：这是"启发式"报告工具（键提取按"行首 1 个 Tab 的 `键:`"识别，深度只到第一层；
  *    第七节按"缩进栈"还原点路径、只比标量值），用于**提示风险与待评估项**，不是精确 diff。
@@ -180,6 +182,23 @@ const OURS_PATH_PATTERNS = [
 	/^src\/pages\/editor\.astro$/,
 ];
 const conflictRisk = fileChanges.filter((f) => OURS_PATH_PATTERNS.some((re) => re.test(f.file)));
+
+// AGENTS.md 特别盯防（2026-10-05 用户要求）：上游仓库自带这个文件（给 AI 用的仓库说明），
+// 我方在其末尾追加了一节 `## Repository-Specific Conventions`（本仓库的 [OURS] 约定）。
+// 上游一旦改动它，合并时必须保住我方那一节 —— 不能整文件取上游。故单独加重提醒。
+// ⚠️ 区间必须用 **merge-base..target**（"上游自我们分叉以来改了什么"），不能用 base..target：
+//    base=HEAD 时，我方自己加的那一节也会被算成"差异" ⇒ 每次都误报。
+const agentsBase = git(["merge-base", base, target], { allowFail: true }) || base;
+const agentsStatus = git(["diff", "--name-status", `${agentsBase}..${target}`, "--", "AGENTS.md"], { allowFail: true });
+const agentsTouched = agentsStatus
+	? agentsStatus
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => {
+				const parts = l.split("\t");
+				return { status: parts[0][0], file: parts[parts.length - 1] };
+			})
+	: [];
 
 /* ── 3. 配置文件键级变化（行首 1 个 Tab 的 `键:`）─────────────────── */
 const TOP_KEY_RE = /^\t([A-Za-z_$][\w$]*)\s*:/gm;
@@ -649,6 +668,22 @@ if (conflictRisk.length) {
 	L.push("_（无与我方 ours/、editor.astro 同路径的改动）_");
 }
 L.push("");
+if (agentsTouched.length) {
+	L.push("> ## 🚨🚨 加重提醒：上游改动了 `AGENTS.md` 🚨🚨");
+	L.push(">");
+	for (const f of agentsTouched) L.push(`> - \`${f.status}\` \`${f.file}\``);
+	L.push(">");
+	L.push(
+		"> 该文件是**上游自带**的「给 AI 的仓库说明」；我方在其末尾追加了一节 **`## Repository-Specific Conventions`**（本仓库的 `[OURS]` 覆盖层 / 数据段 / 编辑器约定）。",
+	);
+	L.push(
+		"> 合并时**必须保住我方这一节**：若报冲突，按「上游正文 + 我方那一节」两边都要来解，**禁止整文件取上游版本**（`git checkout --theirs AGENTS.md` 会直接丢掉我方约定）。",
+	);
+	L.push(
+		"> 合并后核对：本文件里 `## Repository-Specific Conventions` 一节仍在（`git diff <merge-base> -- AGENTS.md` 应只看到上游的改动 + 我方一节）。",
+	);
+}
+L.push("");
 if (fileByStatus.A && fileByStatus.A.length) {
 	L.push("<details><summary>新增文件</summary>");
 	L.push("");
@@ -789,6 +824,38 @@ if (!depResults.length) {
 
 L.push("---");
 L.push("");
+// ── 十、[OURS-DATA] 数据段健康度（复用回填脚本的 --check，保证单一实现源）──
+L.push("## 十、[OURS-DATA] 数据段健康度");
+L.push("");
+L.push("> 「数据段」＝写在上游文件**原位**、用 `// [OURS-DATA-BEGIN]` / `// [OURS-DATA-END]` 圈住的我方数据。");
+L.push("> 拉上游固定动作：`git merge` → **`node scripts/ours/merge-ours-data.mjs`**（回填）→ `--check`。");
+L.push("");
+{
+	let checkOut = "";
+	let checkOk = false;
+	try {
+		checkOut = execFileSync(process.execPath, ["scripts/ours/merge-ours-data.mjs", "--check"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		checkOk = true;
+	} catch (e) {
+		checkOut = String((e.stdout || "") + (e.stderr || ""));
+	}
+	for (const line of checkOut.split("\n")) {
+		const t = line.replace(/\r$/, "").trim();
+		if (t) L.push("    " + t);
+	}
+	L.push("");
+	L.push(
+		checkOk
+			? "✅ 数据段健康：标记成对，且与 `.ours-data/` 缓存一致。"
+			: "❌ **数据段异常** —— 合并后先跑上面的回填命令修复再继续。",
+	);
+	L.push("");
+}
+L.push("---");
+L.push("");
 L.push("## 下一步建议（固定动作）");
 L.push("");
 L.push("1. 先看【一】的 feat 段：逐条判断是否要开启/适配；对照【二】开关表给出结论。");
@@ -799,6 +866,12 @@ L.push(
 	"5. **看【七】7.1 开关类未覆盖项**：这是「上游改默认值把功能悄悄关掉」的高发区（曾导致播放器歌词按钮、设置面板消失）→ 逐条判断是否写进 `src/config/ours/values.ts` 固定。**只有写进 ours 才是免疫，本报告只负责提醒。**",
 );
 L.push("6. 合并后必跑：`pnpm exec astro check` + `pnpm run build`（改过 remark/rehype 插件要先删 `node_modules/.astro`）。");
+L.push(
+	"7. **合并后跑数据段回填**：`node scripts/ours/merge-ours-data.mjs`（把 `[OURS-DATA]` 标记内的数据换回我方版本，避免混入上游示例）→ 再跑 `--check` 确认（见【十】）。",
+);
+L.push(
+	"8. 🚨 **若【五】出现「上游改动了 `AGENTS.md`」的加重提醒**：合并时**必须保住我方那一节 `## Repository-Specific Conventions`**（上游正文照收，我方一节照留），**禁止整文件取上游**。",
+);
 
 const md = L.join("\n");
 const outPath = opt("out", path.join(".backups", `upstream-report-${stamp}.md`));
