@@ -32,6 +32,7 @@ yarn.lock
 .claude
 CLAUDE.md
 .codebuddy/
+.vscode/
 
 # docs
 Firefly-docs/
