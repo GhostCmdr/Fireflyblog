@@ -246,23 +246,13 @@ export const oursFriendsPageConfig = {
 //          若友链是某个人的主页（如 GitHub），也可直接填其头像地址 ✓
 export const oursFriendsConfig: FriendLink[] = [
 	{
-		title: "小埋团长",
-		imgurl: "https://a.favicon.im/xiaomaisos.me",
-		desc: "小埋团长的博客",
-		siteurl: "https://xiaomaisos.me",
+		title: "三段荒の窝",
+		imgurl: "https://favicon.im/sanduanhuang.dpdns.org?larger=true",
+		desc: "三段荒的个人博客网站",
+		siteurl: "https://sanduanhuang.dpdns.org/",
 		tags: ["Blog"],
-		weight: 3,
-		enabled: false,
-	},
-	{
-		title: "测试专用1",
-		imgurl:
-			"https://ubiservices.cdn.ubi.com/77560d22-668e-40ad-a445-69ae77826b40/upload/b2f82519_2cab_4b0c_986d_fe47903c8e35.png?rs=146",
-		desc: "测试",
-		siteurl: "https://www.ubisoft.com/en-gb/account/account-information",
-		tags: ["大大", "哒哒哒", "大大", "dada1", "dadda1"],
 		weight: 2,
-		enabled: false,
+		enabled: true,
 	},
 	{
 		title: "GitHub",
